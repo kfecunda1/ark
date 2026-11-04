@@ -1,4 +1,4 @@
-export type ProductType = "SBLC" | "MX103" | "MT103" | "IP-IP" | "API" | "T2T" | "S2S";
+export type ProductType = "SBLC" | "MX103" | "MT103" | "IP-IP" | "API" | "API Cash" | "T2T" | "S2S" | "VISA";
 
 export type ProjectStage = "new" | "documents_received" | "match" | "status";
 
