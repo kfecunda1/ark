@@ -143,13 +143,18 @@ export function ProjectDocuments({ projectId, documents }: ProjectDocumentsProps
     setError(null);
     setDeletingId(documentId);
     startTransition(async () => {
-      const result = await deleteProjectDocument(documentId);
-      if (result.error) {
-        setError(result.error);
-      } else {
-        router.refresh();
+      try {
+        const result = await deleteProjectDocument(documentId);
+        if (result.error) {
+          setError(result.error);
+        } else {
+          router.refresh();
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      } finally {
+        setDeletingId(null);
       }
-      setDeletingId(null);
     });
   }
 
@@ -234,7 +239,7 @@ export function ProjectDocuments({ projectId, documents }: ProjectDocumentsProps
             value={documentType}
             onChange={(e) => setDocumentType(e.target.value as ProjectDocumentType)}
             disabled={isUploading || isChecking}
-            className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out focus:border-white/20 disabled:opacity-50"
+            className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
           >
             {DOCUMENT_TYPES.map((type) => (
               <option key={type} value={type} className="bg-[#0a0e17]">
@@ -257,7 +262,7 @@ export function ProjectDocuments({ projectId, documents }: ProjectDocumentsProps
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-white/50" />
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
               <div
-                className="h-full rounded-full bg-indigo-500 transition-all duration-150 ease-out"
+                className="h-full rounded-full bg-accent transition-all duration-150 ease-out"
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>

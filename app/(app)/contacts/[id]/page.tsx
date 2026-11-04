@@ -73,7 +73,7 @@ export default async function ContactDetailPage({ params }: ContactDetailPagePro
                   {capabilities.map((capability) => (
                     <span
                       key={capability.id}
-                      className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2.5 py-0.5 text-xs font-medium whitespace-nowrap text-indigo-300"
+                      className="rounded-full border border-accent/25 bg-accent/10 px-2.5 py-0.5 text-xs font-medium whitespace-nowrap text-accent-soft"
                     >
                       {capability.tag}
                     </span>

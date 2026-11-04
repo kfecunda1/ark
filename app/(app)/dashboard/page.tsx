@@ -7,10 +7,10 @@ import { PRODUCT_TYPES } from "@/lib/products";
 import type { Project, ProjectStage } from "@/lib/types";
 
 const STAGE_BAR_COLORS: Record<ProjectStage, string> = {
-  new: "bg-sky-500/70",
+  new: "bg-accent/70",
   documents_received: "bg-cyan-500/70",
-  match: "bg-violet-500/70",
-  status: "bg-amber-500/70",
+  match: "bg-teal-500/70",
+  status: "bg-silver/70",
 };
 
 export default async function DashboardPage() {
@@ -148,7 +148,7 @@ export default async function DashboardPage() {
                     </span>
                     <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
                       <span
-                        className="block h-full rounded-full bg-indigo-500/70 transition-all duration-300 ease-out"
+                        className="block h-full rounded-full bg-accent/70 transition-all duration-300 ease-out"
                         style={{ width: `${width}%` }}
                       />
                     </span>

@@ -14,13 +14,18 @@ export function DeleteNoteButton({ noteId }: { noteId: string }) {
   function handleDelete() {
     setError(null);
     startTransition(async () => {
-      const result = await deleteNote(noteId);
-      if (result.error) {
-        setError(result.error);
+      try {
+        const result = await deleteNote(noteId);
+        if (result.error) {
+          setError(result.error);
+          setConfirming(false);
+          return;
+        }
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
         setConfirming(false);
-        return;
       }
-      router.refresh();
     });
   }
 

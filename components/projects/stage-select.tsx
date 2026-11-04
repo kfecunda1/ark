@@ -14,12 +14,16 @@ export function StageSelect({ projectId, currentStage }: { projectId: string; cu
   function handleChange(stage: ProjectStage) {
     setError(null);
     startTransition(async () => {
-      const result = await updateProjectStage(projectId, stage);
-      if (result.error) {
-        setError(result.error);
-        return;
+      try {
+        const result = await updateProjectStage(projectId, stage);
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       }
-      router.refresh();
     });
   }
 
@@ -30,7 +34,7 @@ export function StageSelect({ projectId, currentStage }: { projectId: string; cu
         value={currentStage}
         disabled={isPending}
         onChange={(e) => handleChange(e.target.value as ProjectStage)}
-        className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-white outline-none transition-colors duration-150 ease-out focus:border-white/20 disabled:opacity-50"
+        className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
       >
         {STAGES.map((stage) => (
           <option key={stage} value={stage} className="bg-[#0a0e17]">

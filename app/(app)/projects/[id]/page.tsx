@@ -4,12 +4,12 @@ import { Pencil } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { PriorityBadge } from "@/components/projects/badges";
 import { StageSelect } from "@/components/projects/stage-select";
+import { StatusSelect } from "@/components/projects/status-select";
 import { ArchiveProjectButton } from "@/components/projects/archive-project-button";
 import { ProjectDocuments } from "@/components/projects/project-documents";
 import { TranchesSection } from "@/components/projects/tranches-section";
 import { LinkedNotes } from "@/components/notes/linked-notes";
 import { createClient } from "@/lib/supabase/server";
-import { STATUS_LABELS } from "@/lib/projects";
 import { formatDateTime } from "@/lib/format";
 import type { Contact, Note, Project, ProjectDocument, ProjectTranche } from "@/lib/types";
 
@@ -96,7 +96,6 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         "—"
       ),
     },
-    { label: "Status", value: project.status ? STATUS_LABELS[project.status] : "—" },
     { label: "Ratio Presented", value: project.ratio_presented || "—" },
     { label: "Ratio Real", value: project.ratio_real || "—" },
     {
@@ -157,6 +156,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <PriorityBadge priority={project.priority} />
         <StageSelect projectId={project.id} currentStage={project.stage} />
+        <StatusSelect projectId={project.id} currentStatus={project.status} />
       </div>
 
       <GlassCard interactive={false} className="p-6">

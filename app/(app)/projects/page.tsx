@@ -5,7 +5,8 @@ import { GlassCard } from "@/components/glass-card";
 import { ClickableRow } from "@/components/clickable-row";
 import { ClickableCard } from "@/components/clickable-card";
 import { ProjectFilters } from "@/components/projects/project-filters";
-import { StageBadge, StatusBadge } from "@/components/projects/badges";
+import { StageBadge } from "@/components/projects/badges";
+import { StatusSelect } from "@/components/projects/status-select";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/format";
 import type { Project } from "@/lib/types";
@@ -65,7 +66,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
         </div>
         <Link
           href="/projects/new"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500 px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-indigo-400"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover"
         >
           <Plus className="h-4 w-4" />
           New Project
@@ -112,6 +113,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                   <th className="px-4 py-3 font-medium">Name</th>
                   <th className="px-4 py-3 font-medium">Product</th>
                   <th className="px-4 py-3 font-medium">Stage</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Client</th>
                   <th className="px-4 py-3 font-medium">Last Activity</th>
                 </tr>
@@ -126,10 +128,10 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                     <td className="px-4 py-3 text-white/80 group-hover:text-white">{project.name}</td>
                     <td className="px-4 py-3 text-white/70 group-hover:text-white">{project.product_type}</td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <StageBadge stage={project.stage} />
-                        {project.status && <StatusBadge status={project.status} />}
-                      </div>
+                      <StageBadge stage={project.stage} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusSelect projectId={project.id} currentStatus={project.status} />
                     </td>
                     <td className="px-4 py-3 text-white/70">
                       {(project.client_contact_id && contactNameById.get(project.client_contact_id)) || "—"}
@@ -146,16 +148,19 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
               <ClickableCard key={project.id} href={`/projects/${project.id}`}>
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <span className="text-sm font-medium text-white/85">{project.name}</span>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <StageBadge stage={project.stage} />
-                    {project.status && <StatusBadge status={project.status} />}
-                  </div>
+                  <StageBadge stage={project.stage} />
                 </div>
 
                 <dl className="flex flex-col gap-2 text-sm">
                   <div>
                     <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Product</dt>
                     <dd className="mt-0.5 text-white/70">{project.product_type}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Status</dt>
+                    <dd className="mt-0.5">
+                      <StatusSelect projectId={project.id} currentStatus={project.status} />
+                    </dd>
                   </div>
                   <div>
                     <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Client</dt>

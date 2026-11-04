@@ -1,4 +1,9 @@
-import type { ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
+import { LOCALE } from "@/lib/format";
+import type { Currency, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
+
+// Kept in sync by hand with the CHECK constraint added by
+// supabase/migrations/002_currency_check.sql.
+export const CURRENCIES: Currency[] = ["USD", "EUR"];
 
 export const STAGES: ProjectStage[] = ["new", "documents_received", "match", "status"];
 export const STATUSES: ProjectStatus[] = [
@@ -52,8 +57,15 @@ export function parseDateOnly(value: string): Date {
   return new Date(year, month - 1, day);
 }
 
+// Deliberately no `timeZone` option here, unlike lib/format.ts's
+// formatDateTime: parseDateOnly already builds this Date at local
+// midnight in whatever timezone the current runtime defaults to (not
+// UTC, not the fixed business timezone), so re-interpreting it in a
+// *different* fixed timezone when formatting could shift the displayed
+// day backwards or forwards. Locale is still pinned, since that only
+// affects word choice/ordering, never the underlying date value.
 export function formatDateOnly(value: string): string {
-  return parseDateOnly(value).toLocaleDateString(undefined, {
+  return parseDateOnly(value).toLocaleDateString(LOCALE, {
     year: "numeric",
     month: "short",
     day: "numeric",

@@ -1,3 +1,4 @@
+import { LOCALE, TIME_ZONE, dateKeyInTimeZone } from "@/lib/format";
 import { PRIORITY_LABELS, STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
 import type { ActivityAction, ActivityDetails, ActivityEntityType, ActivityLog } from "@/lib/types";
 
@@ -189,30 +190,34 @@ export function targetKey(table: ActivityTarget["table"], id: string): string {
   return `${table}:${id}`;
 }
 
-/** Local-time HH:MM, matching the timezone the rest of the app renders in. */
+/** HH:MM in the fixed business timezone, matching formatDateTime. */
 export function formatActivityTime(value: string): string {
-  return new Date(value).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return new Date(value).toLocaleTimeString(LOCALE, { timeZone: TIME_ZONE, hour: "numeric", minute: "2-digit" });
 }
 
-/** Stable per-day bucket key in the server's local timezone. */
+/** Stable per-day bucket key, in the fixed business timezone — not
+ * whatever timezone the server process happens to default to. */
 export function activityDayKey(value: string): string {
-  const d = new Date(value);
-  const month = `${d.getMonth() + 1}`.padStart(2, "0");
-  const day = `${d.getDate()}`.padStart(2, "0");
-  return `${d.getFullYear()}-${month}-${day}`;
+  return dateKeyInTimeZone(value);
 }
 
 export function formatActivityDayHeading(dayKey: string): string {
   const [year, month, day] = dayKey.split("-").map(Number);
+  // A locally-constructed Date here (as opposed to parsing dayKey as a
+  // UTC string) is safe and intentional: it's only used below for
+  // getTime() day-diffing and toLocaleDateString's weekday/month/day —
+  // never with an explicit `timeZone` option, which would risk shifting
+  // the calendar day this key already pins.
   const date = new Date(year, month - 1, day);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayKey = dateKeyInTimeZone(new Date().toISOString());
+  const [todayYear, todayMonth, todayDay] = todayKey.split("-").map(Number);
+  const today = new Date(todayYear, todayMonth - 1, todayDay);
   const diffDays = Math.round((today.getTime() - date.getTime()) / 86_400_000);
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Yesterday";
 
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString(LOCALE, {
     weekday: "short",
     year: "numeric",
     month: "short",

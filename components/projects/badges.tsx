@@ -1,11 +1,13 @@
 import { PRIORITY_LABELS, STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
 import type { ProjectDocumentType, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
 
+// A coherent cool palette — steel blue, cyan, teal, silver-grey — so
+// each stage reads distinctly without reaching for a warm color.
 const STAGE_STYLES: Record<ProjectStage, string> = {
-  new: "bg-sky-500/15 text-sky-300 border-sky-500/25",
+  new: "bg-accent/15 text-accent-soft border-accent/25",
   documents_received: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25",
-  match: "bg-violet-500/15 text-violet-300 border-violet-500/25",
-  status: "bg-amber-500/15 text-amber-300 border-amber-500/25",
+  match: "bg-teal-500/15 text-teal-300 border-teal-500/25",
+  status: "bg-silver/15 text-white/70 border-silver/25",
 };
 
 export function StageBadge({ stage }: { stage: ProjectStage }) {
@@ -18,12 +20,16 @@ export function StageBadge({ stage }: { stage: ProjectStage }) {
   );
 }
 
+// Same cool family as STAGE_STYLES for everything in progress, with the
+// two deliberate exceptions: Completed stays green, Lost stays red —
+// those two are outcomes, not just another step, and warrant reading
+// differently from the rest at a glance.
 const STATUS_STYLES: Record<ProjectStatus, string> = {
-  open: "bg-sky-500/15 text-sky-300 border-sky-500/25",
-  with_receiver: "bg-violet-500/15 text-violet-300 border-violet-500/25",
-  with_sender: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25",
+  open: "bg-accent/15 text-accent-soft border-accent/25",
+  with_receiver: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25",
+  with_sender: "bg-teal-500/15 text-teal-300 border-teal-500/25",
   waiting: "bg-white/[0.06] text-white/50 border-white/10",
-  in_process: "bg-amber-500/15 text-amber-300 border-amber-500/25",
+  in_process: "bg-sky-500/15 text-sky-300 border-sky-500/25",
   completed: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
   lost: "bg-rose-500/15 text-rose-300 border-rose-500/25",
 };
@@ -38,9 +44,13 @@ export function StatusBadge({ status }: { status: ProjectStatus }) {
   );
 }
 
+// Priority keeps a severity gradient rather than the cool-only palette
+// above — low/medium stay in the same steel-blue family, but high/
+// urgent are deliberately warm, since an escalating grey/blue -> amber ->
+// red read is the whole point of a priority badge.
 const PRIORITY_STYLES: Record<ProjectPriority, string> = {
   low: "bg-white/[0.06] text-white/50 border-white/10",
-  medium: "bg-sky-500/15 text-sky-300 border-sky-500/25",
+  medium: "bg-accent/15 text-accent-soft border-accent/25",
   high: "bg-amber-500/15 text-amber-300 border-amber-500/25",
   urgent: "bg-rose-500/15 text-rose-300 border-rose-500/25",
 };

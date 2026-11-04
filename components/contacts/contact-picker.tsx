@@ -21,9 +21,9 @@ interface ContactPickerProps {
 }
 
 const fieldClass =
-  "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-white/20 focus:bg-white/[0.06]";
+  "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 const smallFieldClass =
-  "w-full rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-white/20";
+  "w-full rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
 export function ContactPicker({ name, label, contacts, defaultContactId, placeholder }: ContactPickerProps) {
@@ -78,19 +78,23 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
     }
     setError(null);
     startTransition(async () => {
-      const result = await quickCreateContact({
-        full_name: newName.trim(),
-        phone: newPhone.trim() || null,
-        email: newEmail.trim() || null,
-      });
-      if (result.error || !result.contact) {
-        setError(result.error ?? "Could not create contact.");
-        return;
+      try {
+        const result = await quickCreateContact({
+          full_name: newName.trim(),
+          phone: newPhone.trim() || null,
+          email: newEmail.trim() || null,
+        });
+        if (result.error || !result.contact) {
+          setError(result.error ?? "Could not create contact.");
+          return;
+        }
+        const created = result.contact;
+        setAllContacts((prev) => [...prev, created]);
+        selectContact(created);
+        setCreating(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       }
-      const created = result.contact;
-      setAllContacts((prev) => [...prev, created]);
-      selectContact(created);
-      setCreating(false);
     });
   }
 
@@ -147,7 +151,7 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
                   e.preventDefault();
                   startCreating();
                 }}
-                className="flex items-center gap-1.5 border-t border-white/[0.06] px-3 py-2 text-sm font-medium text-indigo-300 transition-colors duration-100 ease-out hover:bg-white/[0.06]"
+                className="flex items-center gap-1.5 border-t border-white/[0.06] px-3 py-2 text-sm font-medium text-accent-soft transition-colors duration-100 ease-out hover:bg-white/[0.06]"
               >
                 <UserPlus className="h-3.5 w-3.5" />
                 New contact{query.trim() ? ` "${query.trim()}"` : ""}
@@ -186,7 +190,7 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
               type="button"
               disabled={isPending}
               onClick={handleCreate}
-              className="rounded-md bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isPending ? "Creating…" : "Create & Select"}
             </button>

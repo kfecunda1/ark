@@ -59,7 +59,7 @@ export function CapabilityFields({ initialCapabilities = [], existingTags = [] }
                 onBlur={() => setTimeout(() => setOpenKey((k) => (k === row.key ? null : k)), 120)}
                 placeholder='e.g. "SWIFT - Issuing Bank" or "SBLC - Lease Provider"'
                 autoComplete="off"
-                className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-white/20 focus:bg-white/[0.06]"
+                className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]"
               />
 
               {suggestions.length > 0 && (

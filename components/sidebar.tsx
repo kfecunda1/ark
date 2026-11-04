@@ -62,7 +62,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               >
                 <Icon
                   className={`h-[18px] w-[18px] transition-colors duration-150 ease-out ${
-                    active ? "text-indigo-400" : "text-white/40 group-hover:text-white/70"
+                    active ? "text-accent-soft" : "text-white/40 group-hover:text-white/70"
                   }`}
                 />
                 {label}

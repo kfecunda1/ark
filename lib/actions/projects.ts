@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
 import type {
+  Currency,
   ProductType,
   ProjectDocumentType,
   ProjectPriority,
@@ -14,6 +15,17 @@ import type {
 
 export interface ProjectFormState {
   error: string | null;
+}
+
+// Supabase-js resolves query errors as a returned `{ error }` value, not
+// a thrown exception — every `if (error) return { error: error.message }`
+// below handles that normal case. This instead guards against the
+// genuinely exceptional case (a network failure, Supabase unreachable,
+// …), so that turns into a normal returned error too, rather than an
+// uncaught exception the caller's `if (result.error)` check would never
+// see — which is how a save can fail with nothing visible at all.
+function unexpectedErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
 }
 
 const REQUIRED_FIELDS = ["name", "product_type"] as const;
@@ -49,7 +61,7 @@ function buildProjectPayload(formData: FormData) {
     ratio_presented: formData.get("ratio_presented")?.toString().trim() || null,
     ratio_real: formData.get("ratio_real")?.toString().trim() || null,
     total_face_value: totalFaceValueRaw ? Number(totalFaceValueRaw) : null,
-    currency: formData.get("currency")?.toString().trim() || "USD",
+    currency: (formData.get("currency")?.toString().trim() || "USD") as Currency,
     priority: formData.get("priority") as ProjectPriority,
   };
 }
@@ -67,23 +79,27 @@ export async function createProjectWithId(
     return { id: null, error: err instanceof Error ? err.message : "Invalid form data." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  const { data, error } = await supabase
-    .from("projects")
-    .insert({ ...payload, created_by: user?.id ?? null })
-    .select("id")
-    .single();
+    const { data, error } = await supabase
+      .from("projects")
+      .insert({ ...payload, created_by: user?.id ?? null })
+      .select("id")
+      .single();
 
-  if (error || !data) {
-    return { id: null, error: error?.message ?? "Failed to create project." };
+    if (error || !data) {
+      return { id: null, error: error?.message ?? "Failed to create project." };
+    }
+
+    revalidatePath("/projects");
+    return { id: data.id, error: null };
+  } catch (err) {
+    return { id: null, error: unexpectedErrorMessage(err) };
   }
-
-  revalidatePath("/projects");
-  return { id: data.id, error: null };
 }
 
 export async function updateProject(
@@ -98,11 +114,19 @@ export async function updateProject(
     return { error: err instanceof Error ? err.message : "Invalid form data." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("projects").update(payload).eq("id", id);
+  // Deliberately not wrapped in the outer try/catch below: redirect()
+  // works by throwing a special Next.js-internal value, and catching
+  // that here would turn a successful save into a reported error
+  // instead of the navigation it's supposed to be.
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("projects").update(payload).eq("id", id);
 
-  if (error) {
-    return { error: error.message };
+    if (error) {
+      return { error: error.message };
+    }
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
 
   revalidatePath("/projects");
@@ -110,55 +134,88 @@ export async function updateProject(
   redirect(`/projects/${id}`);
 }
 
-// A quick stage change (the detail page's inline StageSelect) doesn't go
-// through the full form, so it can't supply a status. Moving straight
-// into Status with no status on record yet would violate the "required
-// when stage = status" check constraint — default it to "open" rather
-// than fail the switch outright. Leaving Status (or any other stage)
-// never touches status at all.
+// A quick stage change (the detail page's inline StageSelect). Moving
+// into Status with no status on record yet defaults it to "open" rather
+// than failing the switch outright — the DB requires a non-null status
+// once stage = status. Moving *out* of Status clears status back to
+// null, so a project isn't left showing a stale status from a visit to
+// that stage it's no longer in; both directions keep the row valid
+// against that same check constraint.
 export async function updateProjectStage(
   id: string,
   stage: ProjectStage
 ): Promise<{ error: string | null }> {
-  const supabase = await createClient();
-  const payload: { stage: ProjectStage; status?: ProjectStatus } = { stage };
+  try {
+    const supabase = await createClient();
+    const payload: { stage: ProjectStage; status: ProjectStatus | null } = { stage, status: null };
 
-  if (stage === "status") {
-    const { data: current } = await supabase.from("projects").select("status").eq("id", id).maybeSingle();
-    if (!current?.status) {
-      payload.status = "open";
+    if (stage === "status") {
+      const { data: current } = await supabase.from("projects").select("status").eq("id", id).maybeSingle();
+      payload.status = current?.status ?? "open";
     }
+
+    const { error } = await supabase.from("projects").update(payload).eq("id", id);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${id}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
+}
 
-  const { error } = await supabase.from("projects").update(payload).eq("id", id);
+// A quick status change (the detail page's inline StatusSelect, and the
+// list page's per-row one). The Status control is always visible and
+// usable regardless of the project's current stage — picking a status
+// sets stage to "status" in the same update, which is what keeps this
+// valid against the "status required once stage = status" check
+// constraint no matter what stage the project was previously in.
+export async function updateProjectStatus(
+  id: string,
+  status: ProjectStatus
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("projects").update({ status, stage: "status" }).eq("id", id);
 
-  if (error) {
-    return { error: error.message };
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${id}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
-
-  revalidatePath("/projects");
-  revalidatePath(`/projects/${id}`);
-  return { error: null };
 }
 
 export async function toggleProjectArchived(
   id: string,
   archived: boolean
 ): Promise<{ error: string | null }> {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("projects")
-    .update({ archived_at: archived ? new Date().toISOString() : null })
-    .eq("id", id);
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("projects")
+      .update({ archived_at: archived ? new Date().toISOString() : null })
+      .eq("id", id);
 
-  if (error) {
-    return { error: error.message };
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${id}`);
+    revalidatePath("/dashboard");
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
-
-  revalidatePath("/projects");
-  revalidatePath(`/projects/${id}`);
-  revalidatePath("/dashboard");
-  return { error: null };
 }
 
 // ----------------------------------------------------------------------------
@@ -178,25 +235,29 @@ export async function upsertProjectTranche(
   sentOnRaw: string,
   notesRaw: string
 ): Promise<{ error: string | null }> {
-  const supabase = await createClient();
+  try {
+    const supabase = await createClient();
 
-  const { error } = await supabase.from("project_tranches").upsert(
-    {
-      project_id: projectId,
-      tranche_number: trancheNumber,
-      amount: amountRaw.trim() ? Number(amountRaw) : null,
-      sent_on: sentOnRaw.trim() || null,
-      notes: notesRaw.trim() || null,
-    },
-    { onConflict: "project_id,tranche_number" }
-  );
+    const { error } = await supabase.from("project_tranches").upsert(
+      {
+        project_id: projectId,
+        tranche_number: trancheNumber,
+        amount: amountRaw.trim() ? Number(amountRaw) : null,
+        sent_on: sentOnRaw.trim() || null,
+        notes: notesRaw.trim() || null,
+      },
+      { onConflict: "project_id,tranche_number" }
+    );
 
-  if (error) {
-    return { error: error.message };
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
-
-  revalidatePath(`/projects/${projectId}`);
-  return { error: null };
 }
 
 export async function deleteProjectTranche(
@@ -207,19 +268,23 @@ export async function deleteProjectTranche(
     return { error: "Tranche 1 and 2 can't be removed — clear the amount and date instead." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("project_tranches")
-    .delete()
-    .eq("project_id", projectId)
-    .eq("tranche_number", trancheNumber);
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("project_tranches")
+      .delete()
+      .eq("project_id", projectId)
+      .eq("tranche_number", trancheNumber);
 
-  if (error) {
-    return { error: error.message };
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
-
-  revalidatePath(`/projects/${projectId}`);
-  return { error: null };
 }
 
 // ----------------------------------------------------------------------------
@@ -233,51 +298,59 @@ export async function addProjectDocument(
   fileName: string,
   fileHash: string | null
 ): Promise<{ error: string | null }> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("project_documents").insert({
-    project_id: projectId,
-    document_type: documentType,
-    file_path: filePath,
-    file_name: fileName,
-    file_hash: fileHash,
-  });
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("project_documents").insert({
+      project_id: projectId,
+      document_type: documentType,
+      file_path: filePath,
+      file_name: fileName,
+      file_hash: fileHash,
+    });
 
-  if (error) {
-    return { error: error.message };
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
-
-  revalidatePath(`/projects/${projectId}`);
-  return { error: null };
 }
 
 export async function deleteProjectDocument(documentId: string): Promise<{ error: string | null }> {
-  const supabase = await createClient();
+  try {
+    const supabase = await createClient();
 
-  const { data: existing } = await supabase
-    .from("project_documents")
-    .select("project_id, file_path")
-    .eq("id", documentId)
-    .maybeSingle();
+    const { data: existing } = await supabase
+      .from("project_documents")
+      .select("project_id, file_path")
+      .eq("id", documentId)
+      .maybeSingle();
 
-  const { error } = await supabase.from("project_documents").delete().eq("id", documentId);
+    const { error } = await supabase.from("project_documents").delete().eq("id", documentId);
 
-  if (error) {
-    return { error: error.message };
-  }
-
-  if (existing?.file_path) {
-    const { error: storageError } = await supabase.storage
-      .from("project-documents")
-      .remove([existing.file_path]);
-    if (storageError) {
-      console.error("[deleteProjectDocument] failed to remove storage file:", storageError.message);
+    if (error) {
+      return { error: error.message };
     }
-  }
 
-  if (existing?.project_id) {
-    revalidatePath(`/projects/${existing.project_id}`);
+    if (existing?.file_path) {
+      const { error: storageError } = await supabase.storage
+        .from("project-documents")
+        .remove([existing.file_path]);
+      if (storageError) {
+        console.error("[deleteProjectDocument] failed to remove storage file:", storageError.message);
+      }
+    }
+
+    if (existing?.project_id) {
+      revalidatePath(`/projects/${existing.project_id}`);
+    }
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
-  return { error: null };
 }
 
 export interface ProjectDocumentHashMatch {
@@ -292,35 +365,46 @@ export interface ProjectDocumentHashMatch {
 // different record" means by comparing projectId against the project
 // it's uploading to — for a brand-new project that doesn't exist yet,
 // every match is necessarily "a different record".
+//
+// Returns [] on failure (same as "no matches") rather than a separate
+// error shape — this only ever gates a *warning* banner, never blocks
+// the upload itself, so the caller (components/projects/project-
+// documents.tsx / staged-document-picker.tsx) already wraps its own call
+// to this in try/catch and shows its own error if the whole check fails.
 export async function findProjectDocumentsByHash(hash: string): Promise<ProjectDocumentHashMatch[]> {
   if (!hash) return [];
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("project_documents")
-    .select("id, project_id, file_name")
-    .eq("file_hash", hash);
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("project_documents")
+      .select("id, project_id, file_name")
+      .eq("file_hash", hash);
 
-  if (error) {
-    console.error("[findProjectDocumentsByHash] query failed:", error.message);
+    if (error) {
+      console.error("[findProjectDocumentsByHash] query failed:", error.message);
+      return [];
+    }
+
+    const rows = (data as { id: string; project_id: string; file_name: string }[] | null) ?? [];
+    if (rows.length === 0) return [];
+
+    const projectIds = [...new Set(rows.map((r) => r.project_id))];
+    const { data: projectsData } = await supabase.from("projects").select("id, name").in("id", projectIds);
+    const projectNameById = new Map(
+      ((projectsData as { id: string; name: string }[] | null) ?? []).map((p) => [p.id, p.name])
+    );
+
+    return rows.map((row) => ({
+      documentId: row.id,
+      projectId: row.project_id,
+      projectLabel: projectNameById.get(row.project_id) ?? "Project",
+      fileName: row.file_name,
+    }));
+  } catch (err) {
+    console.error("[findProjectDocumentsByHash] unexpected error:", unexpectedErrorMessage(err));
     return [];
   }
-
-  const rows = (data as { id: string; project_id: string; file_name: string }[] | null) ?? [];
-  if (rows.length === 0) return [];
-
-  const projectIds = [...new Set(rows.map((r) => r.project_id))];
-  const { data: projectsData } = await supabase.from("projects").select("id, name").in("id", projectIds);
-  const projectNameById = new Map(
-    ((projectsData as { id: string; name: string }[] | null) ?? []).map((p) => [p.id, p.name])
-  );
-
-  return rows.map((row) => ({
-    documentId: row.id,
-    projectId: row.project_id,
-    projectLabel: projectNameById.get(row.project_id) ?? "Project",
-    fileName: row.file_name,
-  }));
 }
 
 // ----------------------------------------------------------------------------
@@ -346,30 +430,35 @@ export async function findDuplicateProjects(input: {
 }): Promise<DuplicateProjectMatch[]> {
   if (!input.clientContactId) return [];
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("projects")
-    .select("id, name, stage, status, archived_at")
-    .eq("client_contact_id", input.clientContactId)
-    .eq("product_type", input.productType);
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("projects")
+      .select("id, name, stage, status, archived_at")
+      .eq("client_contact_id", input.clientContactId)
+      .eq("product_type", input.productType);
 
-  if (error) {
-    console.error("[findDuplicateProjects] query failed:", error.message);
+    if (error) {
+      console.error("[findDuplicateProjects] query failed:", error.message);
+      return [];
+    }
+
+    const rows =
+      (data as
+        | { id: string; name: string; stage: ProjectStage; status: ProjectStatus | null; archived_at: string | null }[]
+        | null) ?? [];
+    if (rows.length === 0) return [];
+
+    return rows.map((row) => {
+      const stageLabel = row.status ? STATUS_LABELS[row.status] : STAGE_LABELS[row.stage];
+      return {
+        id: row.id,
+        label: row.name,
+        meta: row.archived_at ? `Archived · ${stageLabel}` : stageLabel,
+      };
+    });
+  } catch (err) {
+    console.error("[findDuplicateProjects] unexpected error:", unexpectedErrorMessage(err));
     return [];
   }
-
-  const rows =
-    (data as
-      | { id: string; name: string; stage: ProjectStage; status: ProjectStatus | null; archived_at: string | null }[]
-      | null) ?? [];
-  if (rows.length === 0) return [];
-
-  return rows.map((row) => {
-    const stageLabel = row.status ? STATUS_LABELS[row.status] : STAGE_LABELS[row.stage];
-    return {
-      id: row.id,
-      label: row.name,
-      meta: row.archived_at ? `Archived · ${stageLabel}` : stageLabel,
-    };
-  });
 }

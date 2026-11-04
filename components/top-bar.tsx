@@ -46,7 +46,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
         >
           <LogOut className="h-[18px] w-[18px]" />
         </button>
-        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-sky-500" />
+        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-accent to-silver" />
       </div>
     </header>
   );

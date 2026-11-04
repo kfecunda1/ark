@@ -18,7 +18,7 @@ interface NoteLinkPickerProps {
 }
 
 const selectClass =
-  "rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-white/20 focus:bg-white/[0.06]";
+  "rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
 export function NoteLinkPicker({
@@ -87,7 +87,7 @@ export function NoteLinkPicker({
             onFocus={() => setOpen(true)}
             onBlur={() => setTimeout(() => setOpen(false), 120)}
             placeholder={`Search ${linkType}s…`}
-            className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-2.5 pr-9 pl-9 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-white/20 focus:bg-white/[0.06]"
+            className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-2.5 pr-9 pl-9 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]"
           />
           {selected && (
             <button

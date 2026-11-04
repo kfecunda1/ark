@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { upsertProjectTranche, deleteProjectTranche } from "@/lib/actions/projects";
+import { formatDateOnly } from "@/lib/projects";
+import { dateKeyInTimeZone } from "@/lib/format";
 import type { ProjectTranche } from "@/lib/types";
 
 interface TranchesSectionProps {
@@ -12,7 +14,7 @@ interface TranchesSectionProps {
 }
 
 const fieldClass =
-  "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-white/20 focus:bg-white/[0.06]";
+  "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 
 interface RowProps {
   number: number;
@@ -24,10 +26,46 @@ interface RowProps {
   onCancel?: () => void;
 }
 
+// Identifies a tranche by its actual saved values rather than object
+// identity: a server refresh creates a brand-new ProjectTranche object
+// on every render regardless of whether anything in it changed, and
+// comparing by reference would then resync (and so discard) an
+// in-progress, not-yet-saved edit in some *other* row every time any
+// refresh happens anywhere on the page.
+function trancheKey(tranche: ProjectTranche | null): string {
+  return `${tranche?.amount ?? ""}|${tranche?.sent_on ?? ""}|${tranche?.notes ?? ""}`;
+}
+
 function TrancheRow({ number, tranche, removable, disabled, onSave, onDelete, onCancel }: RowProps) {
   const [amount, setAmount] = useState(tranche?.amount != null ? String(tranche.amount) : "");
   const [sentOn, setSentOn] = useState(tranche?.sent_on ?? "");
   const [notes, setNotes] = useState(tranche?.notes ?? "");
+
+  // Resyncs the fields to the server's actual row once its *values*
+  // change (a successful save, or a refresh after someone else's edit)
+  // — adjusting state directly during render, React's documented
+  // pattern for this, rather than in a useEffect (which would cause an
+  // extra render pass and, since it can't tell "the data changed" apart
+  // from "the page merely re-rendered", the same discard-other-rows'-
+  // drafts problem `trancheKey` above avoids).
+  //
+  // This is the actual fix for the bug where saving a tranche appeared
+  // to do nothing: `useState`'s initial value only runs once, on mount,
+  // so without this, the row kept displaying its pre-save local state
+  // forever and never picked up the confirmed server value — there was
+  // no feedback that anything had happened either way.
+  const [prevKey, setPrevKey] = useState(trancheKey(tranche));
+  const currentKey = trancheKey(tranche);
+  if (currentKey !== prevKey) {
+    setPrevKey(currentKey);
+    setAmount(tranche?.amount != null ? String(tranche.amount) : "");
+    setSentOn(tranche?.sent_on ?? "");
+    setNotes(tranche?.notes ?? "");
+  }
+
+  function markSentToday() {
+    setSentOn(dateKeyInTimeZone(new Date().toISOString()));
+  }
 
   return (
     <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3">
@@ -39,7 +77,7 @@ function TrancheRow({ number, tranche, removable, disabled, onSave, onDelete, on
           </span>
         ) : (
           <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
-            Sent
+            Sent on {formatDateOnly(sentOn)}
           </span>
         )}
       </div>
@@ -75,10 +113,20 @@ function TrancheRow({ number, tranche, removable, disabled, onSave, onDelete, on
           type="button"
           onClick={() => onSave(amount, sentOn, notes)}
           disabled={disabled}
-          className="rounded-md bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           Save
         </button>
+        {!sentOn && (
+          <button
+            type="button"
+            onClick={markSentToday}
+            disabled={disabled}
+            className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/80 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Mark sent today
+          </button>
+        )}
         {onCancel && (
           <button
             type="button"
@@ -110,6 +158,7 @@ export function TranchesSection({ projectId, tranches }: TranchesSectionProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [savedNumber, setSavedNumber] = useState<number | null>(null);
   const [addingNext, setAddingNext] = useState(false);
 
   const byNumber = new Map(tranches.map((t) => [t.tranche_number, t]));
@@ -118,41 +167,55 @@ export function TranchesSection({ projectId, tranches }: TranchesSectionProps) {
 
   function handleSave(trancheNumber: number, amount: string, sentOn: string, notes: string) {
     setError(null);
+    setSavedNumber(null);
     startTransition(async () => {
-      const result = await upsertProjectTranche(projectId, trancheNumber, amount, sentOn, notes);
-      if (result.error) {
-        setError(result.error);
-        return;
+      try {
+        const result = await upsertProjectTranche(projectId, trancheNumber, amount, sentOn, notes);
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        setAddingNext(false);
+        setSavedNumber(trancheNumber);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       }
-      setAddingNext(false);
-      router.refresh();
     });
   }
 
   function handleDelete(trancheNumber: number) {
     setError(null);
     startTransition(async () => {
-      const result = await deleteProjectTranche(projectId, trancheNumber);
-      if (result.error) {
-        setError(result.error);
-        return;
+      try {
+        const result = await deleteProjectTranche(projectId, trancheNumber);
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       }
-      router.refresh();
     });
   }
 
   return (
     <div className="flex flex-col gap-3">
       {[1, 2, ...extraNumbers].map((number) => (
-        <TrancheRow
-          key={number}
-          number={number}
-          tranche={byNumber.get(number) ?? null}
-          removable={number > 2}
-          disabled={isPending}
-          onSave={(amount, sentOn, notes) => handleSave(number, amount, sentOn, notes)}
-          onDelete={number > 2 ? () => handleDelete(number) : undefined}
-        />
+        <div key={number} className="flex flex-col gap-1">
+          <TrancheRow
+            number={number}
+            tranche={byNumber.get(number) ?? null}
+            removable={number > 2}
+            disabled={isPending}
+            onSave={(amount, sentOn, notes) => handleSave(number, amount, sentOn, notes)}
+            onDelete={number > 2 ? () => handleDelete(number) : undefined}
+          />
+          {savedNumber === number && !isPending && (
+            <p className="text-xs text-emerald-300">Saved.</p>
+          )}
+        </div>
       ))}
 
       {addingNext ? (

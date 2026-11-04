@@ -18,7 +18,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
-import { STAGES, STAGE_LABELS, STATUSES, STATUS_LABELS, PRIORITIES, PRIORITY_LABELS } from "@/lib/projects";
+import { CURRENCIES, STAGES, STAGE_LABELS, STATUSES, STATUS_LABELS, PRIORITIES, PRIORITY_LABELS } from "@/lib/projects";
 import { PRODUCT_TYPES } from "@/lib/products";
 import type { Project, ProjectStage, ProductType } from "@/lib/types";
 
@@ -31,7 +31,7 @@ interface ProjectFormProps {
 const initialState: ProjectFormState = { error: null };
 
 const fieldClass =
-  "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-white/20 focus:bg-white/[0.06]";
+  "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
 type CreateStatus = "idle" | "creating" | "uploading";
@@ -297,13 +297,13 @@ export function ProjectForm({ mode, project, contacts }: ProjectFormProps) {
           <label className={labelClass} htmlFor="currency">
             Currency
           </label>
-          <input
-            id="currency"
-            name="currency"
-            placeholder="USD, EUR, GBP…"
-            defaultValue={project?.currency ?? "USD"}
-            className={fieldClass}
-          />
+          <select id="currency" name="currency" defaultValue={project?.currency ?? "USD"} className={fieldClass}>
+            {CURRENCIES.map((currency) => (
+              <option key={currency} value={currency} className="bg-[#0a0e17]">
+                {currency}
+              </option>
+            ))}
+          </select>
         </div>
       </GlassCard>
 
@@ -333,7 +333,7 @@ export function ProjectForm({ mode, project, contacts }: ProjectFormProps) {
           ref={submitButtonRef}
           type="submit"
           disabled={isPending}
-          className="rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {mode === "edit"
             ? isEditPending

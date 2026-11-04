@@ -8,6 +8,14 @@ export interface NoteFormState {
   error: string | null;
 }
 
+// See the matching helper in lib/actions/projects.ts: converts a
+// genuinely unexpected exception (network failure, …) into the same
+// returned-error shape every normal Supabase-error path already uses,
+// so callers never see a save silently fail.
+function unexpectedErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+}
+
 interface NoteLinks {
   project_id: string | null;
   contact_id: string | null;
@@ -62,15 +70,19 @@ export async function createNote(_prevState: NoteFormState, formData: FormData):
     return { error: err instanceof Error ? err.message : "Invalid form data." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  const { error } = await supabase.from("notes").insert({ ...payload, created_by: user?.id ?? null });
+    const { error } = await supabase.from("notes").insert({ ...payload, created_by: user?.id ?? null });
 
-  if (error) {
-    return { error: error.message };
+    if (error) {
+      return { error: error.message };
+    }
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
 
   revalidateForLinks(payload);
@@ -89,11 +101,15 @@ export async function updateNote(
     return { error: err instanceof Error ? err.message : "Invalid form data." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("notes").update(payload).eq("id", id);
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("notes").update(payload).eq("id", id);
 
-  if (error) {
-    return { error: error.message };
+    if (error) {
+      return { error: error.message };
+    }
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
 
   revalidateForLinks(payload);
@@ -101,20 +117,24 @@ export async function updateNote(
 }
 
 export async function deleteNote(noteId: string): Promise<{ error: string | null }> {
-  const supabase = await createClient();
+  try {
+    const supabase = await createClient();
 
-  const { data: existing } = await supabase
-    .from("notes")
-    .select("project_id, contact_id")
-    .eq("id", noteId)
-    .maybeSingle();
+    const { data: existing } = await supabase
+      .from("notes")
+      .select("project_id, contact_id")
+      .eq("id", noteId)
+      .maybeSingle();
 
-  const { error } = await supabase.from("notes").delete().eq("id", noteId);
+    const { error } = await supabase.from("notes").delete().eq("id", noteId);
 
-  if (error) {
-    return { error: error.message };
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidateForLinks(existing ?? { project_id: null, contact_id: null });
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
-
-  revalidateForLinks(existing ?? { project_id: null, contact_id: null });
-  return { error: null };
 }

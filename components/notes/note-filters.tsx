@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 const selectClass =
-  "rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-white/20 focus:bg-white/[0.06]";
+  "rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 
 export function NoteFilters() {
   const router = useRouter();
@@ -27,7 +27,7 @@ export function NoteFilters() {
           type="checkbox"
           checked={searchParams.get("reminders") === "true"}
           onChange={(e) => setParam("reminders", e.target.checked ? "true" : "")}
-          className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-indigo-500 accent-indigo-500"
+          className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
         />
         Reminders only
       </label>

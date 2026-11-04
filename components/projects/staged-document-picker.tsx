@@ -174,7 +174,7 @@ export function StagedDocumentPicker({ documents, onChange }: StagedDocumentPick
           value={documentType}
           onChange={(e) => setDocumentType(e.target.value as ProjectDocumentType)}
           disabled={checking}
-          className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out focus:border-white/20 disabled:opacity-50"
+          className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
         >
           {DOCUMENT_TYPES.map((type) => (
             <option key={type} value={type} className="bg-[#0a0e17]">

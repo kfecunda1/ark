@@ -13,12 +13,16 @@ export function ArchiveProjectButton({ projectId, archived }: { projectId: strin
   function handleClick() {
     setError(null);
     startTransition(async () => {
-      const result = await toggleProjectArchived(projectId, !archived);
-      if (result.error) {
-        setError(result.error);
-        return;
+      try {
+        const result = await toggleProjectArchived(projectId, !archived);
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       }
-      router.refresh();
     });
   }
 

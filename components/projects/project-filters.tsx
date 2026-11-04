@@ -6,7 +6,7 @@ import { STAGES, STAGE_LABELS, STATUSES, STATUS_LABELS } from "@/lib/projects";
 import { PRODUCT_TYPES } from "@/lib/products";
 
 const selectClass =
-  "rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-white/20 focus:bg-white/[0.06]";
+  "rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 
 export function ProjectFilters() {
   const router = useRouter();

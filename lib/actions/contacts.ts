@@ -11,6 +11,14 @@ export interface ContactFormState {
   error: string | null;
 }
 
+// See the matching helper in lib/actions/projects.ts: converts a
+// genuinely unexpected exception (network failure, …) into the same
+// returned-error shape every normal Supabase-error path already uses,
+// so callers never see a save silently fail.
+function unexpectedErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+}
+
 function buildContactPayload(formData: FormData) {
   const fullName = formData.get("full_name")?.toString().trim();
   if (!fullName) {
@@ -84,25 +92,31 @@ export async function createContact(
     return { error: err instanceof Error ? err.message : "Invalid form data." };
   }
 
-  const supabase = await createClient();
-  const { data, error } = await supabase.from("contacts").insert(payload).select("id").single();
+  let newId: string;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("contacts").insert(payload).select("id").single();
 
-  if (error || !data) {
-    return { error: error?.message ?? "Failed to create contact." };
-  }
-
-  const capabilities = parseSubmittedCapabilities(formData);
-  if (capabilities.length > 0) {
-    const { error: capabilityError } = await supabase
-      .from("contact_capabilities")
-      .insert(capabilities.map((c) => ({ contact_id: data.id, tag: c.tag })));
-    if (capabilityError) {
-      console.error("[createContact] failed to insert capabilities:", capabilityError.message);
+    if (error || !data) {
+      return { error: error?.message ?? "Failed to create contact." };
     }
+    newId = data.id;
+
+    const capabilities = parseSubmittedCapabilities(formData);
+    if (capabilities.length > 0) {
+      const { error: capabilityError } = await supabase
+        .from("contact_capabilities")
+        .insert(capabilities.map((c) => ({ contact_id: newId, tag: c.tag })));
+      if (capabilityError) {
+        console.error("[createContact] failed to insert capabilities:", capabilityError.message);
+      }
+    }
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
 
   revalidatePath("/contacts");
-  redirect(`/contacts/${data.id}`);
+  redirect(`/contacts/${newId}`);
 }
 
 export async function updateContact(
@@ -117,14 +131,18 @@ export async function updateContact(
     return { error: err instanceof Error ? err.message : "Invalid form data." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("contacts").update(payload).eq("id", id);
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("contacts").update(payload).eq("id", id);
 
-  if (error) {
-    return { error: error.message };
+    if (error) {
+      return { error: error.message };
+    }
+
+    await syncContactCapabilities(supabase, id, parseSubmittedCapabilities(formData));
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
-
-  await syncContactCapabilities(supabase, id, parseSubmittedCapabilities(formData));
 
   revalidatePath("/contacts");
   revalidatePath(`/contacts/${id}`);
@@ -143,17 +161,21 @@ export async function quickCreateContact(input: {
     return { contact: null, error: "Name is required." };
   }
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("contacts")
-    .insert({ full_name: fullName, phone: input.phone || null, email: input.email || null })
-    .select("*")
-    .single();
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("contacts")
+      .insert({ full_name: fullName, phone: input.phone || null, email: input.email || null })
+      .select("*")
+      .single();
 
-  if (error || !data) {
-    return { contact: null, error: error?.message ?? "Failed to create contact." };
+    if (error || !data) {
+      return { contact: null, error: error?.message ?? "Failed to create contact." };
+    }
+
+    revalidatePath("/contacts");
+    return { contact: data as Contact, error: null };
+  } catch (err) {
+    return { contact: null, error: unexpectedErrorMessage(err) };
   }
-
-  revalidatePath("/contacts");
-  return { contact: data as Contact, error: null };
 }

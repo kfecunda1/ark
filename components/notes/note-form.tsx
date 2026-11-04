@@ -19,7 +19,7 @@ interface NoteFormProps {
 const initialState: NoteFormState = { error: null };
 
 const fieldClass =
-  "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-white/20 focus:bg-white/[0.06]";
+  "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
 function linkTypeOf(note?: Note): "" | "project" | "contact" {
@@ -77,7 +77,7 @@ export function NoteForm({
               name="is_reminder"
               checked={isReminder}
               onChange={(e) => setIsReminder(e.target.checked)}
-              className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-indigo-500 accent-indigo-500"
+              className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
             />
             This is a reminder
           </label>
@@ -117,7 +117,7 @@ export function NoteForm({
         <button
           type="submit"
           disabled={isPending}
-          className="rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isPending ? "Saving…" : mode === "edit" ? "Save changes" : "Create note"}
         </button>

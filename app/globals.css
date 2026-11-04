@@ -1,10 +1,41 @@
 @import "tailwindcss";
 
+/* ============================================================================
+ * ARK color identity — silver & steel blue.
+ *
+ * This is the one place to tweak ARK's accent colors. Every component
+ * reaches these through the Tailwind utilities @theme generates below
+ * (bg-accent, text-accent-soft, border-silver/20, hover:bg-accent-hover,
+ * focus:border-accent/40, …) rather than a hard-coded hex or a named
+ * Tailwind color like indigo/sky — change a value here and it updates
+ * everywhere at once.
+ *
+ * --accent / --accent-hover: steel blue, for filled surfaces (buttons,
+ * the active nav pill, progress bars) — dark enough for white text on
+ * top of it to clear WCAG AA (≥ 4.5:1); --accent-hover is a touch darker
+ * still, which is what keeps a hover/pressed state from dropping below
+ * that bar the way lightening it further would.
+ *
+ * --accent-soft: the same hue, lightened instead for use as *text*
+ * directly on the dark background (links, the active nav icon, badge
+ * labels) — a dark fill color reads poorly as small text on a near-black
+ * page, so this is a deliberately different lightness, not just the
+ * same value at a lower opacity.
+ *
+ * --silver: a cool, desaturated grey-blue — the secondary half of the
+ * "silver and steel blue" identity, used alongside --accent in the
+ * ambient orbs and anywhere a second, quieter tone reads better than
+ * repeating the accent.
+ * ============================================================================ */
+
 :root {
   --background: #080b12;
   --foreground: #e8eaf0;
   --border: rgba(255, 255, 255, 0.08);
-  --accent: #6366f1;
+  --accent: #336699;
+  --accent-hover: #2b5580;
+  --accent-soft: #9fc6e8;
+  --silver: #b8c2cc;
 }
 
 @theme inline {
@@ -12,6 +43,9 @@
   --color-foreground: var(--foreground);
   --color-border: var(--border);
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-silver: var(--silver);
   --font-sans: var(--font-dm-sans);
 }
 

@@ -50,7 +50,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
         </div>
         <Link
           href="/contacts/new"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500 px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-indigo-400"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover"
         >
           <Plus className="h-4 w-4" />
           New Contact
@@ -115,7 +115,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
                           {(capabilitiesByContactId.get(contact.id) ?? []).map((capability) => (
                             <span
                               key={capability.id}
-                              className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap text-indigo-300"
+                              className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap text-accent-soft"
                             >
                               {capability.tag}
                             </span>
@@ -143,7 +143,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
                         {tags.map((capability) => (
                           <span
                             key={capability.id}
-                            className="rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap text-indigo-300"
+                            className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap text-accent-soft"
                           >
                             {capability.tag}
                           </span>

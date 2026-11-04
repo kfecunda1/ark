@@ -13,6 +13,8 @@ export type ProjectStatus =
 
 export type ProjectPriority = "low" | "medium" | "high" | "urgent";
 
+export type Currency = "USD" | "EUR";
+
 export interface Profile {
   id: string;
   full_name: string | null;
@@ -50,7 +52,7 @@ export interface Project {
   ratio_presented: string | null;
   ratio_real: string | null;
   total_face_value: number | null;
-  currency: string;
+  currency: Currency;
   priority: ProjectPriority;
   // null = active. A timestamp = archived (and when).
   archived_at: string | null;
