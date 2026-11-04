@@ -12,7 +12,7 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
 
   const [{ data: project }, { data: contacts }] = await Promise.all([
     supabase.from("projects").select("*").eq("id", id).maybeSingle(),
-    supabase.from("contacts").select("id, full_name, phone, email").order("full_name"),
+    supabase.from("contacts").select("id, full_name").order("full_name"),
   ]);
 
   if (!project) {

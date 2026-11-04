@@ -26,16 +26,20 @@ export interface Contact {
   id: string;
   created_at: string;
   full_name: string;
-  phone: string | null;
-  email: string | null;
   notes: string | null;
 }
 
-export interface ContactCapability {
+// One row per product a contact handles. Unique (contact_id,
+// product_type) — a contact has at most one ratio on record per
+// product.
+export interface ContactProduct {
   id: string;
   contact_id: string;
-  tag: string;
+  product_type: ProductType;
+  ratio: string | null;
+  notes: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface Project {
@@ -60,6 +64,9 @@ export interface Project {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // The contact the ratio auto-fill (components/projects/project-form.
+  // tsx) reads from — independent of client/assigned above.
+  matched_contact_id: string | null;
 }
 
 // Tranche 1 and 2 are permanent slots the UI always shows, even with no
@@ -95,6 +102,24 @@ export interface ProjectDocument {
   created_at: string;
 }
 
+// Same DB enum as ProjectDocumentType (supabase/migrations/003_contacts_
+// upgrade.sql's contact_documents.document_type reuses the
+// project_document_type Postgres type directly) — aliased here only so
+// contact-side code reads as its own domain.
+export type ContactDocumentType = ProjectDocumentType;
+
+// Same shape as ProjectDocument, owned by a contact instead of a
+// project.
+export interface ContactDocument {
+  id: string;
+  contact_id: string;
+  document_type: ContactDocumentType;
+  file_path: string;
+  file_name: string;
+  file_hash: string | null;
+  created_at: string;
+}
+
 // The Phase 3 timeline. Schema exists (project_steps), but no page or
 // component reads/writes this yet.
 export type ProjectStepKind = "step_taken" | "next_step" | "note";
@@ -123,7 +148,12 @@ export interface Note {
   contact_id: string | null;
 }
 
-export type ActivityEntityType = "project" | "contact" | "project_document";
+export type ActivityEntityType =
+  | "project"
+  | "contact"
+  | "project_document"
+  | "contact_product"
+  | "contact_document";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
@@ -138,7 +168,7 @@ export interface ActivityDetails {
   product_type?: ProductType;
   archived?: [boolean, boolean];
   full_name?: [string | null, string | null];
-  parent_type?: "project";
+  parent_type?: "project" | "contact";
   parent_id?: string;
   document_type?: ProjectDocumentType;
 }

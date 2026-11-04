@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export default async function NewProjectPage() {
   const supabase = await createClient();
-  const { data: contacts } = await supabase.from("contacts").select("id, full_name, phone, email").order("full_name");
+  const { data: contacts } = await supabase.from("contacts").select("id, full_name").order("full_name");
 
   return (
     <div className="mx-auto max-w-3xl">

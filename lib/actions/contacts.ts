@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { Contact } from "@/lib/types";
+import type { Contact, ContactDocumentType, ProductType } from "@/lib/types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -27,96 +27,130 @@ function buildContactPayload(formData: FormData) {
 
   return {
     full_name: fullName,
-    phone: formData.get("phone")?.toString().trim() || null,
-    email: formData.get("email")?.toString().trim() || null,
     notes: formData.get("notes")?.toString().trim() || null,
   };
 }
 
-// Capability rows are submitted as parallel same-named field arrays:
-// capability_id (empty string for new rows) and capability_tag, paired by
-// index.
-function parseSubmittedCapabilities(formData: FormData): { id: string | null; tag: string }[] {
-  const ids = formData.getAll("capability_id").map((v) => v.toString());
-  const tags = formData.getAll("capability_tag").map((v) => v.toString().trim());
+// ----------------------------------------------------------------------------
+// Products & ratios — submitted as parallel same-named field arrays:
+// product_id (empty string for new rows), product_type, product_ratio,
+// product_notes, paired by index. One row per product (the DB's unique
+// (contact_id, product_type) is the backstop; the form's ProductFields
+// also only ever offers a product once).
+// ----------------------------------------------------------------------------
 
-  return tags
-    .map((tag, i) => ({ id: ids[i]?.trim() || null, tag }))
-    .filter((c) => c.tag);
+interface SubmittedProduct {
+  id: string | null;
+  product_type: ProductType;
+  ratio: string | null;
+  notes: string | null;
 }
 
-async function syncContactCapabilities(
+function parseSubmittedProducts(formData: FormData): SubmittedProduct[] {
+  const ids = formData.getAll("product_id").map((v) => v.toString());
+  const types = formData.getAll("product_type_row").map((v) => v.toString());
+  const ratios = formData.getAll("product_ratio").map((v) => v.toString().trim());
+  const notes = formData.getAll("product_notes").map((v) => v.toString().trim());
+
+  return types
+    .map((product_type, i) => ({
+      id: ids[i]?.trim() || null,
+      product_type: product_type as ProductType,
+      ratio: ratios[i] || null,
+      notes: notes[i] || null,
+    }))
+    .filter((p) => p.product_type);
+}
+
+async function syncContactProducts(
   supabase: SupabaseServerClient,
   contactId: string,
-  submitted: { id: string | null; tag: string }[]
+  submitted: SubmittedProduct[]
 ): Promise<void> {
   const { data: existing } = await supabase
-    .from("contact_capabilities")
-    .select("id, tag")
+    .from("contact_products")
+    .select("id, product_type, ratio, notes")
     .eq("contact_id", contactId);
 
-  const existingById = new Map(((existing as { id: string; tag: string }[] | null) ?? []).map((c) => [c.id, c.tag]));
-  const submittedIds = new Set(submitted.filter((c) => c.id).map((c) => c.id));
+  const existingById = new Map(
+    ((existing as { id: string; product_type: ProductType; ratio: string | null; notes: string | null }[] | null) ?? []).map(
+      (p) => [p.id, p]
+    )
+  );
+  const submittedIds = new Set(submitted.filter((p) => p.id).map((p) => p.id));
 
   const idsToDelete = [...existingById.keys()].filter((id) => !submittedIds.has(id));
-  const toInsert = submitted.filter((c) => !c.id).map((c) => ({ contact_id: contactId, tag: c.tag }));
-  const toUpdate = submitted.filter((c) => c.id && existingById.get(c.id) !== c.tag);
+  const toInsert = submitted
+    .filter((p) => !p.id)
+    .map((p) => ({ contact_id: contactId, product_type: p.product_type, ratio: p.ratio, notes: p.notes }));
+  const toUpdate = submitted.filter((p) => {
+    if (!p.id) return false;
+    const existingProduct = existingById.get(p.id);
+    return (
+      existingProduct &&
+      (existingProduct.product_type !== p.product_type ||
+        existingProduct.ratio !== p.ratio ||
+        existingProduct.notes !== p.notes)
+    );
+  });
 
   if (idsToDelete.length > 0) {
-    const { error } = await supabase.from("contact_capabilities").delete().in("id", idsToDelete);
-    if (error) console.error("[syncContactCapabilities] failed to delete capabilities:", error.message);
+    const { error } = await supabase.from("contact_products").delete().in("id", idsToDelete);
+    if (error) console.error("[syncContactProducts] failed to delete products:", error.message);
   }
 
   if (toInsert.length > 0) {
-    const { error } = await supabase.from("contact_capabilities").insert(toInsert);
-    if (error) console.error("[syncContactCapabilities] failed to insert capabilities:", error.message);
+    const { error } = await supabase.from("contact_products").insert(toInsert);
+    if (error) console.error("[syncContactProducts] failed to insert products:", error.message);
   }
 
-  for (const capability of toUpdate) {
+  for (const product of toUpdate) {
     const { error } = await supabase
-      .from("contact_capabilities")
-      .update({ tag: capability.tag })
-      .eq("id", capability.id!);
-    if (error) console.error("[syncContactCapabilities] failed to update capability:", error.message);
+      .from("contact_products")
+      .update({ product_type: product.product_type, ratio: product.ratio, notes: product.notes })
+      .eq("id", product.id!);
+    if (error) console.error("[syncContactProducts] failed to update product:", error.message);
   }
 }
 
-export async function createContact(
-  _prevState: ContactFormState,
+// Returns the new contact's id instead of redirecting, so the caller
+// (the New Contact form's Documents section) can upload staged
+// documents — which needs the contact's id — before navigating. Same
+// pattern as lib/actions/projects.ts's createProjectWithId.
+export async function createContactWithId(
   formData: FormData
-): Promise<ContactFormState> {
+): Promise<{ id: string | null; error: string | null }> {
   let payload;
   try {
     payload = buildContactPayload(formData);
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Invalid form data." };
+    return { id: null, error: err instanceof Error ? err.message : "Invalid form data." };
   }
 
-  let newId: string;
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.from("contacts").insert(payload).select("id").single();
 
     if (error || !data) {
-      return { error: error?.message ?? "Failed to create contact." };
+      return { id: null, error: error?.message ?? "Failed to create contact." };
     }
-    newId = data.id;
+    const newId: string = data.id;
 
-    const capabilities = parseSubmittedCapabilities(formData);
-    if (capabilities.length > 0) {
-      const { error: capabilityError } = await supabase
-        .from("contact_capabilities")
-        .insert(capabilities.map((c) => ({ contact_id: newId, tag: c.tag })));
-      if (capabilityError) {
-        console.error("[createContact] failed to insert capabilities:", capabilityError.message);
+    const products = parseSubmittedProducts(formData);
+    if (products.length > 0) {
+      const { error: productError } = await supabase
+        .from("contact_products")
+        .insert(products.map((p) => ({ contact_id: newId, product_type: p.product_type, ratio: p.ratio, notes: p.notes })));
+      if (productError) {
+        console.error("[createContactWithId] failed to insert products:", productError.message);
       }
     }
-  } catch (err) {
-    return { error: unexpectedErrorMessage(err) };
-  }
 
-  revalidatePath("/contacts");
-  redirect(`/contacts/${newId}`);
+    revalidatePath("/contacts");
+    return { id: newId, error: null };
+  } catch (err) {
+    return { id: null, error: unexpectedErrorMessage(err) };
+  }
 }
 
 export async function updateContact(
@@ -139,7 +173,7 @@ export async function updateContact(
       return { error: error.message };
     }
 
-    await syncContactCapabilities(supabase, id, parseSubmittedCapabilities(formData));
+    await syncContactProducts(supabase, id, parseSubmittedProducts(formData));
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
   }
@@ -151,11 +185,10 @@ export async function updateContact(
 
 // Used by the Contact Picker's inline "+ New Contact" flow: creates a
 // contact without redirecting so the caller can select it immediately.
-export async function quickCreateContact(input: {
-  full_name: string;
-  phone: string | null;
-  email: string | null;
-}): Promise<{ contact: Contact | null; error: string | null }> {
+export async function quickCreateContact(input: { full_name: string }): Promise<{
+  contact: Contact | null;
+  error: string | null;
+}> {
   const fullName = input.full_name.trim();
   if (!fullName) {
     return { contact: null, error: "Name is required." };
@@ -165,7 +198,7 @@ export async function quickCreateContact(input: {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("contacts")
-      .insert({ full_name: fullName, phone: input.phone || null, email: input.email || null })
+      .insert({ full_name: fullName })
       .select("*")
       .single();
 
@@ -177,5 +210,248 @@ export async function quickCreateContact(input: {
     return { contact: data as Contact, error: null };
   } catch (err) {
     return { contact: null, error: unexpectedErrorMessage(err) };
+  }
+}
+
+// Updates a single product row from the contact detail page's inline
+// Products & Ratios section (as opposed to the full edit form above,
+// which syncs every row at once on save).
+export async function upsertContactProduct(
+  contactId: string,
+  productType: ProductType,
+  ratio: string,
+  notes: string
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("contact_products").upsert(
+      {
+        contact_id: contactId,
+        product_type: productType,
+        ratio: ratio.trim() || null,
+        notes: notes.trim() || null,
+      },
+      { onConflict: "contact_id,product_type" }
+    );
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath(`/contacts/${contactId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+export async function deleteContactProduct(contactId: string, productId: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("contact_products").delete().eq("id", productId);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath(`/contacts/${contactId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Documents — same pattern as lib/actions/projects.ts's document
+// functions, just owned by a contact and stored in the
+// "contact-documents" bucket.
+// ----------------------------------------------------------------------------
+
+export async function addContactDocument(
+  contactId: string,
+  documentType: ContactDocumentType,
+  filePath: string,
+  fileName: string,
+  fileHash: string | null
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("contact_documents").insert({
+      contact_id: contactId,
+      document_type: documentType,
+      file_path: filePath,
+      file_name: fileName,
+      file_hash: fileHash,
+    });
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath(`/contacts/${contactId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+export async function deleteContactDocument(documentId: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+
+    const { data: existing } = await supabase
+      .from("contact_documents")
+      .select("contact_id, file_path")
+      .eq("id", documentId)
+      .maybeSingle();
+
+    const { error } = await supabase.from("contact_documents").delete().eq("id", documentId);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    if (existing?.file_path) {
+      const { error: storageError } = await supabase.storage
+        .from("contact-documents")
+        .remove([existing.file_path]);
+      if (storageError) {
+        console.error("[deleteContactDocument] failed to remove storage file:", storageError.message);
+      }
+    }
+
+    if (existing?.contact_id) {
+      revalidatePath(`/contacts/${existing.contact_id}`);
+    }
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+export interface ContactDocumentHashMatch {
+  documentId: string;
+  contactId: string;
+  contactLabel: string;
+  fileName: string;
+}
+
+export async function findContactDocumentsByHash(hash: string): Promise<ContactDocumentHashMatch[]> {
+  if (!hash) return [];
+
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("contact_documents")
+      .select("id, contact_id, file_name")
+      .eq("file_hash", hash);
+
+    if (error) {
+      console.error("[findContactDocumentsByHash] query failed:", error.message);
+      return [];
+    }
+
+    const rows = (data as { id: string; contact_id: string; file_name: string }[] | null) ?? [];
+    if (rows.length === 0) return [];
+
+    const contactIds = [...new Set(rows.map((r) => r.contact_id))];
+    const { data: contactsData } = await supabase.from("contacts").select("id, full_name").in("id", contactIds);
+    const contactNameById = new Map(
+      ((contactsData as { id: string; full_name: string }[] | null) ?? []).map((c) => [c.id, c.full_name])
+    );
+
+    return rows.map((row) => ({
+      documentId: row.id,
+      contactId: row.contact_id,
+      contactLabel: contactNameById.get(row.contact_id) ?? "Contact",
+      fileName: row.file_name,
+    }));
+  } catch (err) {
+    console.error("[findContactDocumentsByHash] unexpected error:", unexpectedErrorMessage(err));
+    return [];
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Notes — adds a note directly from the contact detail page without
+// leaving it, unlike lib/actions/notes.ts's createNote (which redirects
+// to /notes, right for the standalone New Note page it's meant for).
+// ----------------------------------------------------------------------------
+
+export async function addContactNote(
+  contactId: string,
+  formData: FormData
+): Promise<{ error: string | null }> {
+  const content = formData.get("content")?.toString().trim();
+  if (!content) {
+    return { error: '"Content" is required.' };
+  }
+
+  const isReminder = formData.get("is_reminder") === "on";
+  const dueDate = formData.get("due_date")?.toString().trim() || null;
+  if (isReminder && !dueDate) {
+    return { error: '"Due date" is required for a reminder.' };
+  }
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const { error } = await supabase.from("notes").insert({
+      title: formData.get("title")?.toString().trim() || null,
+      content,
+      is_reminder: isReminder,
+      due_date: isReminder ? dueDate : null,
+      contact_id: contactId,
+      created_by: user?.id ?? null,
+    });
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath(`/contacts/${contactId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Ratio lookup — read-only, used by the ratio auto-fill (see
+// components/projects/project-form.tsx and updateProjectMatchedContact
+// in lib/actions/projects.ts). Never writes anything itself.
+// ----------------------------------------------------------------------------
+
+export interface ContactProductRatio {
+  ratio: string | null;
+  contactName: string | null;
+}
+
+export async function getContactProductRatio(
+  contactId: string,
+  productType: ProductType
+): Promise<ContactProductRatio> {
+  try {
+    const supabase = await createClient();
+    const [{ data: product }, { data: contact }] = await Promise.all([
+      supabase
+        .from("contact_products")
+        .select("ratio")
+        .eq("contact_id", contactId)
+        .eq("product_type", productType)
+        .maybeSingle(),
+      supabase.from("contacts").select("full_name").eq("id", contactId).maybeSingle(),
+    ]);
+
+    return {
+      ratio: (product as { ratio: string | null } | null)?.ratio ?? null,
+      contactName: (contact as { full_name: string } | null)?.full_name ?? null,
+    };
+  } catch (err) {
+    console.error("[getContactProductRatio] unexpected error:", unexpectedErrorMessage(err));
+    return { ratio: null, contactName: null };
   }
 }

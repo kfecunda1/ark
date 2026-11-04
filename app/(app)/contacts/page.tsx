@@ -6,10 +6,10 @@ import { ClickableRow } from "@/components/clickable-row";
 import { ClickableCard } from "@/components/clickable-card";
 import { ContactFilters } from "@/components/contacts/contact-filters";
 import { createClient } from "@/lib/supabase/server";
-import type { Contact, ContactCapability } from "@/lib/types";
+import type { Contact, ContactProduct, ProductType } from "@/lib/types";
 
 interface ContactsPageProps {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; product_type?: string }>;
 }
 
 export default async function ContactsPage({ searchParams }: ContactsPageProps) {
@@ -18,28 +18,28 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
   const { data, error } = await supabase.from("contacts").select("*").order("full_name");
   const allContacts = (data as Contact[] | null) ?? [];
 
-  const { data: capabilitiesData } = await supabase
-    .from("contact_capabilities")
-    .select("*")
-    .order("created_at");
-  const capabilitiesByContactId = new Map<string, ContactCapability[]>();
-  for (const capability of (capabilitiesData as ContactCapability[] | null) ?? []) {
-    const list = capabilitiesByContactId.get(capability.contact_id) ?? [];
-    list.push(capability);
-    capabilitiesByContactId.set(capability.contact_id, list);
+  const { data: productsData } = await supabase.from("contact_products").select("*").order("created_at");
+  const productsByContactId = new Map<string, ContactProduct[]>();
+  for (const product of (productsData as ContactProduct[] | null) ?? []) {
+    const list = productsByContactId.get(product.contact_id) ?? [];
+    list.push(product);
+    productsByContactId.set(product.contact_id, list);
   }
 
   const searchTerm = params.q?.trim().toLowerCase();
-  const contacts = searchTerm
-    ? allContacts.filter((contact) => {
-        const tags = capabilitiesByContactId.get(contact.id) ?? [];
-        return (
-          contact.full_name.toLowerCase().includes(searchTerm) ||
-          (contact.notes ?? "").toLowerCase().includes(searchTerm) ||
-          tags.some((c) => c.tag.toLowerCase().includes(searchTerm))
-        );
-      })
-    : allContacts;
+  const productFilter = params.product_type as ProductType | undefined;
+
+  const contacts = allContacts.filter((contact) => {
+    const products = productsByContactId.get(contact.id) ?? [];
+    if (productFilter && !products.some((p) => p.product_type === productFilter)) return false;
+    if (searchTerm) {
+      return (
+        contact.full_name.toLowerCase().includes(searchTerm) ||
+        (contact.notes ?? "").toLowerCase().includes(searchTerm)
+      );
+    }
+    return true;
+  });
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -78,11 +78,11 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
             <Users className="h-5 w-5 text-white/40" />
           </div>
           <p className="text-sm font-medium text-white/70">
-            {searchTerm ? "No matching contacts" : "No contacts yet"}
+            {searchTerm || productFilter ? "No matching contacts" : "No contacts yet"}
           </p>
           <p className="max-w-xs text-xs text-white/35">
-            {searchTerm
-              ? "No contacts match your search."
+            {searchTerm || productFilter
+              ? "No contacts match your filters."
               : "Contacts you create here can be linked to projects."}
           </p>
         </GlassCard>
@@ -95,73 +95,64 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
               <thead>
                 <tr className="border-b border-white/[0.06] text-xs tracking-wide text-white/40 uppercase">
                   <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Phone</th>
-                  <th className="px-4 py-3 font-medium">Email</th>
+                  <th className="px-4 py-3 font-medium">Products</th>
                 </tr>
               </thead>
               <tbody>
-                {contacts.map((contact) => (
-                  <ClickableRow
-                    key={contact.id}
-                    href={`/contacts/${contact.id}`}
-                    className="border-b border-white/[0.04] transition-colors duration-150 ease-out last:border-0 hover:bg-white/[0.03]"
-                  >
-                    <td className="px-4 py-3">
-                      <span className="font-medium text-white/85 group-hover:text-white">
-                        {contact.full_name}
-                      </span>
-                      {(capabilitiesByContactId.get(contact.id) ?? []).length > 0 && (
-                        <span className="mt-1 flex flex-wrap gap-1">
-                          {(capabilitiesByContactId.get(contact.id) ?? []).map((capability) => (
-                            <span
-                              key={capability.id}
-                              className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap text-accent-soft"
-                            >
-                              {capability.tag}
-                            </span>
-                          ))}
+                {contacts.map((contact) => {
+                  const products = productsByContactId.get(contact.id) ?? [];
+                  return (
+                    <ClickableRow
+                      key={contact.id}
+                      href={`/contacts/${contact.id}`}
+                      className="border-b border-white/[0.04] transition-colors duration-150 ease-out last:border-0 hover:bg-white/[0.03]"
+                    >
+                      <td className="px-4 py-3">
+                        <span className="font-medium text-white/85 group-hover:text-white">
+                          {contact.full_name}
                         </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-white/60 group-hover:text-white">{contact.phone || "—"}</td>
-                    <td className="px-4 py-3 text-white/60 group-hover:text-white">{contact.email || "—"}</td>
-                  </ClickableRow>
-                ))}
+                      </td>
+                      <td className="px-4 py-3">
+                        {products.length === 0 ? (
+                          <span className="text-white/35">—</span>
+                        ) : (
+                          <span className="flex flex-wrap gap-1">
+                            {products.map((product) => (
+                              <span
+                                key={product.id}
+                                className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap text-accent-soft"
+                              >
+                                {product.product_type}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                      </td>
+                    </ClickableRow>
+                  );
+                })}
               </tbody>
             </table>
           </GlassCard>
 
           <div className="flex flex-col gap-3 md:hidden">
             {contacts.map((contact) => {
-              const tags = capabilitiesByContactId.get(contact.id) ?? [];
+              const products = productsByContactId.get(contact.id) ?? [];
               return (
                 <ClickableCard key={contact.id} href={`/contacts/${contact.id}`}>
-                  <div className="mb-3">
-                    <span className="font-medium text-white/85">{contact.full_name}</span>
-                    {tags.length > 0 && (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {tags.map((capability) => (
-                          <span
-                            key={capability.id}
-                            className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap text-accent-soft"
-                          >
-                            {capability.tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <dl className="flex flex-col gap-2 text-sm">
-                    <div>
-                      <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Phone</dt>
-                      <dd className="mt-0.5 text-white/60">{contact.phone || "—"}</dd>
+                  <span className="font-medium text-white/85">{contact.full_name}</span>
+                  {products.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {products.map((product) => (
+                        <span
+                          key={product.id}
+                          className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap text-accent-soft"
+                        >
+                          {product.product_type}
+                        </span>
+                      ))}
                     </div>
-                    <div>
-                      <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Email</dt>
-                      <dd className="mt-0.5 text-white/60">{contact.email || "—"}</dd>
-                    </div>
-                  </dl>
+                  )}
                 </ClickableCard>
               );
             })}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GlassCard } from "@/components/glass-card";
@@ -15,6 +15,7 @@ import {
   type DuplicateProjectMatch,
   type ProjectFormState,
 } from "@/lib/actions/projects";
+import { getContactProductRatio } from "@/lib/actions/contacts";
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
@@ -62,6 +63,57 @@ export function ProjectForm({ mode, project, contacts }: ProjectFormProps) {
   // itself live as the user picks a different stage, before anything is
   // saved.
   const [stage, setStage] = useState<ProjectStage>(project?.stage ?? "new");
+
+  // ---- Ratio auto-fill (snapshot, not live) --------------------------
+  // product_type and ratio_real need to be controlled (not just
+  // defaultValue) so this can read and, for ratio_real, write them.
+  const [productType, setProductType] = useState<ProductType | "">(project?.product_type ?? "");
+  const [matchedContactId, setMatchedContactId] = useState<string | null>(project?.matched_contact_id ?? null);
+  const [ratioReal, setRatioReal] = useState(project?.ratio_real ?? "");
+  type AutoFillMessage =
+    | { tone: "filled"; text: string }
+    | { tone: "differs"; contactName: string; productType: ProductType; theirRatio: string; currentRatio: string };
+  const [autoFillMessage, setAutoFillMessage] = useState<AutoFillMessage | null>(null);
+  // Read inside the effect without making it a reactive dependency —
+  // this should only re-run when the match or the product changes, not
+  // every time the user types into Ratio Real themselves.
+  const ratioRealRef = useRef(ratioReal);
+  useEffect(() => {
+    ratioRealRef.current = ratioReal;
+  }, [ratioReal]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Everything that adjusts state lives inside this async callback
+    // (including the "nothing to check" exit) rather than directly in
+    // the effect body, so a quick matched/product change can't set
+    // state out of order with an in-flight lookup from the previous one.
+    async function run() {
+      if (!matchedContactId || !productType) {
+        if (!cancelled) setAutoFillMessage(null);
+        return;
+      }
+      const { ratio, contactName } = await getContactProductRatio(matchedContactId, productType);
+      if (cancelled || !ratio || !contactName) return;
+      const current = ratioRealRef.current.trim();
+      if (!current) {
+        setRatioReal(ratio);
+        setAutoFillMessage({ tone: "filled", text: `Real ratio filled from ${contactName} (${productType}).` });
+      } else if (current !== ratio) {
+        // Never overwritten automatically — only the "Use <theirRatio>"
+        // button below ever changes ratioReal from here.
+        setAutoFillMessage({ tone: "differs", contactName, productType, theirRatio: ratio, currentRatio: current });
+      } else {
+        setAutoFillMessage(null);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [matchedContactId, productType]);
 
   async function handleCreateSubmit(e: React.FormEvent<HTMLFormElement>) {
     disableSubmitButton(submitButtonRef);
@@ -168,7 +220,8 @@ export function ProjectForm({ mode, project, contacts }: ProjectFormProps) {
             id="product_type"
             name="product_type"
             required
-            defaultValue={project?.product_type ?? ""}
+            value={productType}
+            onChange={(e) => setProductType(e.target.value as ProductType)}
             className={fieldClass}
           >
             <option value="" disabled className="bg-[#0a0e17]">
@@ -254,6 +307,16 @@ export function ProjectForm({ mode, project, contacts }: ProjectFormProps) {
         </div>
 
         <div>
+          <ContactPicker
+            name="matched_contact_id"
+            label="Matched With"
+            contacts={contacts}
+            defaultContactId={project?.matched_contact_id}
+            onSelect={(contact) => setMatchedContactId(contact?.id ?? null)}
+          />
+        </div>
+
+        <div>
           <label className={labelClass} htmlFor="ratio_presented">
             Ratio Presented
           </label>
@@ -274,9 +337,40 @@ export function ProjectForm({ mode, project, contacts }: ProjectFormProps) {
             id="ratio_real"
             name="ratio_real"
             placeholder="e.g. 70/30"
-            defaultValue={project?.ratio_real ?? ""}
+            value={ratioReal}
+            onChange={(e) => setRatioReal(e.target.value)}
             className={fieldClass}
           />
+          {autoFillMessage?.tone === "filled" && (
+            <p className="mt-1.5 text-xs text-emerald-300">{autoFillMessage.text}</p>
+          )}
+          {autoFillMessage?.tone === "differs" && (
+            <div className="mt-1.5 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5">
+              <p className="text-xs text-amber-200">
+                {autoFillMessage.contactName}&apos;s ratio for {autoFillMessage.productType} is{" "}
+                {autoFillMessage.theirRatio}. Current real ratio is {autoFillMessage.currentRatio}.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRatioReal(autoFillMessage.theirRatio);
+                    setAutoFillMessage(null);
+                  }}
+                  className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover"
+                >
+                  Use {autoFillMessage.theirRatio}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAutoFillMessage(null)}
+                  className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-white/80 transition-colors duration-150 ease-out hover:bg-white/[0.08]"
+                >
+                  Keep {autoFillMessage.currentRatio}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div>

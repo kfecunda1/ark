@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getContactProductRatio } from "@/lib/actions/contacts";
 import { STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
 import type {
   Currency,
@@ -49,6 +50,7 @@ function buildProjectPayload(formData: FormData) {
 
   const clientContactId = formData.get("client_contact_id")?.toString().trim();
   const assignedContactId = formData.get("assigned_contact_id")?.toString().trim();
+  const matchedContactId = formData.get("matched_contact_id")?.toString().trim();
   const totalFaceValueRaw = formData.get("total_face_value")?.toString().trim();
 
   return {
@@ -58,6 +60,7 @@ function buildProjectPayload(formData: FormData) {
     status,
     client_contact_id: clientContactId || null,
     assigned_contact_id: assignedContactId || null,
+    matched_contact_id: matchedContactId || null,
     ratio_presented: formData.get("ratio_presented")?.toString().trim() || null,
     ratio_real: formData.get("ratio_real")?.toString().trim() || null,
     total_face_value: totalFaceValueRaw ? Number(totalFaceValueRaw) : null,
@@ -460,5 +463,106 @@ export async function findDuplicateProjects(input: {
   } catch (err) {
     console.error("[findDuplicateProjects] unexpected error:", unexpectedErrorMessage(err));
     return [];
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Matched contact — the detail page's inline quick-picker (project-form.
+// tsx has its own client-side version of the ratio check, since there
+// the project may not be saved yet; this one persists immediately, so
+// it does the DB-backed version: set matched_contact_id, then look up
+// that contact's ratio for the project's *current* (already-saved)
+// product_type and fill ratio_real if it's empty. A snapshot, not a
+// live link — once filled (or reported as differing), nothing here
+// keeps watching the contact's ratio for future changes.
+// ----------------------------------------------------------------------------
+
+export interface RatioAutoFillResult {
+  filled: boolean;
+  differs: boolean;
+  contactName: string;
+  productType: ProductType;
+  // The matched contact's ratio on record for this product.
+  theirRatio: string;
+  // Only set when differs is true — the project's own ratio_real at the
+  // moment of the check, so the caller can offer "Use <theirRatio>" /
+  // "Keep <currentRatio>" without a second round trip.
+  currentRatio?: string;
+}
+
+export async function updateProjectMatchedContact(
+  projectId: string,
+  matchedContactId: string | null
+): Promise<{ error: string | null; autoFill: RatioAutoFillResult | null }> {
+  try {
+    const supabase = await createClient();
+
+    const { data: current, error: readError } = await supabase
+      .from("projects")
+      .select("product_type, ratio_real")
+      .eq("id", projectId)
+      .maybeSingle();
+    if (readError || !current) {
+      return { error: readError?.message ?? "Project not found.", autoFill: null };
+    }
+
+    const { error } = await supabase
+      .from("projects")
+      .update({ matched_contact_id: matchedContactId })
+      .eq("id", projectId);
+    if (error) {
+      return { error: error.message, autoFill: null };
+    }
+
+    let autoFill: RatioAutoFillResult | null = null;
+    if (matchedContactId) {
+      const { ratio, contactName } = await getContactProductRatio(matchedContactId, current.product_type);
+      if (ratio && contactName) {
+        if (!current.ratio_real) {
+          await supabase.from("projects").update({ ratio_real: ratio }).eq("id", projectId);
+          autoFill = { filled: true, differs: false, contactName, productType: current.product_type, theirRatio: ratio };
+        } else if (current.ratio_real !== ratio) {
+          // Never overwritten without an explicit "Use <theirRatio>"
+          // click from the caller (see updateProjectRatioReal below) —
+          // this only reports the difference.
+          autoFill = {
+            filled: false,
+            differs: true,
+            contactName,
+            productType: current.product_type,
+            theirRatio: ratio,
+            currentRatio: current.ratio_real,
+          };
+        }
+      }
+    }
+
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null, autoFill };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err), autoFill: null };
+  }
+}
+
+// The explicit "Use <theirRatio>" action from the ratio-differs prompt
+// (both the detail page's MatchedContactSelect and, on save, the create/
+// edit form go through this same path for the DB-persisted case) — the
+// only way ratio_real is ever overwritten once it already holds a
+// different value than the matched contact's.
+export async function updateProjectRatioReal(projectId: string, ratio: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("projects").update({ ratio_real: ratio }).eq("id", projectId);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
 }

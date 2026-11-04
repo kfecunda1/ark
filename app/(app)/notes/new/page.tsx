@@ -13,7 +13,7 @@ export default async function NewNotePage({ searchParams }: NewNotePageProps) {
 
   const [{ data: projectsData }, { data: contactsData }] = await Promise.all([
     supabase.from("projects").select("id, name").is("archived_at", null),
-    supabase.from("contacts").select("id, full_name, phone, email"),
+    supabase.from("contacts").select("id, full_name"),
   ]);
 
   const contacts = (contactsData as Contact[] | null) ?? [];

@@ -8,6 +8,7 @@ import { StatusSelect } from "@/components/projects/status-select";
 import { ArchiveProjectButton } from "@/components/projects/archive-project-button";
 import { ProjectDocuments } from "@/components/projects/project-documents";
 import { TranchesSection } from "@/components/projects/tranches-section";
+import { MatchedContactSelect } from "@/components/projects/matched-contact-select";
 import { LinkedNotes } from "@/components/notes/linked-notes";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/format";
@@ -31,7 +32,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     notFound();
   }
 
-  const contactIds = [project.client_contact_id, project.assigned_contact_id].filter(
+  const contactIds = [project.client_contact_id, project.assigned_contact_id, project.matched_contact_id].filter(
     (contactId): contactId is string => Boolean(contactId)
   );
   let contactsById = new Map<string, Contact>();
@@ -43,6 +44,12 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const assignedContact = project.assigned_contact_id
     ? (contactsById.get(project.assigned_contact_id) ?? null)
     : null;
+  const matchedContact = project.matched_contact_id ? (contactsById.get(project.matched_contact_id) ?? null) : null;
+
+  // The matched-contact picker needs to search every contact, not just
+  // the handful already loaded above.
+  const { data: allContactsData } = await supabase.from("contacts").select("id, full_name").order("full_name");
+  const allContacts = (allContactsData as { id: string; full_name: string }[] | null) ?? [];
 
   const [{ data: projectDocumentsData }, { data: tranchesData }, { data: notesData }] = await Promise.all([
     supabase.from("project_documents").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
@@ -95,6 +102,10 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       ) : (
         "—"
       ),
+    },
+    {
+      label: "Matched With",
+      value: <MatchedContactSelect projectId={project.id} contacts={allContacts} currentContact={matchedContact} />,
     },
     { label: "Ratio Presented", value: project.ratio_presented || "—" },
     { label: "Ratio Real", value: project.ratio_real || "—" },

@@ -8,8 +8,6 @@ import { contactLabel } from "@/lib/contacts";
 export interface ContactOption {
   id: string;
   full_name: string;
-  phone: string | null;
-  email: string | null;
 }
 
 interface ContactPickerProps {
@@ -18,6 +16,10 @@ interface ContactPickerProps {
   contacts: ContactOption[];
   defaultContactId?: string | null;
   placeholder?: string;
+  // Fires whenever the selection changes — picking a contact, clearing
+  // one, or quick-creating a new one. Not fired for the initial value
+  // from defaultContactId.
+  onSelect?: (contact: ContactOption | null) => void;
 }
 
 const fieldClass =
@@ -26,7 +28,7 @@ const smallFieldClass =
   "w-full rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
-export function ContactPicker({ name, label, contacts, defaultContactId, placeholder }: ContactPickerProps) {
+export function ContactPicker({ name, label, contacts, defaultContactId, placeholder, onSelect }: ContactPickerProps) {
   const [allContacts, setAllContacts] = useState(contacts);
   const [selected, setSelected] = useState<ContactOption | null>(
     () => allContacts.find((c) => c.id === defaultContactId) ?? null
@@ -35,8 +37,6 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newPhone, setNewPhone] = useState("");
-  const [newEmail, setNewEmail] = useState("");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -50,18 +50,18 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
     setSelected(contact);
     setQuery("");
     setOpen(false);
+    onSelect?.(contact);
   }
 
   function clearSelection() {
     setSelected(null);
     setQuery("");
+    onSelect?.(null);
   }
 
   function startCreating() {
     setError(null);
     setNewName(query.trim());
-    setNewPhone("");
-    setNewEmail("");
     setCreating(true);
     setOpen(false);
   }
@@ -79,11 +79,7 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
     setError(null);
     startTransition(async () => {
       try {
-        const result = await quickCreateContact({
-          full_name: newName.trim(),
-          phone: newPhone.trim() || null,
-          email: newEmail.trim() || null,
-        });
+        const result = await quickCreateContact({ full_name: newName.trim() });
         if (result.error || !result.contact) {
           setError(result.error ?? "Could not create contact.");
           return;
@@ -163,27 +159,13 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
 
       {creating && (
         <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <input
-              autoFocus
-              placeholder="Name *"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className={smallFieldClass}
-            />
-            <input
-              placeholder="Phone"
-              value={newPhone}
-              onChange={(e) => setNewPhone(e.target.value)}
-              className={smallFieldClass}
-            />
-            <input
-              placeholder="Email"
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              className={smallFieldClass}
-            />
-          </div>
+          <input
+            autoFocus
+            placeholder="Name *"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className={smallFieldClass}
+          />
           {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
           <div className="mt-2 flex items-center gap-3">
             <button

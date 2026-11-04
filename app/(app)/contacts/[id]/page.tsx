@@ -2,16 +2,21 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
-import { LinkedNotes } from "@/components/notes/linked-notes";
+import { ContactProductsSection } from "@/components/contacts/contact-products-section";
+import { ContactDocuments } from "@/components/contacts/contact-documents";
+import { ContactNotesSection } from "@/components/contacts/contact-notes-section";
 import { createClient } from "@/lib/supabase/server";
-import type { Contact, ContactCapability, Note, Project } from "@/lib/types";
+import type { Contact, ContactDocument, ContactProduct, Note, Project } from "@/lib/types";
 
 interface ContactDetailPageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ failedDocs?: string }>;
 }
 
-export default async function ContactDetailPage({ params }: ContactDetailPageProps) {
+export default async function ContactDetailPage({ params, searchParams }: ContactDetailPageProps) {
   const { id } = await params;
+  const { failedDocs } = await searchParams;
+  const failedDocNames = failedDocs ? failedDocs.split(",").filter(Boolean) : [];
   const supabase = await createClient();
 
   const { data } = await supabase.from("contacts").select("*").eq("id", id).maybeSingle();
@@ -21,19 +26,50 @@ export default async function ContactDetailPage({ params }: ContactDetailPagePro
     notFound();
   }
 
-  const [{ data: projectsData }, { data: capabilitiesData }, { data: notesData }] = await Promise.all([
-    supabase
-      .from("projects")
-      .select("*")
-      .or(`client_contact_id.eq.${id},assigned_contact_id.eq.${id}`)
-      .order("created_at", { ascending: false }),
-    supabase.from("contact_capabilities").select("*").eq("contact_id", id).order("created_at"),
-    supabase.from("notes").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
-  ]);
+  const [{ data: projectsData }, { data: productsData }, { data: documentsData }, { data: notesData }] =
+    await Promise.all([
+      supabase
+        .from("projects")
+        .select("*")
+        .or(`client_contact_id.eq.${id},assigned_contact_id.eq.${id},matched_contact_id.eq.${id}`)
+        .order("created_at", { ascending: false }),
+      supabase.from("contact_products").select("*").eq("contact_id", id).order("created_at"),
+      supabase.from("contact_documents").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
+      supabase.from("notes").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
+    ]);
 
   const relatedProjects = (projectsData as Project[] | null) ?? [];
-  const capabilities = (capabilitiesData as ContactCapability[] | null) ?? [];
+  const products = (productsData as ContactProduct[] | null) ?? [];
+  const documents = (documentsData as ContactDocument[] | null) ?? [];
   const notes = (notesData as Note[] | null) ?? [];
+
+  let documentsWithUrls = documents.map((doc) => ({ ...doc, signedUrl: null as string | null }));
+  if (documents.length > 0) {
+    const { data: signedUrls } = await supabase.storage
+      .from("contact-documents")
+      .createSignedUrls(
+        documents.map((doc) => doc.file_path),
+        3600
+      );
+    const urlByPath = new Map((signedUrls ?? []).map((s) => [s.path, s.signedUrl]));
+    documentsWithUrls = documents.map((doc) => ({
+      ...doc,
+      signedUrl: (doc.file_path && urlByPath.get(doc.file_path)) || null,
+    }));
+  }
+
+  // Grouped by role rather than a flat list — a project can appear in
+  // more than one group (e.g. this contact is both Assigned and Matched
+  // With on the same project).
+  const clientProjects = relatedProjects.filter((p) => p.client_contact_id === contact.id);
+  const assignedProjects = relatedProjects.filter((p) => p.assigned_contact_id === contact.id);
+  const matchedProjects = relatedProjects.filter((p) => p.matched_contact_id === contact.id);
+
+  const projectGroups: { label: string; projects: Project[] }[] = [
+    { label: "Client", projects: clientProjects },
+    { label: "Assigned", projects: assignedProjects },
+    { label: "Matched With", projects: matchedProjects },
+  ].filter((group) => group.projects.length > 0);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -53,71 +89,74 @@ export default async function ContactDetailPage({ params }: ContactDetailPagePro
         </Link>
       </div>
 
-      <GlassCard interactive={false} className="p-6">
-        <dl className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
-          <div>
-            <dt className="text-xs font-medium tracking-wide text-white/35 uppercase">Phone</dt>
-            <dd className="mt-1 text-sm text-white/85">{contact.phone || "—"}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium tracking-wide text-white/35 uppercase">Email</dt>
-            <dd className="mt-1 text-sm text-white/85">{contact.email || "—"}</dd>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="text-xs font-medium tracking-wide text-white/35 uppercase">Capabilities</dt>
-            <dd className="mt-1.5">
-              {capabilities.length === 0 ? (
-                <span className="text-sm text-white/40">—</span>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {capabilities.map((capability) => (
-                    <span
-                      key={capability.id}
-                      className="rounded-full border border-accent/25 bg-accent/10 px-2.5 py-0.5 text-xs font-medium whitespace-nowrap text-accent-soft"
-                    >
-                      {capability.tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </dd>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="text-xs font-medium tracking-wide text-white/35 uppercase">Notes</dt>
-            <dd className="mt-1 text-sm whitespace-pre-wrap text-white/85">{contact.notes || "—"}</dd>
-          </div>
-        </dl>
-      </GlassCard>
-
-      {relatedProjects.length > 0 ? (
-        <div className="mt-6">
-          <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Related Projects</h2>
-          <div className="flex flex-col gap-2">
-            {relatedProjects.map((project) => {
-              const role = project.client_contact_id === contact.id ? "Client" : "Assigned";
-              return (
-                <Link
-                  key={project.id}
-                  href={`/projects/${project.id}`}
-                  className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
-                >
-                  <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-white/50">
-                    {role}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <p className="mt-6 text-sm text-white/35">Not yet linked to any projects.</p>
+      {failedDocNames.length > 0 && (
+        <GlassCard interactive={false} className="mb-6 border-red-500/20 bg-red-500/10 p-4">
+          <p className="text-sm font-medium text-red-300">
+            {failedDocNames.length === 1
+              ? "1 document failed to attach during contact creation:"
+              : `${failedDocNames.length} documents failed to attach during contact creation:`}
+          </p>
+          <ul className="mt-1.5 list-inside list-disc text-sm text-red-300/80">
+            {failedDocNames.map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </ul>
+          <p className="mt-1.5 text-xs text-red-300/60">
+            You can add them again using the Documents section below.
+          </p>
+        </GlassCard>
       )}
 
+      <GlassCard interactive={false} className="p-6">
+        <dt className="text-xs font-medium tracking-wide text-white/35 uppercase">About</dt>
+        <dd className="mt-1 text-sm whitespace-pre-wrap text-white/85">{contact.notes || "—"}</dd>
+      </GlassCard>
+
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Linked Notes</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Products & Ratios</h2>
+        <ContactProductsSection contactId={contact.id} products={products} />
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Documents</h2>
         <GlassCard interactive={false} className="p-6">
-          <LinkedNotes notes={notes} addHref={`/notes/new?contact_id=${contact.id}`} />
+          <ContactDocuments contactId={contact.id} documents={documentsWithUrls} />
+        </GlassCard>
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Related Projects</h2>
+        {projectGroups.length === 0 ? (
+          <p className="text-sm text-white/35">Not yet linked to any projects.</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {projectGroups.map((group) => (
+              <div key={group.label}>
+                <p className="mb-1.5 text-[11px] font-medium tracking-wide text-white/35 uppercase">
+                  {group.label}
+                </p>
+                <div className="flex flex-col gap-2">
+                  {group.projects.map((project) => (
+                    <Link
+                      key={project.id}
+                      href={`/projects/${project.id}`}
+                      className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
+                      <span className="shrink-0 text-xs text-white/35">{project.product_type}</span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Notes</h2>
+        <GlassCard interactive={false} className="p-6">
+          <ContactNotesSection contactId={contact.id} notes={notes} />
         </GlassCard>
       </div>
     </div>

@@ -3,8 +3,10 @@ import { PRIORITY_LABELS, STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
 import type { ActivityAction, ActivityDetails, ActivityEntityType, ActivityLog } from "@/lib/types";
 
 // The three buckets the Activity page filters by. "document" covers
-// project_document, since from the user's point of view a document is a
-// document.
+// project_document and contact_document, and "contact" also covers
+// contact_product (a contact's own sub-record) — from the user's point
+// of view, a document is a document and a product row is still just
+// something that happened to a contact.
 export type ActivityFilter = "project" | "contact" | "document";
 
 export const ACTIVITY_FILTERS: ActivityFilter[] = ["project", "contact", "document"];
@@ -17,8 +19,8 @@ export const ACTIVITY_FILTER_LABELS: Record<ActivityFilter, string> = {
 
 export const ACTIVITY_FILTER_ENTITY_TYPES: Record<ActivityFilter, ActivityEntityType[]> = {
   project: ["project"],
-  contact: ["contact"],
-  document: ["project_document"],
+  contact: ["contact", "contact_product"],
+  document: ["project_document", "contact_document"],
 };
 
 export function parseActivityFilter(value: string | undefined): ActivityFilter | null {
@@ -29,6 +31,8 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   project: "Project",
   contact: "Contact",
   project_document: "Project document",
+  contact_product: "Contact product",
+  contact_document: "Contact document",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -38,7 +42,7 @@ export const ACTION_LABELS: Record<ActivityAction, string> = {
 };
 
 export function isDocumentEntity(entityType: ActivityEntityType): boolean {
-  return entityType === "project_document";
+  return entityType === "project_document" || entityType === "contact_document";
 }
 
 // Column names as they appear in details.fields, prettified for display.
@@ -48,6 +52,7 @@ const FIELD_LABELS: Record<string, string> = {
   product_type: "product type",
   client_contact_id: "client contact",
   assigned_contact_id: "assigned contact",
+  matched_contact_id: "matched contact",
   ratio_presented: "ratio presented",
   ratio_real: "ratio real",
   total_face_value: "total face value",
@@ -58,8 +63,8 @@ const FIELD_LABELS: Record<string, string> = {
   archived: "archived",
   // contacts
   full_name: "name",
-  phone: "phone",
-  email: "email",
+  // contact products
+  ratio: "ratio",
   // documents
   document_type: "document type",
   file_name: "file name",
@@ -158,9 +163,13 @@ export function activityTarget(row: ActivityLog): ActivityTarget | null {
       return { table: "projects", id: row.entity_id };
     case "contact":
       return { table: "contacts", id: row.entity_id };
-    // Documents have no page of their own, so they point at their owner.
+    // Documents and products have no page of their own, so they point
+    // at their owner.
     case "project_document":
       return row.details?.parent_id ? { table: "projects", id: row.details.parent_id } : null;
+    case "contact_product":
+    case "contact_document":
+      return row.details?.parent_id ? { table: "contacts", id: row.details.parent_id } : null;
     default:
       return null;
   }
