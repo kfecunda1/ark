@@ -9,10 +9,10 @@ import { ArchiveProjectButton } from "@/components/projects/archive-project-butt
 import { ProjectDocuments } from "@/components/projects/project-documents";
 import { TranchesSection } from "@/components/projects/tranches-section";
 import { MatchedContactSelect } from "@/components/projects/matched-contact-select";
-import { LinkedNotes } from "@/components/notes/linked-notes";
+import { ProjectTimeline } from "@/components/projects/project-timeline";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/format";
-import type { Contact, Note, Project, ProjectDocument, ProjectTranche } from "@/lib/types";
+import type { Contact, Project, ProjectDocument, ProjectStep, ProjectTranche } from "@/lib/types";
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
@@ -51,14 +51,26 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const { data: allContactsData } = await supabase.from("contacts").select("id, full_name").order("full_name");
   const allContacts = (allContactsData as { id: string; full_name: string }[] | null) ?? [];
 
-  const [{ data: projectDocumentsData }, { data: tranchesData }, { data: notesData }] = await Promise.all([
+  const [{ data: projectDocumentsData }, { data: tranchesData }, { data: stepsData }] = await Promise.all([
     supabase.from("project_documents").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
     supabase.from("project_tranches").select("*").eq("project_id", project.id).order("tranche_number"),
-    supabase.from("notes").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
+    supabase.from("project_steps").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
   ]);
   const projectDocuments = (projectDocumentsData as ProjectDocument[] | null) ?? [];
   const tranches = (tranchesData as ProjectTranche[] | null) ?? [];
-  const notes = (notesData as Note[] | null) ?? [];
+  const steps = (stepsData as ProjectStep[] | null) ?? [];
+
+  const authorIds = [...new Set(steps.map((s) => s.author_id).filter((id): id is string => Boolean(id)))];
+  let authorNameById: Record<string, string> = {};
+  if (authorIds.length > 0) {
+    const { data: profilesData } = await supabase.from("profiles").select("id, full_name, email").in("id", authorIds);
+    authorNameById = Object.fromEntries(
+      ((profilesData as { id: string; full_name: string | null; email: string | null }[] | null) ?? []).map((p) => [
+        p.id,
+        p.full_name?.trim() || p.email || "Unknown user",
+      ])
+    );
+  }
 
   let documentsWithUrls = projectDocuments.map((doc) => ({ ...doc, signedUrl: null as string | null }));
   if (projectDocuments.length > 0) {
@@ -194,9 +206,9 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       </div>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Notes</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Timeline</h2>
         <GlassCard interactive={false} className="p-6">
-          <LinkedNotes notes={notes} addHref={`/notes/new?project_id=${project.id}`} />
+          <ProjectTimeline projectId={project.id} steps={steps} authorNameById={authorNameById} />
         </GlassCard>
       </div>
     </div>

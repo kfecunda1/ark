@@ -100,6 +100,9 @@ export function ProjectFilters() {
         <option value="created_at" className="bg-[#0a0e17]">
           Sort: Oldest first
         </option>
+        <option value="next_step_due" className="bg-[#0a0e17]">
+          Sort: Next step due
+        </option>
       </select>
     </div>
   );

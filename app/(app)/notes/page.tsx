@@ -1,15 +1,15 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { Contact as ContactIcon, Plus, StickyNote, Users } from "lucide-react";
+import { Contact as ContactIcon, Plus, StickyNote } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { NoteFilters } from "@/components/notes/note-filters";
 import { ReminderBadge } from "@/components/notes/badges";
 import { DeleteNoteButton } from "@/components/notes/delete-note-button";
 import { createClient } from "@/lib/supabase/server";
-import type { Contact, Note, Project } from "@/lib/types";
+import type { Contact, Note } from "@/lib/types";
 
 interface NotesPageProps {
-  searchParams: Promise<{ reminders?: string; type?: string }>;
+  searchParams: Promise<{ reminders?: string }>;
 }
 
 export default async function NotesPage({ searchParams }: NotesPageProps) {
@@ -20,47 +20,25 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
   if (params.reminders === "true") {
     query = query.eq("is_reminder", true);
   }
-  if (params.type === "project") query = query.not("project_id", "is", null);
-  if (params.type === "contact") query = query.not("contact_id", "is", null);
 
   const { data, error } = await query;
   const notes = (data as Note[] | null) ?? [];
 
-  const projectIds = notes.map((n) => n.project_id).filter((id): id is string => Boolean(id));
   const contactIds = notes.map((n) => n.contact_id).filter((id): id is string => Boolean(id));
 
-  const [{ data: projectsData }, { data: contactsData }] = await Promise.all([
-    projectIds.length > 0
-      ? supabase.from("projects").select("id, name").in("id", projectIds)
-      : Promise.resolve({ data: [] }),
+  const { data: contactsData } =
     contactIds.length > 0
-      ? supabase.from("contacts").select("id, full_name").in("id", contactIds)
-      : Promise.resolve({ data: [] }),
-  ]);
+      ? await supabase.from("contacts").select("id, full_name").in("id", contactIds)
+      : { data: [] };
 
-  const projectsById = new Map(((projectsData as Pick<Project, "id" | "name">[] | null) ?? []).map((p) => [p.id, p]));
   const contactsById = new Map(
     ((contactsData as Pick<Contact, "id" | "full_name">[] | null) ?? []).map((c) => [c.id, c])
   );
 
-  function linkFor(note: Note): { href: string; label: string; icon: typeof Users } | null {
-    if (note.project_id) {
-      const project = projectsById.get(note.project_id);
-      return {
-        href: `/projects/${note.project_id}`,
-        label: project?.name ?? "Project",
-        icon: Users,
-      };
-    }
-    if (note.contact_id) {
-      const contact = contactsById.get(note.contact_id);
-      return {
-        href: `/contacts/${note.contact_id}`,
-        label: contact?.full_name ?? "Contact",
-        icon: ContactIcon,
-      };
-    }
-    return null;
+  function linkFor(note: Note): { href: string; label: string } | null {
+    if (!note.contact_id) return null;
+    const contact = contactsById.get(note.contact_id);
+    return { href: `/contacts/${note.contact_id}`, label: contact?.full_name ?? "Contact" };
   }
 
   return (
@@ -68,7 +46,7 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">Notes</h1>
-          <p className="mt-1 text-sm text-white/45">Free-form notes and reminders, optionally linked to a record.</p>
+          <p className="mt-1 text-sm text-white/45">Free-form notes and reminders, optionally linked to a contact.</p>
         </div>
         <Link
           href="/notes/new"
@@ -100,10 +78,10 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
             <StickyNote className="h-5 w-5 text-white/40" />
           </div>
           <p className="text-sm font-medium text-white/70">
-            {params.reminders === "true" || params.type ? "No matching notes" : "No notes yet"}
+            {params.reminders === "true" ? "No matching notes" : "No notes yet"}
           </p>
           <p className="max-w-xs text-xs text-white/35">
-            {params.reminders === "true" || params.type
+            {params.reminders === "true"
               ? "No notes match the current filters."
               : "Notes and reminders you create will show up here."}
           </p>
@@ -125,7 +103,7 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
                     <p className="mt-1 line-clamp-2 text-sm text-white/60">{note.content}</p>
                     {link && (
                       <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-white/40">
-                        <link.icon className="h-3 w-3" />
+                        <ContactIcon className="h-3 w-3" />
                         {link.label}
                       </p>
                     )}

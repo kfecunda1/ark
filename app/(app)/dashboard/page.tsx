@@ -1,10 +1,14 @@
 import Link from "next/link";
-import { CalendarClock, CheckCircle2, Layers } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Layers } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
+import { FollowUpsDue, type FollowUpItem } from "@/components/dashboard/follow-ups-due";
 import { createClient } from "@/lib/supabase/server";
+import { dateKeyInTimeZone, formatDateTime } from "@/lib/format";
 import { STAGES, STAGE_LABELS, isClosedStatus } from "@/lib/projects";
 import { PRODUCT_TYPES } from "@/lib/products";
 import type { Project, ProjectStage } from "@/lib/types";
+
+const STUCK_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 const STAGE_BAR_COLORS: Record<ProjectStage, string> = {
   new: "bg-accent/70",
@@ -44,6 +48,41 @@ export default async function DashboardPage() {
     {} as Record<string, number>
   );
   const maxProductCount = Math.max(1, ...PRODUCT_TYPES.map((product) => productTypeCounts[product]));
+
+  // Stuck: open, not archived (already guaranteed by the `projects`
+  // query above), not completed/lost, no activity in 7+ days.
+  const stuckProjects = openProjects
+    .filter((project) => now.getTime() - new Date(project.last_activity_at).getTime() >= STUCK_AFTER_MS)
+    .sort((a, b) => new Date(a.last_activity_at).getTime() - new Date(b.last_activity_at).getTime());
+
+  // Follow-ups due: open next steps, due today or overdue, across every
+  // non-archived project.
+  const todayKey = dateKeyInTimeZone(new Date().toISOString());
+  let followUps: FollowUpItem[] = [];
+  if (projects.length > 0) {
+    const { data: stepsData } = await supabase
+      .from("project_steps")
+      .select("id, project_id, body, due_date")
+      .in(
+        "project_id",
+        projects.map((p) => p.id)
+      )
+      .eq("kind", "next_step")
+      .eq("done", false)
+      .lte("due_date", todayKey)
+      .order("due_date", { ascending: true });
+
+    const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
+    followUps = (
+      (stepsData as { id: string; project_id: string; body: string; due_date: string }[] | null) ?? []
+    ).map((step) => ({
+      id: step.id,
+      projectId: step.project_id,
+      projectName: projectNameById.get(step.project_id) ?? "Project",
+      body: step.body,
+      dueDate: step.due_date,
+    }));
+  }
 
   const STATS = [
     {
@@ -165,12 +204,32 @@ export default async function DashboardPage() {
         <GlassCard interactive={false} className="p-6">
           <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
             <CalendarClock className="h-4 w-4 text-white/40" />
-            Coming in Phase 3
+            Follow-ups Due
           </h2>
-          <p className="text-sm text-white/35">
-            Stuck Deals and Follow-ups Due will come back here once the project timeline (next steps and
-            activity tracking) exists. See AGENTS.md for the plan.
-          </p>
+          <FollowUpsDue items={followUps} />
+        </GlassCard>
+
+        <GlassCard interactive={false} className="p-6">
+          <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
+            <AlertTriangle className="h-4 w-4 text-white/40" />
+            Stuck Projects
+          </h2>
+          {stuckProjects.length === 0 ? (
+            <p className="text-sm text-white/35">No stuck projects.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {stuckProjects.map((project) => (
+                <Link
+                  key={project.id}
+                  href={`/projects/${project.id}`}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
+                  <span className="shrink-0 text-xs text-white/40">{formatDateTime(project.last_activity_at)}</span>
+                </Link>
+              ))}
+            </div>
+          )}
         </GlassCard>
       </div>
     </div>

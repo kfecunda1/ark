@@ -91,3 +91,30 @@ export function followUpLabel(dueDate: string): string {
   if (diffDays === 1) return "1 day overdue";
   return `${diffDays} days overdue`;
 }
+
+// A project_steps.next_step's due date, as a three-way tone instead of
+// Notes' two-way isFollowUpDue/followUpLabel above — the timeline,
+// Projects list, and Dashboard all need to tell "due today" (amber) apart
+// from "overdue" (red), not just lump both together.
+export type DueTone = "overdue" | "today" | "upcoming";
+
+export function dueDateTone(dueDate: string): DueTone {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((today.getTime() - parseDateOnly(dueDate).getTime()) / 86_400_000);
+  if (diffDays > 0) return "overdue";
+  if (diffDays === 0) return "today";
+  return "upcoming";
+}
+
+export function dueDateLabel(dueDate: string): string {
+  const tone = dueDateTone(dueDate);
+  if (tone === "today") return "Due today";
+  if (tone === "overdue") {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((today.getTime() - parseDateOnly(dueDate).getTime()) / 86_400_000);
+    return diffDays === 1 ? "1 day overdue" : `${diffDays} days overdue`;
+  }
+  return `Due ${formatDateOnly(dueDate)}`;
+}

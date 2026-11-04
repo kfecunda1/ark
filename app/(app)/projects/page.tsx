@@ -7,9 +7,10 @@ import { ClickableCard } from "@/components/clickable-card";
 import { ProjectFilters } from "@/components/projects/project-filters";
 import { StageBadge } from "@/components/projects/badges";
 import { StatusSelect } from "@/components/projects/status-select";
+import { DueDateBadge } from "@/components/projects/due-date-badge";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/format";
-import type { Project } from "@/lib/types";
+import type { Project, ProjectStep } from "@/lib/types";
 
 interface ProjectsPageProps {
   searchParams: Promise<{
@@ -23,7 +24,7 @@ interface ProjectsPageProps {
 
 export default async function ProjectsPage({ searchParams }: ProjectsPageProps) {
   const params = await searchParams;
-  const sort = params.sort === "created_at" ? "created_at" : "last_activity_at";
+  const sort = params.sort === "created_at" || params.sort === "next_step_due" ? params.sort : "last_activity_at";
   const showArchived = params.archived === "true";
 
   const supabase = await createClient();
@@ -45,12 +46,44 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
       ? query.order("created_at", { ascending: true })
       : query.order("last_activity_at", { ascending: false });
 
-  const { data: projects, error } = await query;
+  const { data: projectsData, error } = await query;
+  let projects = (projectsData as Project[] | null) ?? [];
 
   const { data: contactsData } = await supabase.from("contacts").select("id, full_name");
   const contactNameById = new Map(
     ((contactsData as { id: string; full_name: string }[] | null) ?? []).map((c) => [c.id, c.full_name])
   );
+
+  // Earliest open next step per project — "open" meaning not yet done.
+  // Fetched regardless of sort, since the column shows regardless of
+  // which sort is active.
+  const nextStepByProjectId = new Map<string, Pick<ProjectStep, "body" | "due_date">>();
+  if (projects.length > 0) {
+    const { data: stepsData } = await supabase
+      .from("project_steps")
+      .select("project_id, body, due_date")
+      .in("project_id", projects.map((p) => p.id))
+      .eq("kind", "next_step")
+      .eq("done", false)
+      .order("due_date", { ascending: true });
+
+    for (const step of (stepsData as Pick<ProjectStep, "project_id" | "body" | "due_date">[] | null) ?? []) {
+      if (!nextStepByProjectId.has(step.project_id)) {
+        nextStepByProjectId.set(step.project_id, { body: step.body, due_date: step.due_date });
+      }
+    }
+  }
+
+  if (sort === "next_step_due") {
+    projects = [...projects].sort((a, b) => {
+      const aDue = nextStepByProjectId.get(a.id)?.due_date;
+      const bDue = nextStepByProjectId.get(b.id)?.due_date;
+      if (aDue && bDue) return aDue.localeCompare(bDue);
+      if (aDue) return -1;
+      if (bDue) return 1;
+      return 0;
+    });
+  }
 
   const title = showArchived ? "Archived Projects" : "Projects";
   const subtitle = showArchived ? "Projects that have been archived." : "Track and manage incoming projects.";
@@ -85,7 +118,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
         </GlassCard>
       )}
 
-      {!error && (!projects || projects.length === 0) && (
+      {!error && projects.length === 0 && (
         <GlassCard
           interactive={false}
           className="flex flex-col items-center justify-center gap-3 px-6 py-20 text-center"
@@ -104,7 +137,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
         </GlassCard>
       )}
 
-      {!error && projects && projects.length > 0 && (
+      {!error && projects.length > 0 && (
         <>
           <GlassCard interactive={false} className="hidden overflow-x-auto p-0 md:block">
             <table className="w-full min-w-[760px] text-left text-sm">
@@ -115,11 +148,12 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                   <th className="px-4 py-3 font-medium">Stage</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Client</th>
+                  <th className="px-4 py-3 font-medium">Next Step</th>
                   <th className="px-4 py-3 font-medium">Last Activity</th>
                 </tr>
               </thead>
               <tbody>
-                {(projects as Project[]).map((project) => (
+                {projects.map((project) => (
                   <ClickableRow
                     key={project.id}
                     href={`/projects/${project.id}`}
@@ -136,6 +170,20 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                     <td className="px-4 py-3 text-white/70">
                       {(project.client_contact_id && contactNameById.get(project.client_contact_id)) || "—"}
                     </td>
+                    <td className="px-4 py-3">
+                      {nextStepByProjectId.has(project.id) ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="max-w-[200px] truncate text-white/70">
+                            {nextStepByProjectId.get(project.id)!.body}
+                          </span>
+                          {nextStepByProjectId.get(project.id)!.due_date && (
+                            <DueDateBadge dueDate={nextStepByProjectId.get(project.id)!.due_date!} />
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-white/30">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-white/50">{formatDateTime(project.last_activity_at)}</td>
                   </ClickableRow>
                 ))}
@@ -144,7 +192,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
           </GlassCard>
 
           <div className="flex flex-col gap-3 md:hidden">
-            {(projects as Project[]).map((project) => (
+            {projects.map((project) => (
               <ClickableCard key={project.id} href={`/projects/${project.id}`}>
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <span className="text-sm font-medium text-white/85">{project.name}</span>
@@ -168,6 +216,17 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                       {(project.client_contact_id && contactNameById.get(project.client_contact_id)) || "—"}
                     </dd>
                   </div>
+                  {nextStepByProjectId.has(project.id) && (
+                    <div>
+                      <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Next Step</dt>
+                      <dd className="mt-0.5 flex flex-col gap-1">
+                        <span className="text-white/70">{nextStepByProjectId.get(project.id)!.body}</span>
+                        {nextStepByProjectId.get(project.id)!.due_date && (
+                          <DueDateBadge dueDate={nextStepByProjectId.get(project.id)!.due_date!} />
+                        )}
+                      </dd>
+                    </div>
+                  )}
                   <div>
                     <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
                       Last Activity

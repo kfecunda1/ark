@@ -18,10 +18,9 @@ interface ContactNotesSectionProps {
 const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 
-// Adds a note directly from the contact page, unlike the Projects
-// detail page's LinkedNotes (which links out to the standalone New Note
-// page) — addContactNote doesn't redirect, so the form just clears and
-// the new note appears in the list below without leaving this page.
+// Adds a note directly from the contact page, unlike the standalone New
+// Note page — addContactNote doesn't redirect, so the form just clears
+// and the new note appears in the list below without leaving this page.
 export function ContactNotesSection({ contactId, notes }: ContactNotesSectionProps) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);

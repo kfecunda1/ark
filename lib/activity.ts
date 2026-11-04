@@ -3,10 +3,11 @@ import { PRIORITY_LABELS, STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
 import type { ActivityAction, ActivityDetails, ActivityEntityType, ActivityLog } from "@/lib/types";
 
 // The three buckets the Activity page filters by. "document" covers
-// project_document and contact_document, and "contact" also covers
-// contact_product (a contact's own sub-record) — from the user's point
-// of view, a document is a document and a product row is still just
-// something that happened to a contact.
+// project_document and contact_document, "contact" also covers
+// contact_product (a contact's own sub-record), and "project" also
+// covers project_step (a timeline entry) — from the user's point of
+// view, a document is a document and a sub-record is still just
+// something that happened to its parent.
 export type ActivityFilter = "project" | "contact" | "document";
 
 export const ACTIVITY_FILTERS: ActivityFilter[] = ["project", "contact", "document"];
@@ -18,7 +19,7 @@ export const ACTIVITY_FILTER_LABELS: Record<ActivityFilter, string> = {
 };
 
 export const ACTIVITY_FILTER_ENTITY_TYPES: Record<ActivityFilter, ActivityEntityType[]> = {
-  project: ["project"],
+  project: ["project", "project_step"],
   contact: ["contact", "contact_product"],
   document: ["project_document", "contact_document"],
 };
@@ -33,6 +34,7 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   project_document: "Project document",
   contact_product: "Contact product",
   contact_document: "Contact document",
+  project_step: "Timeline entry",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -41,8 +43,11 @@ export const ACTION_LABELS: Record<ActivityAction, string> = {
   deleted: "Deleted",
 };
 
+// Child-entity types whose own 'deleted' row should still link to the
+// parent (which, unlike the child, still exists) — originally just the
+// two document types, now also project_step entries.
 export function isDocumentEntity(entityType: ActivityEntityType): boolean {
-  return entityType === "project_document" || entityType === "contact_document";
+  return entityType === "project_document" || entityType === "contact_document" || entityType === "project_step";
 }
 
 // Column names as they appear in details.fields, prettified for display.
@@ -69,6 +74,11 @@ const FIELD_LABELS: Record<string, string> = {
   document_type: "document type",
   file_name: "file name",
   file_path: "file path",
+  // project steps (timeline)
+  kind: "type",
+  body: "text",
+  due_date: "due date",
+  done: "done",
 };
 
 export function fieldLabel(field: string): string {
@@ -77,7 +87,7 @@ export function fieldLabel(field: string): string {
 
 // Fields whose change is already spelled out as its own "x -> y" chip, so
 // listing them again under "fields changed" would just be repetition.
-const FIELDS_DESCRIBED_SEPARATELY = new Set(["stage", "status", "priority", "archived", "full_name"]);
+const FIELDS_DESCRIBED_SEPARATELY = new Set(["stage", "status", "priority", "archived", "full_name", "done"]);
 
 function asPair<T>(value: T | [T, T] | undefined): [T, T] | null {
   return Array.isArray(value) ? (value as [T, T]) : null;
@@ -143,6 +153,14 @@ export function activityDetailChips(row: ActivityLog): string[] {
     chips.push(details.document_type);
   }
 
+  if (details.kind) {
+    chips.push(details.kind.replace("_", " "));
+  }
+
+  if (details.done) {
+    chips.push(details.done[1] ? "marked done" : "reopened");
+  }
+
   const rest = (details.fields ?? []).filter((f) => !FIELDS_DESCRIBED_SEPARATELY.has(f));
   if (rest.length > 0) {
     chips.push(`${rest.map(fieldLabel).join(", ")} changed`);
@@ -166,6 +184,7 @@ export function activityTarget(row: ActivityLog): ActivityTarget | null {
     // Documents and products have no page of their own, so they point
     // at their owner.
     case "project_document":
+    case "project_step":
       return row.details?.parent_id ? { table: "projects", id: row.details.parent_id } : null;
     case "contact_product":
     case "contact_document":

@@ -21,13 +21,14 @@ A project moves through four **stages** — New, Documents Received, Match, Stat
 ## Modules
 
 - **Projects** (`app/(app)/projects`, `lib/projects.ts`, `lib/actions/projects.ts`) — the core pipeline.
+- **Timeline** (`project_steps` table, `lib/actions/project-steps.ts`, `components/projects/project-timeline.tsx`) — replaces the old per-project Notes section on the project detail page. Three entry kinds: **step taken**, **next step** (carries a `due_date`), and a plain **note**. Open next steps (not yet done) are pinned at the top, earliest due date first; everything else — step-taken, plain notes, and next steps once checked off — lives in the full history below, newest first. Checking a next step's "Done" box sets `done`/`done_at` and moves it into history with a strikethrough; unticking reverses it. Every entry supports inline edit and delete (delete asks for confirmation). Due dates are colored by `lib/projects.ts`'s `dueDateTone()`: red = overdue, amber = due today, neutral = upcoming — shared with the Projects list's "Next Step" column and the Dashboard's Follow-ups Due section.
 - **Tranches** — each project has Tranche 1 and 2 always visible on its detail page, plus a "Tranches after" flow to add 3, 4, …; each tranche has a manual amount and a "sent on" date (empty = not sent). `project_tranches` table, `components/projects/tranches-section.tsx`.
 - **Contacts** (`app/(app)/contacts`) — people linked to projects, with free-text capability tags.
-- **Notes** (`app/(app)/notes`) — free-form notes and reminders, optionally linked to a project or contact.
-- **Activity** (`app/(app)/activity`, `lib/activity.ts`) — an audit log of created/updated/deleted rows across projects, contacts, and documents.
+- **Notes** (`app/(app)/notes`) — free-form notes and reminders, optionally linked to a contact (or nothing — notes no longer link to projects; a project's own activity lives in its Timeline instead).
+- **Activity** (`app/(app)/activity`, `lib/activity.ts`) — an audit log of created/updated/deleted rows across projects, contacts, documents, and timeline entries.
 - **Documents** — file upload with SHA-256 duplicate detection, attached to a project (`lib/storage.ts`, `lib/actions/projects.ts`). Document types: CIS, POF, DOA, PGL, JSON, Proof of Fulfillment, Supporting Documents, Additional Documents.
 - **Global search** (`components/global-search.tsx`, `lib/search.ts`) — searches projects, contacts, and documents.
-- **Project Steps** (`project_steps` table only — no UI yet) — the Phase 3 timeline: step-taken / next-step / note entries per project. See the TODO below.
+- **Dashboard** (`app/(app)/dashboard`) — Follow-ups Due (open next steps due today or overdue, across every non-archived project, with a Done checkbox right there) and Stuck Projects (open, non-archived, non-closed projects with no activity in 7+ days, oldest first).
 
 Duplicate detection (same client contact + product type) is a **warning only** — one client can have several deals of the same product, so it never blocks a save; "Add anyway" always works.
 
@@ -38,13 +39,6 @@ The real ARK schema lives in `supabase/migrations/001_ark_schema.sql` — run it
 Every table uses the same pattern: RLS enabled, policies gated on `is_registered_user()` (a Supabase Auth user becomes "registered" only once they have a `profiles` row — the app creates it on first login). For a private two-user tool, that means signups must also be disabled at the Supabase Auth level; `is_registered_user()` is the second lock on the door, not the first.
 
 Do not run database commands or migrations outside of a deliberate, reviewed step like this one.
-
-## TODO — Phase 3
-
-- **Project Steps timeline UI**: a page/section to log step-taken / next-step / note entries against a project (`project_steps` table already exists).
-- **Rebuild the Dashboard's Stuck Deals and Follow-ups Due**, removed in Phase 2 because their old backing fields (`stage_updated_at`, `follow_up_date`) no longer exist:
-  - **Follow-ups Due** ← `project_steps` rows where `kind = 'next_step'` and `due_date` has arrived.
-  - **Stuck Deals** ← projects where `last_activity_at` is 7+ days in the past (not yet archived/completed).
 
 ## Removed from the template
 

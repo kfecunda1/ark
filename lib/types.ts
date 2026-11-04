@@ -120,8 +120,8 @@ export interface ContactDocument {
   created_at: string;
 }
 
-// The Phase 3 timeline. Schema exists (project_steps), but no page or
-// component reads/writes this yet.
+// The project timeline (components/projects/project-timeline.tsx),
+// replacing the old per-project Notes section.
 export type ProjectStepKind = "step_taken" | "next_step" | "note";
 
 export interface ProjectStep {
@@ -131,10 +131,15 @@ export interface ProjectStep {
   body: string;
   due_date: string | null;
   done: boolean;
+  // Set when done is flipped to true, cleared when flipped back — see
+  // supabase/migrations/004_timeline.sql.
+  done_at: string | null;
   author_id: string | null;
   created_at: string;
 }
 
+// Projects no longer link to notes (supabase/migrations/004_timeline.sql
+// dropped notes.project_id) — a note links to a contact or nothing.
 export interface Note {
   id: string;
   created_at: string;
@@ -144,7 +149,6 @@ export interface Note {
   is_reminder: boolean;
   due_date: string | null;
   reminded_at: string | null;
-  project_id: string | null;
   contact_id: string | null;
 }
 
@@ -153,7 +157,8 @@ export type ActivityEntityType =
   | "contact"
   | "project_document"
   | "contact_product"
-  | "contact_document";
+  | "contact_document"
+  | "project_step";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
@@ -171,6 +176,9 @@ export interface ActivityDetails {
   parent_type?: "project" | "contact";
   parent_id?: string;
   document_type?: ProjectDocumentType;
+  kind?: ProjectStepKind;
+  due_date?: string | null;
+  done?: [boolean, boolean];
 }
 
 export interface ActivityLog {

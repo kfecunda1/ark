@@ -17,20 +17,14 @@ function unexpectedErrorMessage(err: unknown): string {
 }
 
 interface NoteLinks {
-  project_id: string | null;
   contact_id: string | null;
 }
 
-// The link picker submits a single "link_type" + "link_id" pair (or
-// link_type="" for no link) rather than two separate fields, since a
-// note can point at most one of project/contact.
+// Projects no longer link to notes (see supabase/migrations/004_
+// timeline.sql) — a note's only possible link is a contact.
 function parseLink(formData: FormData): NoteLinks {
-  const linkType = formData.get("link_type")?.toString().trim();
-  const linkId = formData.get("link_id")?.toString().trim() || null;
-
   return {
-    project_id: linkType === "project" ? linkId : null,
-    contact_id: linkType === "contact" ? linkId : null,
+    contact_id: formData.get("contact_id")?.toString().trim() || null,
   };
 }
 
@@ -58,7 +52,6 @@ function buildNotePayload(formData: FormData) {
 
 function revalidateForLinks(links: NoteLinks) {
   revalidatePath("/notes");
-  if (links.project_id) revalidatePath(`/projects/${links.project_id}`);
   if (links.contact_id) revalidatePath(`/contacts/${links.contact_id}`);
 }
 
@@ -120,11 +113,7 @@ export async function deleteNote(noteId: string): Promise<{ error: string | null
   try {
     const supabase = await createClient();
 
-    const { data: existing } = await supabase
-      .from("notes")
-      .select("project_id, contact_id")
-      .eq("id", noteId)
-      .maybeSingle();
+    const { data: existing } = await supabase.from("notes").select("contact_id").eq("id", noteId).maybeSingle();
 
     const { error } = await supabase.from("notes").delete().eq("id", noteId);
 
@@ -132,7 +121,7 @@ export async function deleteNote(noteId: string): Promise<{ error: string | null
       return { error: error.message };
     }
 
-    revalidateForLinks(existing ?? { project_id: null, contact_id: null });
+    revalidateForLinks(existing ?? { contact_id: null });
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
