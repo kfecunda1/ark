@@ -19,28 +19,17 @@ export default async function EditNotePage({ params }: EditNotePageProps) {
     notFound();
   }
 
-  const [{ data: leadsData }, { data: contactsData }] = await Promise.all([
-    supabase
-      .from("leads")
-      .select("id, product_type, primary_contact_id, counterparty_contact_id")
-      .eq("archived", false),
+  const [{ data: projectsData }, { data: contactsData }] = await Promise.all([
+    supabase.from("projects").select("id, name").is("archived_at", null),
     supabase.from("contacts").select("id, full_name, phone, email"),
   ]);
 
   const contacts = (contactsData as Contact[] | null) ?? [];
-  const contactNameById = new Map(contacts.map((c) => [c.id, c.full_name]));
 
-  const leads = (
-    (leadsData as
-      | Pick<Project, "id" | "product_type" | "primary_contact_id" | "counterparty_contact_id">[]
-      | null) ?? []
-  ).map((lead) => {
-    const contactName = lead.primary_contact_id ? contactNameById.get(lead.primary_contact_id) : null;
-    return {
-      id: lead.id,
-      label: `${contactName ? `${contactName} — ` : ""}${lead.product_type}`,
-    };
-  });
+  const projects = ((projectsData as Pick<Project, "id" | "name">[] | null) ?? []).map((project) => ({
+    id: project.id,
+    label: project.name,
+  }));
 
   const contactOptions = contacts.map((contact) => ({ id: contact.id, label: contactLabel(contact) }));
 
@@ -50,7 +39,7 @@ export default async function EditNotePage({ params }: EditNotePageProps) {
         <h1 className="text-2xl font-semibold tracking-tight text-white">Edit Note</h1>
         <p className="mt-1 text-sm text-white/45">Update this note.</p>
       </div>
-      <NoteForm mode="edit" note={note} leads={leads} contacts={contactOptions} />
+      <NoteForm mode="edit" note={note} projects={projects} contacts={contactOptions} />
     </div>
   );
 }

@@ -11,7 +11,16 @@ import { buildDocumentPath, computeFileHash, uploadFileWithProgress } from "@/li
 import { formatDateTime } from "@/lib/format";
 import type { ProjectDocument, ProjectDocumentType } from "@/lib/types";
 
-const DOCUMENT_TYPES: ProjectDocumentType[] = ["CIS", "MOU", "SPA", "IMFPA", "Other"];
+const DOCUMENT_TYPES: ProjectDocumentType[] = [
+  "CIS",
+  "POF",
+  "DOA",
+  "PGL",
+  "JSON",
+  "Proof of Fulfillment",
+  "Supporting Documents",
+  "Additional Documents",
+];
 const ACCEPTED_TYPES =
   ".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png";
 
@@ -58,14 +67,14 @@ export function ProjectDocuments({ projectId, documents }: ProjectDocumentsProps
       }
 
       const path = buildDocumentPath(file.name);
-      await uploadFileWithProgress("lead-documents", file, path, session.access_token, setUploadProgress);
+      await uploadFileWithProgress("project-documents", file, path, session.access_token, setUploadProgress);
 
       const result = await addProjectDocument(projectId, type, path, file.name, hash);
       if (result.error) {
         setError(result.error);
         // The file made it to storage but never got a DB row — don't leave
         // it behind as an orphan.
-        await supabase.storage.from("lead-documents").remove([path]);
+        await supabase.storage.from("project-documents").remove([path]);
       } else {
         router.refresh();
       }

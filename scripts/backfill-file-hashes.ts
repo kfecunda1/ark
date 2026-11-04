@@ -1,6 +1,7 @@
-// Backfills file_hash on existing lead_documents rows (added nullable by
-// migration 020, since nothing had a hash before it). Downloads each
-// document that has no file_hash yet, computes its
+// Backfills file_hash on existing project_documents rows that somehow
+// have none (file_hash is written at upload time by the app itself, so
+// this is normally a no-op — a safety net, not a routine step).
+// Downloads each document that has no file_hash yet, computes its
 // SHA-256, and writes just that one column.
 //
 // Dry run by default — reports counts and nothing else. Pass --apply to
@@ -18,9 +19,10 @@
 //  - Only ever writes the file_hash column, only on rows where it is
 //    currently null. No other column, no file in Storage, is ever
 //    touched, modified, or deleted — not in dry-run, not with --apply.
-//  - migration 020's unique partial index — (lead_id, file_hash) where
-//    file_hash is not null — rejects a second identical-hash document on
-//    the same record. When two
+//  - project_documents_project_id_file_hash_key (the unique partial
+//    index on (project_id, file_hash) where file_hash is not null, from
+//    supabase/migrations/001_ark_schema.sql) rejects a second
+//    identical-hash document on the same record. When two
 //    existing documents on the same record are byte-identical, this
 //    script reports the pair instead of crashing: the first one found
 //    (oldest by created_at) gets hashed, the rest are listed under
@@ -47,13 +49,18 @@ interface DocumentRow {
 
 interface TableConfig {
   label: string;
-  table: "lead_documents";
-  bucket: "lead-documents";
-  recordIdColumn: "lead_id";
+  table: "project_documents";
+  bucket: "project-documents";
+  recordIdColumn: "project_id";
 }
 
 const TABLES: TableConfig[] = [
-  { label: "Project documents", table: "lead_documents", bucket: "lead-documents", recordIdColumn: "lead_id" },
+  {
+    label: "Project documents",
+    table: "project_documents",
+    bucket: "project-documents",
+    recordIdColumn: "project_id",
+  },
 ];
 
 function loadEnv(): Record<string, string> {

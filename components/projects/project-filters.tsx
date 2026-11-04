@@ -1,8 +1,8 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Archive, CheckCircle2 } from "lucide-react";
-import { STAGES, STAGE_LABELS } from "@/lib/projects";
+import { Archive } from "lucide-react";
+import { STAGES, STAGE_LABELS, STATUSES, STATUS_LABELS } from "@/lib/projects";
 import { PRODUCT_TYPES } from "@/lib/products";
 
 const selectClass =
@@ -13,7 +13,6 @@ export function ProjectFilters() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const showArchived = searchParams.get("archived") === "true";
-  const showClosed = searchParams.get("closed") === "true";
 
   function setParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -59,19 +58,21 @@ export function ProjectFilters() {
         ))}
       </select>
 
-      <button
-        type="button"
-        onClick={() => setParam("closed", showClosed ? "" : "true")}
-        aria-pressed={showClosed}
-        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors duration-150 ease-out ${
-          showClosed
-            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-            : "border-white/[0.06] bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"
-        }`}
+      <select
+        aria-label="Filter by status"
+        value={searchParams.get("status") ?? ""}
+        onChange={(e) => setParam("status", e.target.value)}
+        className={selectClass}
       >
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        {showClosed ? "Showing Closed" : "Closed"}
-      </button>
+        <option value="" className="bg-[#0a0e17]">
+          All statuses
+        </option>
+        {STATUSES.map((status) => (
+          <option key={status} value={status} className="bg-[#0a0e17]">
+            {STATUS_LABELS[status]}
+          </option>
+        ))}
+      </select>
 
       <button
         type="button"
@@ -89,15 +90,15 @@ export function ProjectFilters() {
 
       <select
         aria-label="Sort projects"
-        value={searchParams.get("sort") ?? "follow_up_date"}
+        value={searchParams.get("sort") ?? "last_activity_at"}
         onChange={(e) => setParam("sort", e.target.value)}
         className={`${selectClass} ml-auto`}
       >
-        <option value="follow_up_date" className="bg-[#0a0e17]">
-          Sort: Follow-up date
+        <option value="last_activity_at" className="bg-[#0a0e17]">
+          Sort: Last activity
         </option>
-        <option value="stage_updated_at" className="bg-[#0a0e17]">
-          Sort: Stage updated (oldest first)
+        <option value="created_at" className="bg-[#0a0e17]">
+          Sort: Oldest first
         </option>
       </select>
     </div>

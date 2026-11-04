@@ -20,35 +20,35 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
   if (params.reminders === "true") {
     query = query.eq("is_reminder", true);
   }
-  if (params.type === "lead") query = query.not("lead_id", "is", null);
+  if (params.type === "project") query = query.not("project_id", "is", null);
   if (params.type === "contact") query = query.not("contact_id", "is", null);
 
   const { data, error } = await query;
   const notes = (data as Note[] | null) ?? [];
 
-  const leadIds = notes.map((n) => n.lead_id).filter((id): id is string => Boolean(id));
+  const projectIds = notes.map((n) => n.project_id).filter((id): id is string => Boolean(id));
   const contactIds = notes.map((n) => n.contact_id).filter((id): id is string => Boolean(id));
 
-  const [{ data: leadsData }, { data: contactsData }] = await Promise.all([
-    leadIds.length > 0
-      ? supabase.from("leads").select("id, product_type").in("id", leadIds)
+  const [{ data: projectsData }, { data: contactsData }] = await Promise.all([
+    projectIds.length > 0
+      ? supabase.from("projects").select("id, name").in("id", projectIds)
       : Promise.resolve({ data: [] }),
     contactIds.length > 0
       ? supabase.from("contacts").select("id, full_name").in("id", contactIds)
       : Promise.resolve({ data: [] }),
   ]);
 
-  const leadsById = new Map(((leadsData as Pick<Project, "id" | "product_type">[] | null) ?? []).map((l) => [l.id, l]));
+  const projectsById = new Map(((projectsData as Pick<Project, "id" | "name">[] | null) ?? []).map((p) => [p.id, p]));
   const contactsById = new Map(
     ((contactsData as Pick<Contact, "id" | "full_name">[] | null) ?? []).map((c) => [c.id, c])
   );
 
   function linkFor(note: Note): { href: string; label: string; icon: typeof Users } | null {
-    if (note.lead_id) {
-      const project = leadsById.get(note.lead_id);
+    if (note.project_id) {
+      const project = projectsById.get(note.project_id);
       return {
-        href: `/projects/${note.lead_id}`,
-        label: project?.product_type ?? "Project",
+        href: `/projects/${note.project_id}`,
+        label: project?.name ?? "Project",
         icon: Users,
       };
     }

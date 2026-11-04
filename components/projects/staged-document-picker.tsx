@@ -8,7 +8,16 @@ import { findProjectDocumentsByHash } from "@/lib/actions/projects";
 import { computeFileHash } from "@/lib/storage";
 import type { ProjectDocumentType } from "@/lib/types";
 
-const DOCUMENT_TYPES: ProjectDocumentType[] = ["CIS", "MOU", "SPA", "IMFPA", "Other"];
+const DOCUMENT_TYPES: ProjectDocumentType[] = [
+  "CIS",
+  "POF",
+  "DOA",
+  "PGL",
+  "JSON",
+  "Proof of Fulfillment",
+  "Supporting Documents",
+  "Additional Documents",
+];
 const ACCEPTED_TYPES =
   ".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png";
 

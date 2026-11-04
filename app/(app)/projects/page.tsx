@@ -1,54 +1,48 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { AlertTriangle, Plus, Users } from "lucide-react";
+import { Plus, Users } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { ClickableRow } from "@/components/clickable-row";
 import { ClickableCard } from "@/components/clickable-card";
 import { ProjectFilters } from "@/components/projects/project-filters";
-import { StageBadge } from "@/components/projects/badges";
+import { StageBadge, StatusBadge } from "@/components/projects/badges";
 import { createClient } from "@/lib/supabase/server";
-import { STUCK_THRESHOLD_DAYS, formatDateOnly, isFollowUpDue, isStuckDeal } from "@/lib/projects";
+import { formatDateTime } from "@/lib/format";
 import type { Project } from "@/lib/types";
-
-const CLOSED_STAGES = ["closed_won", "closed_lost"];
 
 interface ProjectsPageProps {
   searchParams: Promise<{
     product_type?: string;
     stage?: string;
+    status?: string;
     sort?: string;
     archived?: string;
-    closed?: string;
   }>;
 }
 
 export default async function ProjectsPage({ searchParams }: ProjectsPageProps) {
   const params = await searchParams;
-  const sort = params.sort === "stage_updated_at" ? "stage_updated_at" : "follow_up_date";
+  const sort = params.sort === "created_at" ? "created_at" : "last_activity_at";
   const showArchived = params.archived === "true";
-  const showClosed = params.closed === "true";
 
   const supabase = await createClient();
-  let query = supabase.from("leads").select("*").eq("archived", showArchived);
+  let query = supabase.from("projects").select("*");
+  query = showArchived ? query.not("archived_at", "is", null) : query.is("archived_at", null);
 
   if (params.product_type) {
     query = query.eq("product_type", params.product_type);
   }
   if (params.stage) {
-    // An explicit stage filter (e.g. the Dashboard's "Closed Won this
-    // month" link) always wins over the Closed toggle's default
-    // inclusion/exclusion below.
     query = query.eq("stage", params.stage);
-  } else if (showClosed) {
-    query = query.in("stage", CLOSED_STAGES);
-  } else {
-    query = query.not("stage", "in", `(${CLOSED_STAGES.join(",")})`);
+  }
+  if (params.status) {
+    query = query.eq("status", params.status);
   }
 
   query =
-    sort === "follow_up_date"
-      ? query.order("follow_up_date", { ascending: true, nullsFirst: false })
-      : query.order("stage_updated_at", { ascending: true });
+    sort === "created_at"
+      ? query.order("created_at", { ascending: true })
+      : query.order("last_activity_at", { ascending: false });
 
   const { data: projects, error } = await query;
 
@@ -57,27 +51,10 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
     ((contactsData as { id: string; full_name: string }[] | null) ?? []).map((c) => [c.id, c.full_name])
   );
 
-  const title = showClosed && showArchived
-    ? "Closed & Archived Projects"
-    : showClosed
-      ? "Closed Projects"
-      : showArchived
-        ? "Archived Projects"
-        : "Projects";
-  const subtitle = showClosed && showArchived
-    ? "Archived projects that are closed won or closed lost."
-    : showClosed
-      ? "Projects that are closed won or closed lost."
-      : showArchived
-        ? "Projects that have been archived."
-        : "Track and manage incoming projects.";
-  const emptyTitle = showClosed && showArchived
-    ? "No closed, archived projects"
-    : showClosed
-      ? "No closed projects"
-      : showArchived
-        ? "No archived projects"
-        : "No projects yet";
+  const title = showArchived ? "Archived Projects" : "Projects";
+  const subtitle = showArchived ? "Projects that have been archived." : "Track and manage incoming projects.";
+  const emptyTitle = showArchived ? "No archived projects" : "No projects yet";
+  const filtered = Boolean(params.product_type || params.stage || params.status);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -117,13 +94,11 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
           </div>
           <p className="text-sm font-medium text-white/70">{emptyTitle}</p>
           <p className="max-w-xs text-xs text-white/35">
-            {params.product_type || params.stage
+            {filtered
               ? "No projects match the current filters."
-              : showClosed
-                ? "Projects you move to Closed Won or Closed Lost will show up here."
-                : showArchived
-                  ? "Projects you archive will show up here."
-                  : "New projects will show up here once your pipeline is connected."}
+              : showArchived
+                ? "Projects you archive will show up here."
+                : "New projects will show up here once your pipeline is connected."}
           </p>
         </GlassCard>
       )}
@@ -134,117 +109,69 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
                 <tr className="border-b border-white/[0.06] text-xs tracking-wide text-white/40 uppercase">
+                  <th className="px-4 py-3 font-medium">Name</th>
                   <th className="px-4 py-3 font-medium">Product</th>
-                  <th className="px-4 py-3 font-medium">Procedure Type</th>
                   <th className="px-4 py-3 font-medium">Stage</th>
-                  <th className="px-4 py-3 font-medium">Contact</th>
-                  <th className="px-4 py-3 font-medium">Follow-up</th>
+                  <th className="px-4 py-3 font-medium">Client</th>
+                  <th className="px-4 py-3 font-medium">Last Activity</th>
                 </tr>
               </thead>
               <tbody>
-                {(projects as Project[]).map((project) => {
-                  const stuck = isStuckDeal(project.stage, project.stage_updated_at);
-                  const followUpDue = isFollowUpDue(project.follow_up_date);
-
-                  return (
-                    <ClickableRow
-                      key={project.id}
-                      href={`/projects/${project.id}`}
-                      className={`border-b border-white/[0.04] transition-colors duration-150 ease-out last:border-0 hover:bg-white/[0.03] ${
-                        stuck ? "border-l-2 border-l-amber-500/50 bg-amber-500/[0.04]" : ""
-                      }`}
-                    >
-                      <td className="px-4 py-3 text-white/80 group-hover:text-white">{project.product_type}</td>
-                      <td className="px-4 py-3 text-white/70 group-hover:text-white">{project.procedure_type}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <StageBadge stage={project.stage} />
-                          {stuck && (
-                            <span title={`No stage change in over ${STUCK_THRESHOLD_DAYS} days`}>
-                              <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-white/70">
-                        {(project.primary_contact_id && contactNameById.get(project.primary_contact_id)) || "—"}
-                      </td>
-                      <td
-                        className={`px-4 py-3 ${followUpDue ? "font-medium text-rose-300" : "text-white/50"}`}
-                      >
-                        <span className="inline-flex items-center gap-1.5">
-                          {project.follow_up_date ? formatDateOnly(project.follow_up_date) : "—"}
-                          {followUpDue && (
-                            <span
-                              title="Follow-up due"
-                              className="inline-block h-1.5 w-1.5 rounded-full bg-rose-400"
-                            />
-                          )}
-                        </span>
-                      </td>
-                    </ClickableRow>
-                  );
-                })}
+                {(projects as Project[]).map((project) => (
+                  <ClickableRow
+                    key={project.id}
+                    href={`/projects/${project.id}`}
+                    className="border-b border-white/[0.04] transition-colors duration-150 ease-out last:border-0 hover:bg-white/[0.03]"
+                  >
+                    <td className="px-4 py-3 text-white/80 group-hover:text-white">{project.name}</td>
+                    <td className="px-4 py-3 text-white/70 group-hover:text-white">{project.product_type}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <StageBadge stage={project.stage} />
+                        {project.status && <StatusBadge status={project.status} />}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-white/70">
+                      {(project.client_contact_id && contactNameById.get(project.client_contact_id)) || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-white/50">{formatDateTime(project.last_activity_at)}</td>
+                  </ClickableRow>
+                ))}
               </tbody>
             </table>
           </GlassCard>
 
           <div className="flex flex-col gap-3 md:hidden">
-            {(projects as Project[]).map((project) => {
-              const stuck = isStuckDeal(project.stage, project.stage_updated_at);
-              const followUpDue = isFollowUpDue(project.follow_up_date);
-
-              return (
-                <ClickableCard
-                  key={project.id}
-                  href={`/projects/${project.id}`}
-                  className={stuck ? "border-l-2 border-l-amber-500/50 bg-amber-500/[0.04]" : ""}
-                >
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <span className="text-sm font-medium text-white/85">{project.product_type}</span>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <StageBadge stage={project.stage} />
-                      {stuck && (
-                        <span title={`No stage change in over ${STUCK_THRESHOLD_DAYS} days`}>
-                          <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
-                        </span>
-                      )}
-                    </div>
+            {(projects as Project[]).map((project) => (
+              <ClickableCard key={project.id} href={`/projects/${project.id}`}>
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <span className="text-sm font-medium text-white/85">{project.name}</span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <StageBadge stage={project.stage} />
+                    {project.status && <StatusBadge status={project.status} />}
                   </div>
+                </div>
 
-                  <dl className="flex flex-col gap-2 text-sm">
-                    <div>
-                      <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
-                        Procedure Type
-                      </dt>
-                      <dd className="mt-0.5 text-white/70">{project.procedure_type}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Contact</dt>
-                      <dd className="mt-0.5 text-white/70">
-                        {(project.primary_contact_id && contactNameById.get(project.primary_contact_id)) || "—"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
-                        Follow-up
-                      </dt>
-                      <dd
-                        className={`mt-0.5 inline-flex items-center gap-1.5 ${followUpDue ? "font-medium text-rose-300" : "text-white/50"}`}
-                      >
-                        {project.follow_up_date ? formatDateOnly(project.follow_up_date) : "—"}
-                        {followUpDue && (
-                          <span
-                            title="Follow-up due"
-                            className="inline-block h-1.5 w-1.5 rounded-full bg-rose-400"
-                          />
-                        )}
-                      </dd>
-                    </div>
-                  </dl>
-                </ClickableCard>
-              );
-            })}
+                <dl className="flex flex-col gap-2 text-sm">
+                  <div>
+                    <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Product</dt>
+                    <dd className="mt-0.5 text-white/70">{project.product_type}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Client</dt>
+                    <dd className="mt-0.5 text-white/70">
+                      {(project.client_contact_id && contactNameById.get(project.client_contact_id)) || "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
+                      Last Activity
+                    </dt>
+                    <dd className="mt-0.5 text-white/50">{formatDateTime(project.last_activity_at)}</dd>
+                  </div>
+                </dl>
+              </ClickableCard>
+            ))}
           </div>
         </>
       )}

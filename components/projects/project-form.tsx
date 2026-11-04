@@ -6,7 +6,6 @@ import Link from "next/link";
 import { GlassCard } from "@/components/glass-card";
 import { ContactPicker, type ContactOption } from "@/components/contacts/contact-picker";
 import { StagedDocumentPicker, type StagedDocument } from "@/components/projects/staged-document-picker";
-import { AutocompleteInput } from "@/components/projects/autocomplete-input";
 import { DuplicateWarningBanner } from "@/components/duplicate-warning-banner";
 import {
   addProjectDocument,
@@ -19,25 +18,14 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
-import { STAGES, STAGE_LABELS, PRIORITIES, PRIORITY_LABELS } from "@/lib/projects";
+import { STAGES, STAGE_LABELS, STATUSES, STATUS_LABELS, PRIORITIES, PRIORITY_LABELS } from "@/lib/projects";
 import { PRODUCT_TYPES } from "@/lib/products";
-import type { Project } from "@/lib/types";
-
-interface ProfileOption {
-  id: string;
-  full_name: string | null;
-  email: string | null;
-}
+import type { Project, ProjectStage, ProductType } from "@/lib/types";
 
 interface ProjectFormProps {
   mode: "create" | "edit";
   project?: Project;
-  profiles: ProfileOption[];
   contacts: ContactOption[];
-  // Existing distinct values across all projects, for the autocomplete
-  // suggestions on these free-text fields.
-  existingProcedureTypes?: string[];
-  existingSources?: string[];
 }
 
 const initialState: ProjectFormState = { error: null };
@@ -48,14 +36,7 @@ const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
 type CreateStatus = "idle" | "creating" | "uploading";
 
-export function ProjectForm({
-  mode,
-  project,
-  profiles,
-  contacts,
-  existingProcedureTypes = [],
-  existingSources = [],
-}: ProjectFormProps) {
+export function ProjectForm({ mode, project, contacts }: ProjectFormProps) {
   const router = useRouter();
 
   // Edit mode keeps the existing server-action/useActionState flow — it
@@ -77,6 +58,11 @@ export function ProjectForm({
   const lastFormDataRef = useRef<FormData | null>(null);
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
 
+  // Stage is only tracked locally so the Status field can show/hide
+  // itself live as the user picks a different stage, before anything is
+  // saved.
+  const [stage, setStage] = useState<ProjectStage>(project?.stage ?? "new");
+
   async function handleCreateSubmit(e: React.FormEvent<HTMLFormElement>) {
     disableSubmitButton(submitButtonRef);
     e.preventDefault();
@@ -91,24 +77,17 @@ export function ProjectForm({
     setCreateStatus("creating");
 
     if (!skipDuplicateCheck) {
-      const primaryContactId = formData.get("primary_contact_id")?.toString().trim();
-      // No primary contact yet (the field is required, but this check
-      // runs before that validation) — nothing to match on, so skip
-      // straight to the normal required-field error from createProjectWithId.
-      if (primaryContactId) {
-        const productType = formData.get("product_type")?.toString().trim();
-        const procedureType = formData.get("procedure_type")?.toString().trim();
-        if (productType && procedureType) {
-          const matches = await findDuplicateProjects({
-            primaryContactId,
-            productType,
-            procedureType,
-          });
-          if (matches.length > 0) {
-            setDuplicateMatches(matches);
-            setCreateStatus("idle");
-            return;
-          }
+      const clientContactId = formData.get("client_contact_id")?.toString().trim();
+      const productType = formData.get("product_type")?.toString().trim();
+      if (clientContactId && productType) {
+        const matches = await findDuplicateProjects({
+          clientContactId,
+          productType: productType as ProductType,
+        });
+        if (matches.length > 0) {
+          setDuplicateMatches(matches);
+          setCreateStatus("idle");
+          return;
         }
       }
     }
@@ -136,7 +115,7 @@ export function ProjectForm({
         try {
           if (!session) throw new Error("Session expired");
           const path = buildDocumentPath(doc.file.name);
-          await uploadFileWithProgress("lead-documents", doc.file, path, session.access_token, () => {});
+          await uploadFileWithProgress("project-documents", doc.file, path, session.access_token, () => {});
           const addResult = await addProjectDocument(projectId, doc.type, path, doc.file.name, doc.hash);
           if (addResult.error) throw new Error(addResult.error);
         } catch {
@@ -168,6 +147,19 @@ export function ProjectForm({
   return (
     <form {...formProps} className="flex flex-col gap-6">
       <GlassCard interactive={false} className="grid grid-cols-1 gap-5 p-6 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <label className={labelClass} htmlFor="name">
+            Name *
+          </label>
+          <input
+            id="name"
+            name="name"
+            required
+            defaultValue={project?.name ?? ""}
+            className={fieldClass}
+          />
+        </div>
+
         <div>
           <label className={labelClass} htmlFor="product_type">
             Product Type *
@@ -191,20 +183,6 @@ export function ProjectForm({
         </div>
 
         <div>
-          <label className={labelClass} htmlFor="procedure_type">
-            Procedure Type *
-          </label>
-          <AutocompleteInput
-            id="procedure_type"
-            name="procedure_type"
-            required
-            defaultValue={project?.procedure_type ?? ""}
-            suggestions={existingProcedureTypes}
-            className={fieldClass}
-          />
-        </div>
-
-        <div>
           <label className={labelClass} htmlFor="priority">
             Priority
           </label>
@@ -221,43 +199,96 @@ export function ProjectForm({
           <label className={labelClass} htmlFor="stage">
             Stage
           </label>
-          <select id="stage" name="stage" defaultValue={project?.stage ?? "new"} className={fieldClass}>
-            {STAGES.map((stage) => (
-              <option key={stage} value={stage} className="bg-[#0a0e17]">
-                {STAGE_LABELS[stage]}
+          <select
+            id="stage"
+            name="stage"
+            value={stage}
+            onChange={(e) => setStage(e.target.value as ProjectStage)}
+            className={fieldClass}
+          >
+            {STAGES.map((s) => (
+              <option key={s} value={s} className="bg-[#0a0e17]">
+                {STAGE_LABELS[s]}
               </option>
             ))}
           </select>
         </div>
 
+        {stage === "status" && (
+          <div>
+            <label className={labelClass} htmlFor="status">
+              Status *
+            </label>
+            <select
+              id="status"
+              name="status"
+              required
+              defaultValue={project?.status ?? "open"}
+              className={fieldClass}
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s} className="bg-[#0a0e17]">
+                  {STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div>
           <ContactPicker
-            name="primary_contact_id"
-            label="Primary Contact *"
+            name="client_contact_id"
+            label="Client Contact"
             contacts={contacts}
-            defaultContactId={project?.primary_contact_id}
+            defaultContactId={project?.client_contact_id}
           />
         </div>
 
         <div>
           <ContactPicker
-            name="counterparty_contact_id"
-            label="Counterparty Contact"
+            name="assigned_contact_id"
+            label="Assigned Contact"
             contacts={contacts}
-            defaultContactId={project?.counterparty_contact_id}
+            defaultContactId={project?.assigned_contact_id}
           />
         </div>
 
         <div>
-          <label className={labelClass} htmlFor="deal_value">
-            Deal Value
+          <label className={labelClass} htmlFor="ratio_presented">
+            Ratio Presented
           </label>
           <input
-            id="deal_value"
-            name="deal_value"
+            id="ratio_presented"
+            name="ratio_presented"
+            placeholder="e.g. 70/30"
+            defaultValue={project?.ratio_presented ?? ""}
+            className={fieldClass}
+          />
+        </div>
+
+        <div>
+          <label className={labelClass} htmlFor="ratio_real">
+            Ratio Real
+          </label>
+          <input
+            id="ratio_real"
+            name="ratio_real"
+            placeholder="e.g. 70/30"
+            defaultValue={project?.ratio_real ?? ""}
+            className={fieldClass}
+          />
+        </div>
+
+        <div>
+          <label className={labelClass} htmlFor="total_face_value">
+            Total Face Value
+          </label>
+          <input
+            id="total_face_value"
+            name="total_face_value"
             type="number"
             step="0.01"
-            defaultValue={project?.deal_value ?? ""}
+            defaultValue={project?.total_face_value ?? ""}
             className={fieldClass}
           />
         </div>
@@ -270,67 +301,7 @@ export function ProjectForm({
             id="currency"
             name="currency"
             placeholder="USD, EUR, GBP…"
-            defaultValue={project?.currency ?? ""}
-            className={fieldClass}
-          />
-        </div>
-
-        <div>
-          <label className={labelClass} htmlFor="source">
-            Source
-          </label>
-          <AutocompleteInput
-            id="source"
-            name="source"
-            defaultValue={project?.source ?? ""}
-            suggestions={existingSources}
-            className={fieldClass}
-          />
-        </div>
-
-        <div>
-          <label className={labelClass} htmlFor="follow_up_date">
-            Follow-up Date
-          </label>
-          <input
-            id="follow_up_date"
-            name="follow_up_date"
-            type="date"
-            defaultValue={project?.follow_up_date ?? ""}
-            className={fieldClass}
-          />
-        </div>
-
-        <div>
-          <label className={labelClass} htmlFor="assigned_to">
-            Assigned To
-          </label>
-          <select
-            id="assigned_to"
-            name="assigned_to"
-            defaultValue={project?.assigned_to ?? ""}
-            className={fieldClass}
-          >
-            <option value="" className="bg-[#0a0e17]">
-              Unassigned
-            </option>
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id} className="bg-[#0a0e17]">
-                {profile.full_name || profile.email || profile.id}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="sm:col-span-2">
-          <label className={labelClass} htmlFor="notes">
-            Notes
-          </label>
-          <textarea
-            id="notes"
-            name="notes"
-            rows={4}
-            defaultValue={project?.notes ?? ""}
+            defaultValue={project?.currency ?? "USD"}
             className={fieldClass}
           />
         </div>
@@ -345,7 +316,7 @@ export function ProjectForm({
 
       {duplicateMatches && duplicateMatches.length > 0 && (
         <DuplicateWarningBanner
-          heading="A project with this same contact, product type and procedure type already exists:"
+          heading="A project with this same client contact and product type already exists:"
           matches={duplicateMatches.map((m) => ({ id: m.id, href: `/projects/${m.id}`, label: m.label, meta: m.meta }))}
           onAddAnyway={handleAddAnyway}
         />

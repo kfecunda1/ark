@@ -41,7 +41,7 @@ export function NoteFilters() {
         <option value="" className="bg-[#0a0e17]">
           All types
         </option>
-        <option value="lead" className="bg-[#0a0e17]">
+        <option value="project" className="bg-[#0a0e17]">
           Projects
         </option>
         <option value="contact" className="bg-[#0a0e17]">

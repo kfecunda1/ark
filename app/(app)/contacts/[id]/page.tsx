@@ -21,17 +21,17 @@ export default async function ContactDetailPage({ params }: ContactDetailPagePro
     notFound();
   }
 
-  const [{ data: leadsData }, { data: capabilitiesData }, { data: notesData }] = await Promise.all([
+  const [{ data: projectsData }, { data: capabilitiesData }, { data: notesData }] = await Promise.all([
     supabase
-      .from("leads")
+      .from("projects")
       .select("*")
-      .or(`primary_contact_id.eq.${id},counterparty_contact_id.eq.${id}`)
+      .or(`client_contact_id.eq.${id},assigned_contact_id.eq.${id}`)
       .order("created_at", { ascending: false }),
     supabase.from("contact_capabilities").select("*").eq("contact_id", id).order("created_at"),
     supabase.from("notes").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
   ]);
 
-  const relatedProjects = (leadsData as Project[] | null) ?? [];
+  const relatedProjects = (projectsData as Project[] | null) ?? [];
   const capabilities = (capabilitiesData as ContactCapability[] | null) ?? [];
   const notes = (notesData as Note[] | null) ?? [];
 
@@ -94,7 +94,7 @@ export default async function ContactDetailPage({ params }: ContactDetailPagePro
           <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Related Projects</h2>
           <div className="flex flex-col gap-2">
             {relatedProjects.map((project) => {
-              const role = project.primary_contact_id === contact.id ? "Primary" : "Counterparty";
+              const role = project.client_contact_id === contact.id ? "Client" : "Assigned";
               return (
                 <Link
                   key={project.id}
@@ -104,7 +104,7 @@ export default async function ContactDetailPage({ params }: ContactDetailPagePro
                   <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-white/50">
                     {role}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.product_type}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
                 </Link>
               );
             })}

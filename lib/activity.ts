@@ -1,23 +1,23 @@
-import { PRIORITY_LABELS, STAGE_LABELS } from "@/lib/projects";
+import { PRIORITY_LABELS, STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
 import type { ActivityAction, ActivityDetails, ActivityEntityType, ActivityLog } from "@/lib/types";
 
 // The three buckets the Activity page filters by. "document" covers
-// lead_document, since from the user's point of view a document is a
+// project_document, since from the user's point of view a document is a
 // document.
-export type ActivityFilter = "lead" | "contact" | "document";
+export type ActivityFilter = "project" | "contact" | "document";
 
-export const ACTIVITY_FILTERS: ActivityFilter[] = ["lead", "contact", "document"];
+export const ACTIVITY_FILTERS: ActivityFilter[] = ["project", "contact", "document"];
 
 export const ACTIVITY_FILTER_LABELS: Record<ActivityFilter, string> = {
-  lead: "Projects",
+  project: "Projects",
   contact: "Contacts",
   document: "Documents",
 };
 
 export const ACTIVITY_FILTER_ENTITY_TYPES: Record<ActivityFilter, ActivityEntityType[]> = {
-  lead: ["lead"],
+  project: ["project"],
   contact: ["contact"],
-  document: ["lead_document"],
+  document: ["project_document"],
 };
 
 export function parseActivityFilter(value: string | undefined): ActivityFilter | null {
@@ -25,9 +25,9 @@ export function parseActivityFilter(value: string | undefined): ActivityFilter |
 }
 
 export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
-  lead: "Project",
+  project: "Project",
   contact: "Contact",
-  lead_document: "Project document",
+  project_document: "Project document",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -37,24 +37,23 @@ export const ACTION_LABELS: Record<ActivityAction, string> = {
 };
 
 export function isDocumentEntity(entityType: ActivityEntityType): boolean {
-  return entityType === "lead_document";
+  return entityType === "project_document";
 }
 
 // Column names as they appear in details.fields, prettified for display.
 const FIELD_LABELS: Record<string, string> = {
   // projects
+  name: "name",
   product_type: "product type",
-  procedure_type: "procedure type",
-  primary_contact_id: "primary contact",
-  counterparty_contact_id: "counterparty",
-  deal_value: "deal value",
+  client_contact_id: "client contact",
+  assigned_contact_id: "assigned contact",
+  ratio_presented: "ratio presented",
+  ratio_real: "ratio real",
+  total_face_value: "total face value",
   currency: "currency",
-  source: "source",
-  notes: "notes",
-  follow_up_date: "follow-up date",
-  assigned_to: "assigned to",
   priority: "priority",
   stage: "stage",
+  status: "status",
   archived: "archived",
   // contacts
   full_name: "name",
@@ -72,7 +71,7 @@ export function fieldLabel(field: string): string {
 
 // Fields whose change is already spelled out as its own "x -> y" chip, so
 // listing them again under "fields changed" would just be repetition.
-const FIELDS_DESCRIBED_SEPARATELY = new Set(["stage", "priority", "archived", "full_name"]);
+const FIELDS_DESCRIBED_SEPARATELY = new Set(["stage", "status", "priority", "archived", "full_name"]);
 
 function asPair<T>(value: T | [T, T] | undefined): [T, T] | null {
   return Array.isArray(value) ? (value as [T, T]) : null;
@@ -91,6 +90,15 @@ function transition<T extends string>(pair: [T, T], labels: Record<T, string>): 
   return `${labelled(pair[0], labels)} -> ${labelled(pair[1], labels)}`;
 }
 
+// status's pair can have a null side (a project's very first status, or
+// one cleared by moving back out of the Status stage), unlike stage/
+// priority which are never null — so this can't reuse the generic
+// transition() above without widening labels to accept a null key too.
+function statusTransition(pair: [string | null, string | null]): string {
+  const label = (value: string | null) => (value ? (STATUS_LABELS as Record<string, string>)[value] ?? value : "—");
+  return `${label(pair[0])} -> ${label(pair[1])}`;
+}
+
 /**
  * Short human-readable bits describing one activity row — the "what
  * exactly changed" column on the Activity page.
@@ -105,6 +113,10 @@ export function activityDetailChips(row: ActivityLog): string[] {
   } else if (row.action !== "updated") {
     const stage = asScalar(details.stage);
     if (stage) chips.push(`stage ${labelled(stage, STAGE_LABELS)}`);
+  }
+
+  if (Array.isArray(details.status)) {
+    chips.push(`status ${statusTransition(details.status)}`);
   }
 
   const priorityPair = asPair(details.priority);
@@ -133,28 +145,28 @@ export function activityDetailChips(row: ActivityLog): string[] {
   return chips;
 }
 
-/** The leads/contacts row an activity row points at. */
+/** The projects/contacts row an activity row points at. */
 export interface ActivityTarget {
-  table: "leads" | "contacts";
+  table: "projects" | "contacts";
   id: string;
 }
 
 export function activityTarget(row: ActivityLog): ActivityTarget | null {
   switch (row.entity_type) {
-    case "lead":
-      return { table: "leads", id: row.entity_id };
+    case "project":
+      return { table: "projects", id: row.entity_id };
     case "contact":
       return { table: "contacts", id: row.entity_id };
     // Documents have no page of their own, so they point at their owner.
-    case "lead_document":
-      return row.details?.parent_id ? { table: "leads", id: row.details.parent_id } : null;
+    case "project_document":
+      return row.details?.parent_id ? { table: "projects", id: row.details.parent_id } : null;
     default:
       return null;
   }
 }
 
 const TARGET_HREF_PREFIX: Record<ActivityTarget["table"], string> = {
-  leads: "/projects",
+  projects: "/projects",
   contacts: "/contacts",
 };
 

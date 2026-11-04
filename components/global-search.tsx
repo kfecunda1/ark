@@ -6,12 +6,12 @@ import { Loader2, Search } from "lucide-react";
 import { runGlobalSearch, searchResultHref, type SearchResult, type SearchResultType } from "@/lib/search";
 
 const GROUP_LABELS: Record<SearchResultType, string> = {
-  lead: "Projects",
+  project: "Projects",
   contact: "Contacts",
   document: "Documents",
 };
 
-const GROUP_ORDER: SearchResultType[] = ["lead", "contact", "document"];
+const GROUP_ORDER: SearchResultType[] = ["project", "contact", "document"];
 
 export function GlobalSearch() {
   const router = useRouter();

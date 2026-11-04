@@ -10,9 +10,9 @@ import type { Note } from "@/lib/types";
 interface NoteFormProps {
   mode: "create" | "edit";
   note?: Note;
-  leads: LinkOption[];
+  projects: LinkOption[];
   contacts: LinkOption[];
-  defaultLinkType?: "" | "lead" | "contact";
+  defaultLinkType?: "" | "project" | "contact";
   defaultLinkId?: string | null;
 }
 
@@ -22,22 +22,22 @@ const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-white/20 focus:bg-white/[0.06]";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
-function linkTypeOf(note?: Note): "" | "lead" | "contact" {
+function linkTypeOf(note?: Note): "" | "project" | "contact" {
   if (!note) return "";
-  if (note.lead_id) return "lead";
+  if (note.project_id) return "project";
   if (note.contact_id) return "contact";
   return "";
 }
 
 function linkIdOf(note?: Note): string | null {
   if (!note) return null;
-  return note.lead_id ?? note.contact_id ?? null;
+  return note.project_id ?? note.contact_id ?? null;
 }
 
 export function NoteForm({
   mode,
   note,
-  leads,
+  projects,
   contacts,
   defaultLinkType,
   defaultLinkId,
@@ -100,7 +100,7 @@ export function NoteForm({
         )}
 
         <NoteLinkPicker
-          leads={leads}
+          projects={projects}
           contacts={contacts}
           defaultLinkType={defaultLinkType ?? linkTypeOf(note)}
           defaultLinkId={defaultLinkId ?? linkIdOf(note)}

@@ -1,57 +1,29 @@
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, CheckCircle2, Layers } from "lucide-react";
+import { CalendarClock, CheckCircle2, Layers } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
-import { PriorityBadge, StageBadge } from "@/components/projects/badges";
 import { createClient } from "@/lib/supabase/server";
-import {
-  STAGES,
-  STAGE_LABELS,
-  daysSince,
-  followUpLabel,
-  formatDateOnly,
-  isFollowUpDue,
-  isStuckDeal,
-  parseDateOnly,
-} from "@/lib/projects";
+import { STAGES, STAGE_LABELS, isClosedStatus } from "@/lib/projects";
 import { PRODUCT_TYPES } from "@/lib/products";
 import type { Project, ProjectStage } from "@/lib/types";
 
 const STAGE_BAR_COLORS: Record<ProjectStage, string> = {
   new: "bg-sky-500/70",
-  in_progress: "bg-amber-500/70",
-  closed_won: "bg-emerald-500/70",
-  closed_lost: "bg-rose-500/70",
+  documents_received: "bg-cyan-500/70",
+  match: "bg-violet-500/70",
+  status: "bg-amber-500/70",
 };
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("leads").select("*").eq("archived", false);
+  const { data, error } = await supabase.from("projects").select("*").is("archived_at", null);
   const projects = (data as Project[] | null) ?? [];
 
-  const { data: contactsData } = await supabase.from("contacts").select("id, full_name");
-  const contactNameById = new Map(
-    ((contactsData as { id: string; full_name: string }[] | null) ?? []).map((c) => [c.id, c.full_name])
-  );
-  function contactName(project: Project): string {
-    return (project.primary_contact_id && contactNameById.get(project.primary_contact_id)) || "Unknown contact";
-  }
-
-  const openProjects = projects.filter((project) => project.stage !== "closed_won" && project.stage !== "closed_lost");
-
-  const stuckProjects = projects
-    .filter((project) => isStuckDeal(project.stage, project.stage_updated_at))
-    .sort((a, b) => daysSince(b.stage_updated_at) - daysSince(a.stage_updated_at));
-
-  const followUpProjects = projects
-    .filter((project) => isFollowUpDue(project.follow_up_date))
-    .sort(
-      (a, b) => parseDateOnly(a.follow_up_date!).getTime() - parseDateOnly(b.follow_up_date!).getTime()
-    );
+  const openProjects = projects.filter((project) => !isClosedStatus(project.status));
 
   const now = new Date();
-  const closedWonThisMonth = projects.filter((project) => {
-    if (project.stage !== "closed_won") return false;
-    const changed = new Date(project.stage_updated_at);
+  const completedThisMonth = projects.filter((project) => {
+    if (!isClosedStatus(project.status) || project.status !== "completed") return false;
+    const changed = new Date(project.last_activity_at);
     return changed.getFullYear() === now.getFullYear() && changed.getMonth() === now.getMonth();
   }).length;
 
@@ -82,25 +54,11 @@ export default async function DashboardPage() {
       href: "/projects",
     },
     {
-      label: "Stuck Deals",
-      value: stuckProjects.length,
-      icon: AlertTriangle,
-      tone: stuckProjects.length > 0 ? "text-amber-300" : "text-white",
-      href: "#stuck-deals",
-    },
-    {
-      label: "Follow-ups Due",
-      value: followUpProjects.length,
-      icon: CalendarClock,
-      tone: followUpProjects.length > 0 ? "text-rose-300" : "text-white",
-      href: "#follow-ups-due",
-    },
-    {
-      label: "Closed Won This Month",
-      value: closedWonThisMonth,
+      label: "Completed This Month",
+      value: completedThisMonth,
       icon: CheckCircle2,
       tone: "text-emerald-300",
-      href: "/projects?stage=closed_won",
+      href: "/projects?status=completed",
     },
   ];
 
@@ -117,7 +75,7 @@ export default async function DashboardPage() {
         </GlassCard>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {STATS.map((stat) => (
           <Link key={stat.label} href={stat.href} className="block">
             <GlassCard className="p-6">
@@ -149,7 +107,7 @@ export default async function DashboardPage() {
                     href={`/projects?stage=${stage}`}
                     className="group flex items-center gap-4 rounded-lg px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-white/[0.04]"
                   >
-                    <span className="w-28 shrink-0 text-sm text-white/60 group-hover:text-white/90">
+                    <span className="w-36 shrink-0 text-sm text-white/60 group-hover:text-white/90">
                       {STAGE_LABELS[stage]}
                     </span>
                     <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
@@ -169,73 +127,7 @@ export default async function DashboardPage() {
         </GlassCard>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <GlassCard interactive={false} className="p-6" id="stuck-deals">
-          <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
-            <AlertTriangle className="h-4 w-4 text-amber-400" />
-            Stuck Deals
-          </h2>
-          {stuckProjects.length === 0 ? (
-            <p className="text-sm text-white/35">No stuck deals right now.</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {stuckProjects.map((project) => (
-                <Link
-                  key={project.id}
-                  href={`/projects/${project.id}`}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-white/85">{contactName(project)}</p>
-                    <p className="mt-0.5 text-xs text-white/40">
-                      {project.product_type} · <StageBadge stage={project.stage} />
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-xs font-medium whitespace-nowrap text-amber-300">
-                    {daysSince(project.stage_updated_at)}d stuck
-                  </span>
-                </Link>
-              ))}
-            </div>
-          )}
-        </GlassCard>
-
-        <GlassCard interactive={false} className="p-6" id="follow-ups-due">
-          <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
-            <CalendarClock className="h-4 w-4 text-rose-400" />
-            Follow-ups Due
-          </h2>
-          {followUpProjects.length === 0 ? (
-            <p className="text-sm text-white/35">No follow-ups due.</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {followUpProjects.map((project) => (
-                <Link
-                  key={project.id}
-                  href={`/projects/${project.id}`}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-white/85">{contactName(project)}</p>
-                    <p className="mt-0.5 flex items-center gap-1.5 text-xs text-white/40">
-                      {project.product_type}
-                      <PriorityBadge priority={project.priority} />
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-xs font-medium whitespace-nowrap text-rose-300">
-                      {followUpLabel(project.follow_up_date!)}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-white/35">
-                      {formatDateOnly(project.follow_up_date!)}
-                    </p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </GlassCard>
-
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <GlassCard interactive={false} className="p-6">
           <h2 className="mb-4 text-sm font-medium text-white/70">Open Projects by Product</h2>
           {openProjects.length === 0 ? (
@@ -268,6 +160,17 @@ export default async function DashboardPage() {
               })}
             </div>
           )}
+        </GlassCard>
+
+        <GlassCard interactive={false} className="p-6">
+          <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
+            <CalendarClock className="h-4 w-4 text-white/40" />
+            Coming in Phase 3
+          </h2>
+          <p className="text-sm text-white/35">
+            Stuck Deals and Follow-ups Due will come back here once the project timeline (next steps and
+            activity tracking) exists. See AGENTS.md for the plan.
+          </p>
         </GlassCard>
       </div>
     </div>

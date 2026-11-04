@@ -51,7 +51,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
   // that will actually render (a record deleted after the fact, or a
   // document whose owner has since gone, must not link into a 404).
   const idsByTable: Record<ActivityTarget["table"], Set<string>> = {
-    leads: new Set(),
+    projects: new Set(),
     contacts: new Set(),
   };
   for (const row of rows) {
@@ -59,8 +59,8 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
     if (target) idsByTable[target.table].add(target.id);
   }
 
-  const [leadsRes, contactsRes] = await Promise.all(
-    (["leads", "contacts"] as const).map((table) => {
+  const [projectsRes, contactsRes] = await Promise.all(
+    (["projects", "contacts"] as const).map((table) => {
       const ids = [...idsByTable[table]];
       return ids.length > 0
         ? supabase.from(table).select("id").in("id", ids)
@@ -70,7 +70,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
 
   const existing = new Set<string>();
   for (const [table, res] of [
-    ["leads", leadsRes],
+    ["projects", projectsRes],
     ["contacts", contactsRes],
   ] as const) {
     for (const record of ((res.data as { id: string }[] | null) ?? [])) {

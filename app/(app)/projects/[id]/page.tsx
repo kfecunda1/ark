@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertTriangle, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { PriorityBadge } from "@/components/projects/badges";
 import { StageSelect } from "@/components/projects/stage-select";
 import { ArchiveProjectButton } from "@/components/projects/archive-project-button";
 import { ProjectDocuments } from "@/components/projects/project-documents";
+import { TranchesSection } from "@/components/projects/tranches-section";
 import { LinkedNotes } from "@/components/notes/linked-notes";
 import { createClient } from "@/lib/supabase/server";
-import { formatDateOnly, isFollowUpDue, isStuckDeal } from "@/lib/projects";
+import { STATUS_LABELS } from "@/lib/projects";
 import { formatDateTime } from "@/lib/format";
-import type { Contact, Note, Project, ProjectDocument, Profile } from "@/lib/types";
+import type { Contact, Note, Project, ProjectDocument, ProjectTranche } from "@/lib/types";
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
@@ -23,20 +24,14 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const failedDocNames = failedDocs ? failedDocs.split(",").filter(Boolean) : [];
   const supabase = await createClient();
 
-  const { data } = await supabase.from("leads").select("*").eq("id", id).maybeSingle();
+  const { data } = await supabase.from("projects").select("*").eq("id", id).maybeSingle();
   const project = data as Project | null;
 
   if (!project) {
     notFound();
   }
 
-  let assignedProfile: Profile | null = null;
-  if (project.assigned_to) {
-    const { data } = await supabase.from("profiles").select("*").eq("id", project.assigned_to).maybeSingle();
-    assignedProfile = data;
-  }
-
-  const contactIds = [project.primary_contact_id, project.counterparty_contact_id].filter(
+  const contactIds = [project.client_contact_id, project.assigned_contact_id].filter(
     (contactId): contactId is string => Boolean(contactId)
   );
   let contactsById = new Map<string, Contact>();
@@ -44,22 +39,24 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     const { data: contactsData } = await supabase.from("contacts").select("*").in("id", contactIds);
     contactsById = new Map(((contactsData as Contact[] | null) ?? []).map((c) => [c.id, c]));
   }
-  const primaryContact = project.primary_contact_id ? (contactsById.get(project.primary_contact_id) ?? null) : null;
-  const counterpartyContact = project.counterparty_contact_id
-    ? (contactsById.get(project.counterparty_contact_id) ?? null)
+  const clientContact = project.client_contact_id ? (contactsById.get(project.client_contact_id) ?? null) : null;
+  const assignedContact = project.assigned_contact_id
+    ? (contactsById.get(project.assigned_contact_id) ?? null)
     : null;
 
-  const { data: leadDocumentsData } = await supabase
-    .from("lead_documents")
-    .select("*")
-    .eq("lead_id", project.id)
-    .order("created_at", { ascending: false });
-  const projectDocuments = (leadDocumentsData as ProjectDocument[] | null) ?? [];
+  const [{ data: projectDocumentsData }, { data: tranchesData }, { data: notesData }] = await Promise.all([
+    supabase.from("project_documents").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
+    supabase.from("project_tranches").select("*").eq("project_id", project.id).order("tranche_number"),
+    supabase.from("notes").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
+  ]);
+  const projectDocuments = (projectDocumentsData as ProjectDocument[] | null) ?? [];
+  const tranches = (tranchesData as ProjectTranche[] | null) ?? [];
+  const notes = (notesData as Note[] | null) ?? [];
 
   let documentsWithUrls = projectDocuments.map((doc) => ({ ...doc, signedUrl: null as string | null }));
   if (projectDocuments.length > 0) {
     const { data: signedUrls } = await supabase.storage
-      .from("lead-documents")
+      .from("project-documents")
       .createSignedUrls(
         projectDocuments.map((doc) => doc.file_path),
         3600
@@ -71,57 +68,43 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     }));
   }
 
-  const { data: notesData } = await supabase
-    .from("notes")
-    .select("*")
-    .eq("lead_id", project.id)
-    .order("created_at", { ascending: false });
-  const notes = (notesData as Note[] | null) ?? [];
-
-  const stuck = isStuckDeal(project.stage, project.stage_updated_at);
-  const followUpDue = isFollowUpDue(project.follow_up_date);
-
   const fields: { label: string; value: React.ReactNode }[] = [
     { label: "Product Type", value: project.product_type },
-    { label: "Procedure Type", value: project.procedure_type },
     {
-      label: "Primary Contact",
-      value: primaryContact ? (
+      label: "Client Contact",
+      value: clientContact ? (
         <Link
-          href={`/contacts/${primaryContact.id}`}
+          href={`/contacts/${clientContact.id}`}
           className="text-white/85 underline decoration-white/20 underline-offset-2 hover:text-white"
         >
-          {primaryContact.full_name}
+          {clientContact.full_name}
         </Link>
       ) : (
         "—"
       ),
     },
     {
-      label: "Counterparty",
-      value: counterpartyContact ? (
+      label: "Assigned Contact",
+      value: assignedContact ? (
         <Link
-          href={`/contacts/${counterpartyContact.id}`}
+          href={`/contacts/${assignedContact.id}`}
           className="text-white/85 underline decoration-white/20 underline-offset-2 hover:text-white"
         >
-          {counterpartyContact.full_name}
+          {assignedContact.full_name}
         </Link>
       ) : (
         "—"
       ),
     },
+    { label: "Status", value: project.status ? STATUS_LABELS[project.status] : "—" },
+    { label: "Ratio Presented", value: project.ratio_presented || "—" },
+    { label: "Ratio Real", value: project.ratio_real || "—" },
     {
-      label: "Deal Value",
-      value: project.deal_value != null ? `${project.currency ?? ""} ${project.deal_value}`.trim() : "—",
+      label: "Total Face Value",
+      value: project.total_face_value != null ? `${project.currency} ${project.total_face_value}` : "—",
     },
-    { label: "Source", value: project.source || "—" },
-    {
-      label: "Assigned To",
-      value: assignedProfile?.full_name || assignedProfile?.email || "Unassigned",
-    },
-    { label: "Follow-up Date", value: project.follow_up_date ? formatDateOnly(project.follow_up_date) : "—" },
-    { label: "Last Updated", value: formatDateTime(project.updated_at) },
-    { label: "Notes", value: project.notes || "—" },
+    { label: "Last Activity", value: formatDateTime(project.last_activity_at) },
+    { label: "Created", value: formatDateTime(project.created_at) },
   ];
 
   return (
@@ -132,10 +115,8 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             ← Back to projects
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight text-white">
-              {primaryContact?.full_name ?? project.product_type}
-            </h1>
-            {project.archived && (
+            <h1 className="text-2xl font-semibold tracking-tight text-white">{project.name}</h1>
+            {project.archived_at && (
               <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-0.5 text-xs font-medium text-white/50">
                 Archived
               </span>
@@ -144,7 +125,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
           <p className="mt-1 text-sm text-white/45">{project.product_type}</p>
         </div>
         <div className="flex items-center gap-3">
-          <ArchiveProjectButton projectId={project.id} archived={project.archived} />
+          <ArchiveProjectButton projectId={project.id} archived={Boolean(project.archived_at)} />
           <Link
             href={`/projects/${project.id}/edit`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
@@ -176,17 +157,6 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <PriorityBadge priority={project.priority} />
         <StageSelect projectId={project.id} currentStage={project.stage} />
-        {stuck && (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-300">
-            <AlertTriangle className="h-3 w-3" />
-            Stuck deal
-          </span>
-        )}
-        {followUpDue && (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/25 bg-rose-500/15 px-2.5 py-0.5 text-xs font-medium text-rose-300">
-            Follow-up due
-          </span>
-        )}
       </div>
 
       <GlassCard interactive={false} className="p-6">
@@ -201,6 +171,11 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       </GlassCard>
 
       <div className="mt-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Tranches</h2>
+        <TranchesSection projectId={project.id} tranches={tranches} />
+      </div>
+
+      <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Documents</h2>
         <GlassCard interactive={false} className="p-6">
           <ProjectDocuments projectId={project.id} documents={documentsWithUrls} />
@@ -210,7 +185,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Notes</h2>
         <GlassCard interactive={false} className="p-6">
-          <LinkedNotes notes={notes} addHref={`/notes/new?lead_id=${project.id}`} />
+          <LinkedNotes notes={notes} addHref={`/notes/new?project_id=${project.id}`} />
         </GlassCard>
       </div>
     </div>

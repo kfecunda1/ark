@@ -4,40 +4,29 @@ import { contactLabel } from "@/lib/contacts";
 import type { Contact, Project } from "@/lib/types";
 
 interface NewNotePageProps {
-  searchParams: Promise<{ lead_id?: string; contact_id?: string }>;
+  searchParams: Promise<{ project_id?: string; contact_id?: string }>;
 }
 
 export default async function NewNotePage({ searchParams }: NewNotePageProps) {
   const params = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: leadsData }, { data: contactsData }] = await Promise.all([
-    supabase
-      .from("leads")
-      .select("id, product_type, primary_contact_id, counterparty_contact_id")
-      .eq("archived", false),
+  const [{ data: projectsData }, { data: contactsData }] = await Promise.all([
+    supabase.from("projects").select("id, name").is("archived_at", null),
     supabase.from("contacts").select("id, full_name, phone, email"),
   ]);
 
   const contacts = (contactsData as Contact[] | null) ?? [];
-  const contactNameById = new Map(contacts.map((c) => [c.id, c.full_name]));
 
-  const leads = (
-    (leadsData as
-      | Pick<Project, "id" | "product_type" | "primary_contact_id" | "counterparty_contact_id">[]
-      | null) ?? []
-  ).map((lead) => {
-    const contactName = lead.primary_contact_id ? contactNameById.get(lead.primary_contact_id) : null;
-    return {
-      id: lead.id,
-      label: `${contactName ? `${contactName} — ` : ""}${lead.product_type}`,
-    };
-  });
+  const projects = ((projectsData as Pick<Project, "id" | "name">[] | null) ?? []).map((project) => ({
+    id: project.id,
+    label: project.name,
+  }));
 
   const contactOptions = contacts.map((contact) => ({ id: contact.id, label: contactLabel(contact) }));
 
-  const defaultLinkType = params.lead_id ? "lead" : params.contact_id ? "contact" : "";
-  const defaultLinkId = params.lead_id ?? params.contact_id ?? null;
+  const defaultLinkType = params.project_id ? "project" : params.contact_id ? "contact" : "";
+  const defaultLinkId = params.project_id ?? params.contact_id ?? null;
 
   return (
     <div className="mx-auto max-w-lg">
@@ -47,7 +36,7 @@ export default async function NewNotePage({ searchParams }: NewNotePageProps) {
       </div>
       <NoteForm
         mode="create"
-        leads={leads}
+        projects={projects}
         contacts={contactOptions}
         defaultLinkType={defaultLinkType}
         defaultLinkId={defaultLinkId}
