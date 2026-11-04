@@ -1,11 +1,10 @@
-// Shared helpers for the app's private Storage buckets (procedure-documents,
-// lead-documents). Pure/path helpers work in both server and client code;
+// Shared helpers for the app's private Storage bucket (lead-documents).
+// Pure/path helpers work in both server and client code;
 // uploadFileWithProgress is browser-only (XMLHttpRequest) and is only ever
 // called from "use client" components. computeFileHash runs anywhere the
-// standard Web Crypto API is available — browsers, the Node 20 runtime
-// the webhook route runs on, and plain `node`/`tsx` scripts — so the same
-// function is used client-side before upload, server-side in the Telegram
-// webhook, and in scripts/backfill-file-hashes.ts.
+// standard Web Crypto API is available — browsers and plain `node`/`tsx`
+// scripts — so the same function is used client-side before upload and
+// in scripts/backfill-file-hashes.ts.
 
 // Storage object keys can't contain most punctuation reliably across
 // clients, so strip the file name down before prefixing it with a uuid.
@@ -24,8 +23,8 @@ export function displayFileName(path: string): string {
 // SHA-256 of a file's bytes, as lowercase hex — used to detect the exact
 // same file being attached twice (see migration 020's file_hash columns
 // and unique partial indexes). Takes a Blob/File directly (a <input
-// type="file">'s File, or a Blob downloaded from Storage/Telegram) or raw
-// bytes, so callers don't need to know which shape they have on hand.
+// type="file">'s File, or a Blob downloaded from Storage) or raw bytes,
+// so callers don't need to know which shape they have on hand.
 export async function computeFileHash(source: Blob | ArrayBuffer): Promise<string> {
   const buffer = source instanceof ArrayBuffer ? source : await source.arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", buffer);

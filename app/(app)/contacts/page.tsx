@@ -46,7 +46,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">Contacts</h1>
-          <p className="mt-1 text-sm text-white/45">People linked to leads and procedures.</p>
+          <p className="mt-1 text-sm text-white/45">People linked to projects.</p>
         </div>
         <Link
           href="/contacts/new"
@@ -83,7 +83,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
           <p className="max-w-xs text-xs text-white/35">
             {searchTerm
               ? "No contacts match your search."
-              : "Contacts you create here can be linked to leads and procedures."}
+              : "Contacts you create here can be linked to projects."}
           </p>
         </GlassCard>
       )}

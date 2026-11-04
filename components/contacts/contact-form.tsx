@@ -75,7 +75,7 @@ export function ContactForm({ mode, contact, capabilities = [], existingTags = [
             name="notes"
             rows={3}
             defaultValue={contact?.notes ?? ""}
-            placeholder='Free-text capability detail, e.g. "EN590 and D6, prefers 30-day contracts"'
+            placeholder='Free-text capability detail, e.g. "Prefers 30-day settlement, EU banks only"'
             className={fieldClass}
           />
         </div>

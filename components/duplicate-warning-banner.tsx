@@ -18,8 +18,8 @@ interface DuplicateWarningBannerProps {
 }
 
 // Shared "this looks like something that already exists" banner, used by
-// both the Lead and Procedure create forms before a possible duplicate is
-// actually saved, and by the document-upload components for a
+// the Project create form before a possible duplicate is actually saved,
+// and by the document-upload components for a
 // cross-record file hash match. Lists every match found — its label,
 // some identifying detail, and an explicit "Open existing" link — plus
 // one "Add anyway" action that bypasses the check and proceeds with the

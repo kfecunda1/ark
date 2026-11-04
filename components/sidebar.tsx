@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Contact, History, Inbox, LayoutDashboard, StickyNote, Users, Settings, X } from "lucide-react";
+import { Contact, FolderKanban, History, LayoutDashboard, StickyNote, Settings, X } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/leads", label: "Leads", icon: Users },
-  { href: "/procedures", label: "Procedures", icon: Inbox },
+  { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/contacts", label: "Contacts", icon: Contact },
   { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/activity", label: "Activity", icon: History },
@@ -37,7 +36,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         }`}
       >
         <div className="mb-8 flex items-center justify-between px-2">
-          <span className="text-lg font-semibold tracking-tight text-white">JES3 CRM</span>
+          <span className="text-lg font-semibold tracking-tight text-white">ARK</span>
           <button
             onClick={onClose}
             aria-label="Close menu"

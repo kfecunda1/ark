@@ -27,7 +27,7 @@ function buildContactPayload(formData: FormData) {
 
 // Capability rows are submitted as parallel same-named field arrays:
 // capability_id (empty string for new rows) and capability_tag, paired by
-// index — same pattern as procedure wallets.
+// index.
 function parseSubmittedCapabilities(formData: FormData): { id: string | null; tag: string }[] {
   const ids = formData.getAll("capability_id").map((v) => v.toString());
   const tags = formData.getAll("capability_tag").map((v) => v.toString().trim());

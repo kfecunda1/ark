@@ -1,5 +1,5 @@
 import { CalendarClock } from "lucide-react";
-import { formatDateOnly, followUpLabel, isFollowUpDue } from "@/lib/leads";
+import { formatDateOnly, followUpLabel, isFollowUpDue } from "@/lib/projects";
 
 export function ReminderBadge({ dueDate }: { dueDate: string }) {
   const due = isFollowUpDue(dueDate);

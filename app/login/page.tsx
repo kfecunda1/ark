@@ -60,7 +60,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <GlassCard interactive={false} className="w-full max-w-sm p-8">
         <div className="mb-8 text-center">
-          <h1 className="text-xl font-semibold tracking-tight text-white">JES3 CRM</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-white">ARK</h1>
           <p className="mt-1 text-sm text-white/45">Sign in to your account</p>
         </div>
 

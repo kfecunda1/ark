@@ -1,10 +1,8 @@
 import { notFound } from "next/navigation";
 import { NoteForm } from "@/components/notes/note-form";
 import { createClient } from "@/lib/supabase/server";
-import { BUSINESS_LINE_LABELS } from "@/lib/leads";
 import { contactLabel } from "@/lib/contacts";
-import { truncate } from "@/lib/procedures";
-import type { Contact, Lead, Note, Procedure } from "@/lib/types";
+import type { Contact, Note, Project } from "@/lib/types";
 
 interface EditNotePageProps {
   params: Promise<{ id: string }>;
@@ -21,12 +19,11 @@ export default async function EditNotePage({ params }: EditNotePageProps) {
     notFound();
   }
 
-  const [{ data: leadsData }, { data: proceduresData }, { data: contactsData }] = await Promise.all([
+  const [{ data: leadsData }, { data: contactsData }] = await Promise.all([
     supabase
       .from("leads")
-      .select("id, business_line, product_type, primary_contact_id, counterparty_contact_id")
+      .select("id, product_type, primary_contact_id, counterparty_contact_id")
       .eq("archived", false),
-    supabase.from("procedures").select("id, title, raw_content"),
     supabase.from("contacts").select("id, full_name, phone, email"),
   ]);
 
@@ -35,22 +32,15 @@ export default async function EditNotePage({ params }: EditNotePageProps) {
 
   const leads = (
     (leadsData as
-      | Pick<Lead, "id" | "business_line" | "product_type" | "primary_contact_id" | "counterparty_contact_id">[]
+      | Pick<Project, "id" | "product_type" | "primary_contact_id" | "counterparty_contact_id">[]
       | null) ?? []
   ).map((lead) => {
     const contactName = lead.primary_contact_id ? contactNameById.get(lead.primary_contact_id) : null;
     return {
       id: lead.id,
-      label: `${contactName ? `${contactName} — ` : ""}${BUSINESS_LINE_LABELS[lead.business_line]} — ${lead.product_type}`,
+      label: `${contactName ? `${contactName} — ` : ""}${lead.product_type}`,
     };
   });
-
-  const procedures = ((proceduresData as Pick<Procedure, "id" | "title" | "raw_content">[] | null) ?? []).map(
-    (procedure) => ({
-      id: procedure.id,
-      label: procedure.title || truncate(procedure.raw_content, 60),
-    })
-  );
 
   const contactOptions = contacts.map((contact) => ({ id: contact.id, label: contactLabel(contact) }));
 
@@ -60,7 +50,7 @@ export default async function EditNotePage({ params }: EditNotePageProps) {
         <h1 className="text-2xl font-semibold tracking-tight text-white">Edit Note</h1>
         <p className="mt-1 text-sm text-white/45">Update this note.</p>
       </div>
-      <NoteForm mode="edit" note={note} leads={leads} procedures={procedures} contacts={contactOptions} />
+      <NoteForm mode="edit" note={note} leads={leads} contacts={contactOptions} />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { ReminderBadge } from "@/components/notes/badges";
 import { DeleteNoteButton } from "@/components/notes/delete-note-button";
-import { formatDateTime } from "@/lib/procedures";
+import { formatDateTime } from "@/lib/format";
 import type { Note } from "@/lib/types";
 
 interface LinkedNotesProps {

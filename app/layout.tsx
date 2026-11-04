@@ -9,8 +9,8 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "JES3 CRM",
-  description: "JES3 CRM — internal customer relationship management",
+  title: "ARK",
+  description: "ARK — private project tracker",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

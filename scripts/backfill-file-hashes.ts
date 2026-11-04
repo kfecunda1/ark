@@ -1,6 +1,6 @@
-// Backfills file_hash on existing lead_documents / procedure_documents
-// rows (added nullable by migration 020, since nothing had a hash before
-// it). Downloads each document that has no file_hash yet, computes its
+// Backfills file_hash on existing lead_documents rows (added nullable by
+// migration 020, since nothing had a hash before it). Downloads each
+// document that has no file_hash yet, computes its
 // SHA-256, and writes just that one column.
 //
 // Dry run by default — reports counts and nothing else. Pass --apply to
@@ -18,9 +18,9 @@
 //  - Only ever writes the file_hash column, only on rows where it is
 //    currently null. No other column, no file in Storage, is ever
 //    touched, modified, or deleted — not in dry-run, not with --apply.
-//  - migration 020's unique partial index — (lead_id, file_hash) /
-//    (procedure_id, file_hash) where file_hash is not null — rejects a
-//    second identical-hash document on the same record. When two
+//  - migration 020's unique partial index — (lead_id, file_hash) where
+//    file_hash is not null — rejects a second identical-hash document on
+//    the same record. When two
 //    existing documents on the same record are byte-identical, this
 //    script reports the pair instead of crashing: the first one found
 //    (oldest by created_at) gets hashed, the rest are listed under
@@ -47,19 +47,13 @@ interface DocumentRow {
 
 interface TableConfig {
   label: string;
-  table: "lead_documents" | "procedure_documents";
-  bucket: "lead-documents" | "procedure-documents";
-  recordIdColumn: "lead_id" | "procedure_id";
+  table: "lead_documents";
+  bucket: "lead-documents";
+  recordIdColumn: "lead_id";
 }
 
 const TABLES: TableConfig[] = [
-  { label: "Lead documents", table: "lead_documents", bucket: "lead-documents", recordIdColumn: "lead_id" },
-  {
-    label: "Procedure documents",
-    table: "procedure_documents",
-    bucket: "procedure-documents",
-    recordIdColumn: "procedure_id",
-  },
+  { label: "Project documents", table: "lead_documents", bucket: "lead-documents", recordIdColumn: "lead_id" },
 ];
 
 function loadEnv(): Record<string, string> {

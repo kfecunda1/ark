@@ -1,12 +1,6 @@
-export type BusinessLine = "crypto" | "gold" | "pgm" | "oil_products" | "banking";
+export type ProjectPriority = "low" | "medium" | "high" | "urgent";
 
-export type LeadPriority = "low" | "medium" | "high" | "urgent";
-
-export type LeadStage = "new" | "in_progress" | "closed_won" | "closed_lost";
-
-export type ProcedureSource = "whatsapp" | "telegram" | "document" | "link";
-
-export type ProcedureStatus = "unmatched" | "matched" | "archived";
+export type ProjectStage = "new" | "in_progress" | "closed_won" | "closed_lost";
 
 export interface Profile {
   id: string;
@@ -31,15 +25,18 @@ export interface ContactCapability {
   created_at: string;
 }
 
-export interface Lead {
+// Phase 1 note: this still reads/writes the `leads` table and its
+// `lead_*` columns/buckets (lead_id, lead-documents, …) — renaming those
+// needs a migration, which Phase 2 does when it replaces this legacy
+// schema with a clean ARK one (see AGENTS.md).
+export interface Project {
   id: string;
   created_at: string;
   updated_at: string;
-  business_line: BusinessLine;
   product_type: string;
   procedure_type: string;
-  priority: LeadPriority;
-  stage: LeadStage;
+  priority: ProjectPriority;
+  stage: ProjectStage;
   stage_updated_at: string;
   primary_contact_id: string | null;
   counterparty_contact_id: string | null;
@@ -52,59 +49,12 @@ export interface Lead {
   archived: boolean;
 }
 
-export interface Procedure {
-  id: string;
-  created_at: string;
-  updated_at: string;
-  title: string | null;
-  source: ProcedureSource | null;
-  raw_content: string;
-  area: BusinessLine | null;
-  status: ProcedureStatus;
-  contact_id: string | null;
-  telegram_chat_id: number | null;
-  intended_as_lead: boolean | null;
-  possible_duplicate: boolean;
-}
+export type ProjectDocumentType = "CIS" | "MOU" | "SPA" | "IMFPA" | "Other";
 
-export interface ProcedureLeadMatch {
-  id: string;
-  procedure_id: string;
-  lead_id: string;
-  created_at: string;
-}
-
-export type LeadDocumentType = "CIS" | "MOU" | "SPA" | "IMFPA" | "Other";
-
-export interface LeadDocument {
+export interface ProjectDocument {
   id: string;
   lead_id: string;
-  document_type: LeadDocumentType;
-  file_path: string;
-  file_name: string;
-  file_hash: string | null;
-  created_at: string;
-}
-
-export interface ProcedureWallet {
-  id: string;
-  procedure_id: string;
-  wallet_address: string;
-  label: string | null;
-  created_at: string;
-}
-
-export interface LeadWallet {
-  id: string;
-  lead_id: string;
-  wallet_address: string;
-  label: string | null;
-  created_at: string;
-}
-
-export interface ProcedureDocument {
-  id: string;
-  procedure_id: string;
+  document_type: ProjectDocumentType;
   file_path: string;
   file_name: string;
   file_hash: string | null;
@@ -121,11 +71,10 @@ export interface Note {
   due_date: string | null;
   reminded_at: string | null;
   lead_id: string | null;
-  procedure_id: string | null;
   contact_id: string | null;
 }
 
-export type ActivityEntityType = "lead" | "procedure" | "contact" | "lead_document" | "procedure_document";
+export type ActivityEntityType = "lead" | "contact" | "lead_document";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
@@ -134,16 +83,13 @@ export type ActivityAction = "created" | "updated" | "deleted";
 // pair (on updated) — see the migration's design notes.
 export interface ActivityDetails {
   fields?: string[];
-  stage?: LeadStage | [LeadStage, LeadStage];
-  status?: ProcedureStatus | [ProcedureStatus, ProcedureStatus];
-  priority?: LeadPriority | [LeadPriority, LeadPriority];
+  stage?: ProjectStage | [ProjectStage, ProjectStage];
+  priority?: ProjectPriority | [ProjectPriority, ProjectPriority];
   archived?: [boolean, boolean];
   full_name?: [string | null, string | null];
-  business_line?: BusinessLine;
-  source?: ProcedureSource | null;
-  parent_type?: "lead" | "procedure";
+  parent_type?: "lead";
   parent_id?: string;
-  document_type?: LeadDocumentType;
+  document_type?: ProjectDocumentType;
 }
 
 export interface ActivityLog {

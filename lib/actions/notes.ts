@@ -10,20 +10,18 @@ export interface NoteFormState {
 
 interface NoteLinks {
   lead_id: string | null;
-  procedure_id: string | null;
   contact_id: string | null;
 }
 
 // The link picker submits a single "link_type" + "link_id" pair (or
-// link_type="" for no link) rather than three separate fields, since a
-// note can point at most one of lead/procedure/contact.
+// link_type="" for no link) rather than two separate fields, since a
+// note can point at most one of lead/contact.
 function parseLink(formData: FormData): NoteLinks {
   const linkType = formData.get("link_type")?.toString().trim();
   const linkId = formData.get("link_id")?.toString().trim() || null;
 
   return {
     lead_id: linkType === "lead" ? linkId : null,
-    procedure_id: linkType === "procedure" ? linkId : null,
     contact_id: linkType === "contact" ? linkId : null,
   };
 }
@@ -52,8 +50,7 @@ function buildNotePayload(formData: FormData) {
 
 function revalidateForLinks(links: NoteLinks) {
   revalidatePath("/notes");
-  if (links.lead_id) revalidatePath(`/leads/${links.lead_id}`);
-  if (links.procedure_id) revalidatePath(`/procedures/${links.procedure_id}`);
+  if (links.lead_id) revalidatePath(`/projects/${links.lead_id}`);
   if (links.contact_id) revalidatePath(`/contacts/${links.contact_id}`);
 }
 
@@ -108,7 +105,7 @@ export async function deleteNote(noteId: string): Promise<{ error: string | null
 
   const { data: existing } = await supabase
     .from("notes")
-    .select("lead_id, procedure_id, contact_id")
+    .select("lead_id, contact_id")
     .eq("id", noteId)
     .maybeSingle();
 
@@ -118,8 +115,6 @@ export async function deleteNote(noteId: string): Promise<{ error: string | null
     return { error: error.message };
   }
 
-  revalidateForLinks(
-    existing ?? { lead_id: null, procedure_id: null, contact_id: null }
-  );
+  revalidateForLinks(existing ?? { lead_id: null, contact_id: null });
   return { error: null };
 }

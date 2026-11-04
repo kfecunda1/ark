@@ -1,18 +1,14 @@
 import { createClient } from "@/lib/supabase/client";
-import { BUSINESS_LINES, BUSINESS_LINE_LABELS } from "@/lib/leads";
-import { truncate } from "@/lib/procedures";
-import type { BusinessLine } from "@/lib/types";
 
-export type SearchResultType = "lead" | "procedure" | "contact" | "document";
+export type SearchResultType = "lead" | "contact" | "document";
 
 export interface SearchResult {
   type: SearchResultType;
   id: string;
   title: string;
   subtitle: string;
-  // document results only: which lead/procedure to navigate to, since a
+  // document results only: which project to navigate to, since a
   // document has no page of its own.
-  parentType?: "lead" | "procedure";
   parentId?: string;
 }
 
@@ -32,40 +28,20 @@ function sanitizeForOrFilter(text: string): string {
   return text.replace(/[,()]/g, " ");
 }
 
-interface LeadFields {
+interface ProjectFields {
   id: string;
-  business_line: BusinessLine;
   product_type: string;
   primary_contact_id: string | null;
 }
 
-interface ProcedureFields {
-  id: string;
-  title: string | null;
-  raw_content: string;
+function projectDisplayName(project: ProjectFields, contactNameById: Map<string, string>): string {
+  return (project.primary_contact_id && contactNameById.get(project.primary_contact_id)) || project.product_type;
 }
 
-function leadDisplayName(lead: LeadFields, contactNameById: Map<string, string>): string {
-  return (lead.primary_contact_id && contactNameById.get(lead.primary_contact_id)) || lead.product_type;
-}
-
-function procedureDisplayName(procedure: ProcedureFields): string {
-  return procedure.title || truncate(procedure.raw_content, 60);
-}
-
-async function fetchLeadsByIds(supabase: SupabaseBrowserClient, ids: string[]): Promise<LeadFields[]> {
+async function fetchProjectsByIds(supabase: SupabaseBrowserClient, ids: string[]): Promise<ProjectFields[]> {
   if (ids.length === 0) return [];
-  const { data } = await supabase
-    .from("leads")
-    .select("id, business_line, product_type, primary_contact_id")
-    .in("id", ids);
-  return (data as LeadFields[] | null) ?? [];
-}
-
-async function fetchProceduresByIds(supabase: SupabaseBrowserClient, ids: string[]): Promise<ProcedureFields[]> {
-  if (ids.length === 0) return [];
-  const { data } = await supabase.from("procedures").select("id, title, raw_content").in("id", ids);
-  return (data as ProcedureFields[] | null) ?? [];
+  const { data } = await supabase.from("leads").select("id, product_type, primary_contact_id").in("id", ids);
+  return (data as ProjectFields[] | null) ?? [];
 }
 
 export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]> {
@@ -76,65 +52,44 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
   const likePattern = `%${escapeLike(query)}%`;
   const orSafePattern = `%${escapeLike(sanitizeForOrFilter(query))}%`;
 
-  const matchingBusinessLines = BUSINESS_LINES.filter((line) =>
-    BUSINESS_LINE_LABELS[line].toLowerCase().includes(query.toLowerCase())
-  );
-
-  const [contactsRes, procedureRes, leadDocsRes, procedureDocsRes] = await Promise.all([
+  const [contactsRes, leadDocsRes] = await Promise.all([
     supabase.from("contacts").select("id, full_name").ilike("full_name", likePattern).limit(RESULT_LIMIT),
-    supabase
-      .from("procedures")
-      .select("id, title, raw_content")
-      .or(`title.ilike.${orSafePattern},raw_content.ilike.${orSafePattern}`)
-      .limit(RESULT_LIMIT),
     supabase
       .from("lead_documents")
       .select("id, file_name, lead_id")
       .ilike("file_name", likePattern)
       .limit(RESULT_LIMIT),
-    supabase
-      .from("procedure_documents")
-      .select("id, file_name, procedure_id")
-      .ilike("file_name", likePattern)
-      .limit(RESULT_LIMIT),
   ]);
 
   const contactMatches = (contactsRes.data as { id: string; full_name: string }[] | null) ?? [];
-  const procedureMatches = (procedureRes.data as ProcedureFields[] | null) ?? [];
   const leadDocMatches = (leadDocsRes.data as { id: string; file_name: string; lead_id: string }[] | null) ?? [];
-  const procedureDocMatches =
-    (procedureDocsRes.data as { id: string; file_name: string; procedure_id: string }[] | null) ?? [];
   const contactIds = contactMatches.map((c) => c.id);
 
-  const leadFilters = [`product_type.ilike.${orSafePattern}`];
-  if (matchingBusinessLines.length > 0) {
-    leadFilters.push(`business_line.in.(${matchingBusinessLines.join(",")})`);
-  }
+  const projectFilters = [`product_type.ilike.${orSafePattern}`];
   if (contactIds.length > 0) {
-    leadFilters.push(`primary_contact_id.in.(${contactIds.join(",")})`);
-    leadFilters.push(`counterparty_contact_id.in.(${contactIds.join(",")})`);
+    projectFilters.push(`primary_contact_id.in.(${contactIds.join(",")})`);
+    projectFilters.push(`counterparty_contact_id.in.(${contactIds.join(",")})`);
   }
 
-  // Parent lookups for the Documents group: a matched document's lead or
-  // procedure may not itself match the text search above (only its
-  // filename did), so its display fields need their own fetch.
-  const [{ data: leadRows }, docParentLeads, docParentProcedures] = await Promise.all([
+  // Parent lookup for the Documents group: a matched document's project
+  // may not itself match the text search above (only its filename did),
+  // so its display fields need their own fetch.
+  const [{ data: projectRows }, docParentProjects] = await Promise.all([
     supabase
       .from("leads")
-      .select("id, business_line, product_type, primary_contact_id")
-      .or(leadFilters.join(","))
+      .select("id, product_type, primary_contact_id")
+      .or(projectFilters.join(","))
       .limit(RESULT_LIMIT),
-    fetchLeadsByIds(supabase, [...new Set(leadDocMatches.map((d) => d.lead_id))]),
-    fetchProceduresByIds(supabase, [...new Set(procedureDocMatches.map((d) => d.procedure_id))]),
+    fetchProjectsByIds(supabase, [...new Set(leadDocMatches.map((d) => d.lead_id))]),
   ]);
 
-  const leadMatches = (leadRows as LeadFields[] | null) ?? [];
+  const projectMatches = (projectRows as ProjectFields[] | null) ?? [];
 
-  // Lead results (both the Leads group and document parents) are titled by
-  // their primary contact's name, which may not be one of the contacts
-  // already fetched above — fetch whatever's missing.
-  const neededContactIds = [...leadMatches, ...docParentLeads]
-    .map((l) => l.primary_contact_id)
+  // Project results (both the Projects group and document parents) are
+  // titled by their primary contact's name, which may not be one of the
+  // contacts already fetched above — fetch whatever's missing.
+  const neededContactIds = [...projectMatches, ...docParentProjects]
+    .map((p) => p.primary_contact_id)
     .filter((id): id is string => Boolean(id));
   const missingContactIds = [...new Set(neededContactIds.filter((id) => !contactIds.includes(id)))];
 
@@ -149,18 +104,11 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
     ...extraContacts.map((c): [string, string] => [c.id, c.full_name]),
   ]);
 
-  const leadResults: SearchResult[] = leadMatches.map((lead) => ({
+  const projectResults: SearchResult[] = projectMatches.map((project) => ({
     type: "lead",
-    id: lead.id,
-    title: leadDisplayName(lead, contactNameById),
-    subtitle: `${lead.product_type} — ${BUSINESS_LINE_LABELS[lead.business_line]}`,
-  }));
-
-  const procedureResults: SearchResult[] = procedureMatches.map((procedure) => ({
-    type: "procedure",
-    id: procedure.id,
-    title: procedureDisplayName(procedure),
-    subtitle: "Procedure",
+    id: project.id,
+    title: projectDisplayName(project, contactNameById),
+    subtitle: project.product_type,
   }));
 
   const contactResults: SearchResult[] = contactMatches.map((contact) => ({
@@ -170,53 +118,31 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
     subtitle: "Contact",
   }));
 
-  const leadById = new Map([...leadMatches, ...docParentLeads].map((l): [string, LeadFields] => [l.id, l]));
-  const procedureById = new Map(
-    [...procedureMatches, ...docParentProcedures].map((p): [string, ProcedureFields] => [p.id, p])
+  const projectById = new Map(
+    [...projectMatches, ...docParentProjects].map((p): [string, ProjectFields] => [p.id, p])
   );
 
   const leadDocumentResults: SearchResult[] = leadDocMatches.map((doc) => {
-    const lead = leadById.get(doc.lead_id);
+    const project = projectById.get(doc.lead_id);
     return {
       type: "document",
       id: doc.id,
       title: doc.file_name,
-      subtitle: `Lead: ${lead ? leadDisplayName(lead, contactNameById) : "Unknown lead"}`,
-      parentType: "lead",
+      subtitle: `Project: ${project ? projectDisplayName(project, contactNameById) : "Unknown project"}`,
       parentId: doc.lead_id,
     };
   });
 
-  const procedureDocumentResults: SearchResult[] = procedureDocMatches.map((doc) => {
-    const procedure = procedureById.get(doc.procedure_id);
-    return {
-      type: "document",
-      id: doc.id,
-      title: doc.file_name,
-      subtitle: `Procedure: ${procedure ? procedureDisplayName(procedure) : "Unknown procedure"}`,
-      parentType: "procedure",
-      parentId: doc.procedure_id,
-    };
-  });
-
-  return [
-    ...leadResults,
-    ...procedureResults,
-    ...contactResults,
-    ...leadDocumentResults,
-    ...procedureDocumentResults,
-  ];
+  return [...projectResults, ...contactResults, ...leadDocumentResults];
 }
 
 export function searchResultHref(result: SearchResult): string {
   switch (result.type) {
     case "lead":
-      return `/leads/${result.id}`;
-    case "procedure":
-      return `/procedures/${result.id}`;
+      return `/projects/${result.id}`;
     case "contact":
       return `/contacts/${result.id}`;
     case "document":
-      return result.parentType === "lead" ? `/leads/${result.parentId}` : `/procedures/${result.parentId}`;
+      return `/projects/${result.parentId}`;
   }
 }

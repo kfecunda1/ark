@@ -1,24 +1,21 @@
 import { NoteForm } from "@/components/notes/note-form";
 import { createClient } from "@/lib/supabase/server";
-import { BUSINESS_LINE_LABELS } from "@/lib/leads";
 import { contactLabel } from "@/lib/contacts";
-import { truncate } from "@/lib/procedures";
-import type { Contact, Lead, Procedure } from "@/lib/types";
+import type { Contact, Project } from "@/lib/types";
 
 interface NewNotePageProps {
-  searchParams: Promise<{ lead_id?: string; procedure_id?: string; contact_id?: string }>;
+  searchParams: Promise<{ lead_id?: string; contact_id?: string }>;
 }
 
 export default async function NewNotePage({ searchParams }: NewNotePageProps) {
   const params = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: leadsData }, { data: proceduresData }, { data: contactsData }] = await Promise.all([
+  const [{ data: leadsData }, { data: contactsData }] = await Promise.all([
     supabase
       .from("leads")
-      .select("id, business_line, product_type, primary_contact_id, counterparty_contact_id")
+      .select("id, product_type, primary_contact_id, counterparty_contact_id")
       .eq("archived", false),
-    supabase.from("procedures").select("id, title, raw_content"),
     supabase.from("contacts").select("id, full_name, phone, email"),
   ]);
 
@@ -27,27 +24,20 @@ export default async function NewNotePage({ searchParams }: NewNotePageProps) {
 
   const leads = (
     (leadsData as
-      | Pick<Lead, "id" | "business_line" | "product_type" | "primary_contact_id" | "counterparty_contact_id">[]
+      | Pick<Project, "id" | "product_type" | "primary_contact_id" | "counterparty_contact_id">[]
       | null) ?? []
   ).map((lead) => {
     const contactName = lead.primary_contact_id ? contactNameById.get(lead.primary_contact_id) : null;
     return {
       id: lead.id,
-      label: `${contactName ? `${contactName} — ` : ""}${BUSINESS_LINE_LABELS[lead.business_line]} — ${lead.product_type}`,
+      label: `${contactName ? `${contactName} — ` : ""}${lead.product_type}`,
     };
   });
 
-  const procedures = ((proceduresData as Pick<Procedure, "id" | "title" | "raw_content">[] | null) ?? []).map(
-    (procedure) => ({
-      id: procedure.id,
-      label: procedure.title || truncate(procedure.raw_content, 60),
-    })
-  );
-
   const contactOptions = contacts.map((contact) => ({ id: contact.id, label: contactLabel(contact) }));
 
-  const defaultLinkType = params.lead_id ? "lead" : params.procedure_id ? "procedure" : params.contact_id ? "contact" : "";
-  const defaultLinkId = params.lead_id ?? params.procedure_id ?? params.contact_id ?? null;
+  const defaultLinkType = params.lead_id ? "lead" : params.contact_id ? "contact" : "";
+  const defaultLinkId = params.lead_id ?? params.contact_id ?? null;
 
   return (
     <div className="mx-auto max-w-lg">
@@ -58,7 +48,6 @@ export default async function NewNotePage({ searchParams }: NewNotePageProps) {
       <NoteForm
         mode="create"
         leads={leads}
-        procedures={procedures}
         contacts={contactOptions}
         defaultLinkType={defaultLinkType}
         defaultLinkId={defaultLinkId}

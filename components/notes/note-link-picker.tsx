@@ -8,11 +8,10 @@ export interface LinkOption {
   label: string;
 }
 
-type LinkType = "" | "lead" | "procedure" | "contact";
+type LinkType = "" | "lead" | "contact";
 
 interface NoteLinkPickerProps {
   leads: LinkOption[];
-  procedures: LinkOption[];
   contacts: LinkOption[];
   defaultLinkType?: LinkType;
   defaultLinkId?: string | null;
@@ -24,14 +23,13 @@ const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
 export function NoteLinkPicker({
   leads,
-  procedures,
   contacts,
   defaultLinkType = "",
   defaultLinkId = null,
 }: NoteLinkPickerProps) {
   const [linkType, setLinkType] = useState<LinkType>(defaultLinkType);
 
-  const optionsByType: Record<Exclude<LinkType, "">, LinkOption[]> = { lead: leads, procedure: procedures, contact: contacts };
+  const optionsByType: Record<Exclude<LinkType, "">, LinkOption[]> = { lead: leads, contact: contacts };
 
   const [selected, setSelected] = useState<LinkOption | null>(
     () => (defaultLinkType && defaultLinkId ? (optionsByType[defaultLinkType].find((o) => o.id === defaultLinkId) ?? null) : null)
@@ -40,12 +38,12 @@ export function NoteLinkPicker({
   const [open, setOpen] = useState(false);
 
   const filtered = useMemo(() => {
-    const options: Record<Exclude<LinkType, "">, LinkOption[]> = { lead: leads, procedure: procedures, contact: contacts };
+    const options: Record<Exclude<LinkType, "">, LinkOption[]> = { lead: leads, contact: contacts };
     const pool = linkType ? options[linkType] : [];
     const q = query.trim().toLowerCase();
     const matches = q ? pool.filter((o) => o.label.toLowerCase().includes(q)) : pool;
     return matches.slice(0, 20);
-  }, [linkType, query, leads, procedures, contacts]);
+  }, [linkType, query, leads, contacts]);
 
   function handleTypeChange(value: LinkType) {
     setLinkType(value);
@@ -69,10 +67,7 @@ export function NoteLinkPicker({
           No link
         </option>
         <option value="lead" className="bg-[#0a0e17]">
-          Lead
-        </option>
-        <option value="procedure" className="bg-[#0a0e17]">
-          Procedure
+          Project
         </option>
         <option value="contact" className="bg-[#0a0e17]">
           Contact

@@ -6,13 +6,12 @@ import { Loader2, Search } from "lucide-react";
 import { runGlobalSearch, searchResultHref, type SearchResult, type SearchResultType } from "@/lib/search";
 
 const GROUP_LABELS: Record<SearchResultType, string> = {
-  lead: "Leads",
-  procedure: "Procedures",
+  lead: "Projects",
   contact: "Contacts",
   document: "Documents",
 };
 
-const GROUP_ORDER: SearchResultType[] = ["lead", "procedure", "contact", "document"];
+const GROUP_ORDER: SearchResultType[] = ["lead", "contact", "document"];
 
 export function GlobalSearch() {
   const router = useRouter();
@@ -88,7 +87,7 @@ export function GlobalSearch() {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
-        placeholder="Search leads, procedures, contacts…"
+        placeholder="Search projects, contacts…"
         className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-2 pr-3 pl-9 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-white/20 focus:bg-white/[0.06]"
       />
 

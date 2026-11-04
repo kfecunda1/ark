@@ -1,14 +1,12 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { Contact as ContactIcon, Inbox, Plus, StickyNote, Users } from "lucide-react";
+import { Contact as ContactIcon, Plus, StickyNote, Users } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { NoteFilters } from "@/components/notes/note-filters";
 import { ReminderBadge } from "@/components/notes/badges";
 import { DeleteNoteButton } from "@/components/notes/delete-note-button";
 import { createClient } from "@/lib/supabase/server";
-import { BUSINESS_LINE_LABELS } from "@/lib/leads";
-import { truncate } from "@/lib/procedures";
-import type { Contact, Lead, Note, Procedure } from "@/lib/types";
+import type { Contact, Note, Project } from "@/lib/types";
 
 interface NotesPageProps {
   searchParams: Promise<{ reminders?: string; type?: string }>;
@@ -23,53 +21,35 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
     query = query.eq("is_reminder", true);
   }
   if (params.type === "lead") query = query.not("lead_id", "is", null);
-  if (params.type === "procedure") query = query.not("procedure_id", "is", null);
   if (params.type === "contact") query = query.not("contact_id", "is", null);
 
   const { data, error } = await query;
   const notes = (data as Note[] | null) ?? [];
 
   const leadIds = notes.map((n) => n.lead_id).filter((id): id is string => Boolean(id));
-  const procedureIds = notes.map((n) => n.procedure_id).filter((id): id is string => Boolean(id));
   const contactIds = notes.map((n) => n.contact_id).filter((id): id is string => Boolean(id));
 
-  const [{ data: leadsData }, { data: proceduresData }, { data: contactsData }] = await Promise.all([
+  const [{ data: leadsData }, { data: contactsData }] = await Promise.all([
     leadIds.length > 0
-      ? supabase.from("leads").select("id, business_line, product_type").in("id", leadIds)
-      : Promise.resolve({ data: [] }),
-    procedureIds.length > 0
-      ? supabase.from("procedures").select("id, title, raw_content").in("id", procedureIds)
+      ? supabase.from("leads").select("id, product_type").in("id", leadIds)
       : Promise.resolve({ data: [] }),
     contactIds.length > 0
       ? supabase.from("contacts").select("id, full_name").in("id", contactIds)
       : Promise.resolve({ data: [] }),
   ]);
 
-  const leadsById = new Map(
-    ((leadsData as Pick<Lead, "id" | "business_line" | "product_type">[] | null) ?? []).map((l) => [l.id, l])
-  );
-  const proceduresById = new Map(
-    ((proceduresData as Pick<Procedure, "id" | "title" | "raw_content">[] | null) ?? []).map((p) => [p.id, p])
-  );
+  const leadsById = new Map(((leadsData as Pick<Project, "id" | "product_type">[] | null) ?? []).map((l) => [l.id, l]));
   const contactsById = new Map(
     ((contactsData as Pick<Contact, "id" | "full_name">[] | null) ?? []).map((c) => [c.id, c])
   );
 
   function linkFor(note: Note): { href: string; label: string; icon: typeof Users } | null {
     if (note.lead_id) {
-      const lead = leadsById.get(note.lead_id);
+      const project = leadsById.get(note.lead_id);
       return {
-        href: `/leads/${note.lead_id}`,
-        label: lead ? `${BUSINESS_LINE_LABELS[lead.business_line]} — ${lead.product_type}` : "Lead",
+        href: `/projects/${note.lead_id}`,
+        label: project?.product_type ?? "Project",
         icon: Users,
-      };
-    }
-    if (note.procedure_id) {
-      const procedure = proceduresById.get(note.procedure_id);
-      return {
-        href: `/procedures/${note.procedure_id}`,
-        label: procedure ? procedure.title || truncate(procedure.raw_content, 40) : "Procedure",
-        icon: Inbox,
       };
     }
     if (note.contact_id) {
