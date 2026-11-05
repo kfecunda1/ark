@@ -9,6 +9,7 @@ interface ProductRow {
   id: string | null;
   product_type: ProductType | "";
   ratio: string;
+  recovery_ratio: string;
   notes: string;
 }
 
@@ -26,7 +27,14 @@ const fieldClass =
 
 export function ProductFields({ initialProducts = [], products }: ProductFieldsProps) {
   const [rows, setRows] = useState<ProductRow[]>(
-    initialProducts.map((p) => ({ key: p.id, id: p.id, product_type: p.product_type, ratio: p.ratio ?? "", notes: p.notes ?? "" }))
+    initialProducts.map((p) => ({
+      key: p.id,
+      id: p.id,
+      product_type: p.product_type,
+      ratio: p.ratio ?? "",
+      recovery_ratio: p.recovery_ratio ?? "",
+      notes: p.notes ?? "",
+    }))
   );
 
   const usedProducts = new Set(rows.map((r) => r.product_type).filter(Boolean));
@@ -37,7 +45,7 @@ export function ProductFields({ initialProducts = [], products }: ProductFieldsP
     if (!next) return;
     setRows((prev) => [
       ...prev,
-      { key: crypto.randomUUID(), id: null, product_type: next.name, ratio: "", notes: "" },
+      { key: crypto.randomUUID(), id: null, product_type: next.name, ratio: "", recovery_ratio: "", notes: "" },
     ]);
   }
 
@@ -60,7 +68,7 @@ export function ProductFields({ initialProducts = [], products }: ProductFieldsP
         );
 
         return (
-          <div key={row.key} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_1.5fr_auto] sm:items-start">
+          <div key={row.key} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_1fr_1.5fr_auto] sm:items-start">
             <input type="hidden" name="product_id" value={row.id ?? ""} />
             <select
               name="product_type_row"
@@ -82,6 +90,13 @@ export function ProductFields({ initialProducts = [], products }: ProductFieldsP
               value={row.ratio}
               onChange={(e) => updateRow(row.key, { ratio: e.target.value })}
               placeholder='Ratio, e.g. "2%" or "70/30"'
+              className={fieldClass}
+            />
+            <input
+              name="product_recovery_ratio"
+              value={row.recovery_ratio}
+              onChange={(e) => updateRow(row.key, { recovery_ratio: e.target.value })}
+              placeholder='Recovery ratio, e.g. "2%" or "70/30"'
               className={fieldClass}
             />
             <input

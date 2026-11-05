@@ -14,7 +14,8 @@ interface MatchedContactSelectProps {
 
 type Message =
   | { tone: "filled"; text: string }
-  | { tone: "differs"; contactName: string; productType: string; theirRatio: string; currentRatio: string };
+  | { tone: "differs"; contactName: string; productType: string; theirRatio: string; currentRatio: string }
+  | { tone: "missing"; contactName: string; productType: string; isRecovery: boolean };
 
 // The detail page's quick-editor for matched_contact_id — picking a
 // contact here saves immediately (same pattern as StageSelect/
@@ -49,12 +50,14 @@ export function MatchedContactSelect({ projectId, contacts, currentContact }: Ma
           return;
         }
         if (result.autoFill) {
-          const { filled, contactName, productType, theirRatio, currentRatio } = result.autoFill;
-          setMessage(
-            filled
-              ? { tone: "filled", text: `Real ratio filled from ${contactName} (${productType}).` }
-              : { tone: "differs", contactName, productType, theirRatio, currentRatio: currentRatio ?? "" }
-          );
+          const { filled, differs, contactName, productType, theirRatio, currentRatio, isRecovery } = result.autoFill;
+          if (filled) {
+            setMessage({ tone: "filled", text: `Real ratio filled from ${contactName} (${productType}).` });
+          } else if (differs) {
+            setMessage({ tone: "differs", contactName, productType, theirRatio: theirRatio!, currentRatio: currentRatio ?? "" });
+          } else {
+            setMessage({ tone: "missing", contactName, productType, isRecovery });
+          }
         }
         router.refresh();
       } catch (err) {
@@ -157,6 +160,11 @@ export function MatchedContactSelect({ projectId, contacts, currentContact }: Ma
             </button>
           </div>
         </div>
+      )}
+      {message?.tone === "missing" && (
+        <p className="text-xs text-amber-300">
+          {message.contactName} has no {message.isRecovery ? "recovery ratio" : "ratio"} set for {message.productType}.
+        </p>
       )}
       {error && <p className="text-xs text-rose-300">{error}</p>}
     </div>

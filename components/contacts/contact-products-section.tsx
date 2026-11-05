@@ -24,7 +24,7 @@ interface RowProps {
   productType: ProductType;
   availableProductTypes: ProductType[];
   disabled: boolean;
-  onSave: (productType: ProductType, ratio: string, notes: string) => void;
+  onSave: (productType: ProductType, ratio: string, recoveryRatio: string, notes: string) => void;
   onDelete?: () => void;
   onCancel?: () => void;
 }
@@ -32,11 +32,12 @@ interface RowProps {
 function ProductRow({ product, productType, availableProductTypes, disabled, onSave, onDelete, onCancel }: RowProps) {
   const [selectedType, setSelectedType] = useState<ProductType>(productType);
   const [ratio, setRatio] = useState(product?.ratio ?? "");
+  const [recoveryRatio, setRecoveryRatio] = useState(product?.recovery_ratio ?? "");
   const [notes, setNotes] = useState(product?.notes ?? "");
 
   return (
     <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
         <select
           value={selectedType}
           onChange={(e) => setSelectedType(e.target.value as ProductType)}
@@ -60,6 +61,13 @@ function ProductRow({ product, productType, availableProductTypes, disabled, onS
           className={fieldClass}
         />
         <input
+          value={recoveryRatio}
+          onChange={(e) => setRecoveryRatio(e.target.value)}
+          placeholder='Recovery ratio, e.g. "2%" or "70/30"'
+          disabled={disabled}
+          className={fieldClass}
+        />
+        <input
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Notes"
@@ -70,7 +78,7 @@ function ProductRow({ product, productType, availableProductTypes, disabled, onS
       <div className="mt-2 flex items-center gap-2">
         <button
           type="button"
-          onClick={() => onSave(selectedType, ratio, notes)}
+          onClick={() => onSave(selectedType, ratio, recoveryRatio, notes)}
           disabled={disabled}
           className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -111,11 +119,11 @@ export function ContactProductsSection({ contactId, products, availableProducts 
   const usedTypes = new Set(products.map((p) => p.product_type));
   const availableTypes = availableProducts.filter((p) => !usedTypes.has(p.name)).map((p) => p.name);
 
-  function handleSave(productType: ProductType, ratio: string, notes: string) {
+  function handleSave(productType: ProductType, ratio: string, recoveryRatio: string, notes: string) {
     setError(null);
     startTransition(async () => {
       try {
-        const result = await upsertContactProduct(contactId, productType, ratio, notes);
+        const result = await upsertContactProduct(contactId, productType, ratio, recoveryRatio, notes);
         if (result.error) {
           setError(result.error);
           return;
@@ -155,7 +163,7 @@ export function ContactProductsSection({ contactId, products, availableProducts 
           productType={product.product_type}
           availableProductTypes={availableTypes}
           disabled={isPending}
-          onSave={(productType, ratio, notes) => handleSave(productType, ratio, notes)}
+          onSave={(productType, ratio, recoveryRatio, notes) => handleSave(productType, ratio, recoveryRatio, notes)}
           onDelete={() => handleDelete(product.id)}
         />
       ))}
@@ -166,7 +174,7 @@ export function ContactProductsSection({ contactId, products, availableProducts 
           productType={availableTypes[0]}
           availableProductTypes={availableTypes}
           disabled={isPending}
-          onSave={(productType, ratio, notes) => handleSave(productType, ratio, notes)}
+          onSave={(productType, ratio, recoveryRatio, notes) => handleSave(productType, ratio, recoveryRatio, notes)}
           onCancel={() => setAdding(false)}
         />
       )}

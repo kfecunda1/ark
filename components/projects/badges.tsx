@@ -65,6 +65,17 @@ export function PriorityBadge({ priority }: { priority: ProjectPriority }) {
   );
 }
 
+// Deliberately its own warm color (amber), distinct from every stage/
+// status/priority family above — a project being a recovery is an
+// orthogonal fact about it, not another step in its own progression.
+export function RecoveryBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium whitespace-nowrap text-amber-300">
+      Recovery
+    </span>
+  );
+}
+
 // Document types are admin-managed data now (supabase/migrations/
 // 011_settings_tables.sql's document_types table), not a closed set, so
 // this can no longer be an exhaustive Record — any name not in this

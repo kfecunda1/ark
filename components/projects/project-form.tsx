@@ -85,9 +85,11 @@ export function ProjectForm({
   );
   const [matchedContactId, setMatchedContactId] = useState<string | null>(project?.matched_contact_id ?? null);
   const [ratioReal, setRatioReal] = useState(project?.ratio_real ?? "");
+  const [isRecovery, setIsRecovery] = useState(project?.is_recovery ?? false);
   type AutoFillMessage =
     | { tone: "filled"; text: string }
-    | { tone: "differs"; contactName: string; productType: string; theirRatio: string; currentRatio: string };
+    | { tone: "differs"; contactName: string; productType: string; theirRatio: string; currentRatio: string }
+    | { tone: "missing"; contactName: string; productType: string; isRecovery: boolean };
   const [autoFillMessage, setAutoFillMessage] = useState<AutoFillMessage | null>(null);
   // Shown only while 2-3 products are chosen and undecided — the
   // matched contact's ratio per option, as information only. Cleared
@@ -128,7 +130,7 @@ export function ProjectForm({
         // difference, since there's no single final product yet to
         // check ratio_real against.
         if (!cancelled) setAutoFillMessage(null);
-        const ratios = await getContactProductRatios(matchedContactId, chosen);
+        const ratios = await getContactProductRatios(matchedContactId, chosen, isRecovery);
         if (!cancelled) setInfoRatios(ratios);
         return;
       }
@@ -137,9 +139,14 @@ export function ProjectForm({
       // check as before, treating it as the would-be final product.
       if (!cancelled) setInfoRatios(null);
       const product = chosen[0];
-      const { ratio, contactName } = await getContactProductRatio(matchedContactId, product);
-      if (cancelled || !ratio || !contactName) {
-        if (!cancelled) setAutoFillMessage(null);
+      const { ratio, contactName } = await getContactProductRatio(matchedContactId, product, isRecovery);
+      if (cancelled) return;
+      if (!contactName) {
+        setAutoFillMessage(null);
+        return;
+      }
+      if (!ratio) {
+        setAutoFillMessage({ tone: "missing", contactName, productType: product, isRecovery });
         return;
       }
       const current = ratioRealRef.current.trim();
@@ -159,7 +166,7 @@ export function ProjectForm({
     return () => {
       cancelled = true;
     };
-  }, [matchedContactId, chosenProductsKey]);
+  }, [matchedContactId, chosenProductsKey, isRecovery]);
 
   async function handleCreateSubmit(e: React.FormEvent<HTMLFormElement>) {
     disableSubmitButton(submitButtonRef);
@@ -264,6 +271,19 @@ export function ProjectForm({
         <div className="sm:col-span-2">
           <label className={labelClass}>Products *</label>
           <ProductOptionsPicker products={products} value={productOptions} onChange={setProductOptions} />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="flex items-center gap-2.5 text-sm text-white/80">
+            <input
+              type="checkbox"
+              name="is_recovery"
+              checked={isRecovery}
+              onChange={(e) => setIsRecovery(e.target.checked)}
+              className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
+            />
+            Recovery
+          </label>
         </div>
 
         <div>
@@ -384,9 +404,17 @@ export function ProjectForm({
               </div>
             </div>
           )}
+          {autoFillMessage?.tone === "missing" && (
+            <p className="mt-1.5 text-xs text-amber-300">
+              {autoFillMessage.contactName} has no {autoFillMessage.isRecovery ? "recovery ratio" : "ratio"} set for{" "}
+              {autoFillMessage.productType}.
+            </p>
+          )}
           {infoRatios && (
             <div className="mt-1.5 rounded-lg border border-white/10 bg-white/[0.04] p-2.5">
-              <p className="text-xs text-white/50">Matched contact&apos;s ratio on record, per option (not filled yet):</p>
+              <p className="text-xs text-white/50">
+                Matched contact&apos;s {isRecovery ? "recovery ratio" : "ratio"} on record, per option (not filled yet):
+              </p>
               <ul className="mt-1 flex flex-col gap-0.5">
                 {Object.entries(infoRatios).map(([product, ratio]) => (
                   <li key={product} className="text-xs text-white/70">

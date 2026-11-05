@@ -71,6 +71,10 @@ export interface ContactProduct {
   contact_id: string;
   product_type: ProductType;
   ratio: string | null;
+  // supabase/migrations/015_recovery.sql — the ratio that applies when
+  // a project using this product is flagged Recovery (projects.
+  // is_recovery), parallel to `ratio` for the non-recovery case.
+  recovery_ratio: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -106,6 +110,11 @@ export interface Project {
   // of this project's own project_products.product values; enforced by
   // the validate_final_product DB trigger, not just the app.
   final_product: string | null;
+  // supabase/migrations/015_recovery.sql. Switches which of the
+  // matched contact's ratios the auto-fill reads (recovery_ratio
+  // instead of ratio) — see lib/actions/contacts.ts's
+  // getContactProductRatio(s).
+  is_recovery: boolean;
 }
 
 // A project's 1-3 product options (supabase/migrations/013_projects_
@@ -251,6 +260,7 @@ export interface ActivityDetails {
   priority?: ProjectPriority | [ProjectPriority, ProjectPriority];
   product_type?: ProductType;
   archived?: [boolean, boolean];
+  is_recovery?: [boolean, boolean];
   full_name?: [string | null, string | null];
   parent_type?: "project" | "contact";
   parent_id?: string;

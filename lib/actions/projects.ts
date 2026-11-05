@@ -57,6 +57,7 @@ function buildProjectPayload(formData: FormData) {
     total_face_value: totalFaceValueRaw ? Number(totalFaceValueRaw) : null,
     currency: (formData.get("currency")?.toString().trim() || "USD") as Currency,
     priority: formData.get("priority") as ProjectPriority,
+    is_recovery: formData.get("is_recovery") === "on",
   };
 }
 
@@ -614,11 +615,19 @@ export async function findDuplicateProjects(input: {
 export interface RatioAutoFillResult {
   filled: boolean;
   differs: boolean;
+  // True when the matched contact has no ratio of the applicable type
+  // (recovery or normal, per isRecovery) on record for this product —
+  // nothing to fill or compare, just a hint for the caller to show.
+  missing: boolean;
   contactName: string;
   // The final product this ratio is for.
   productType: string;
-  // The matched contact's ratio on record for this product.
-  theirRatio: string;
+  // Which ratio column was being read — recovery_ratio vs ratio — so
+  // the caller can phrase "no ratio set" vs "no recovery ratio set".
+  isRecovery: boolean;
+  // The matched contact's ratio on record for this product. Set when
+  // filled or differs; absent when missing.
+  theirRatio?: string;
   // Only set when differs is true — the project's own ratio_real at the
   // moment of the check, so the caller can offer "Use <theirRatio>" /
   // "Keep <currentRatio>" without a second round trip.
@@ -630,14 +639,19 @@ async function autoFillRatio(
   projectId: string,
   matchedContactId: string,
   finalProduct: string,
-  currentRatioReal: string | null
+  currentRatioReal: string | null,
+  isRecovery: boolean
 ): Promise<RatioAutoFillResult | null> {
-  const { ratio, contactName } = await getContactProductRatio(matchedContactId, finalProduct);
-  if (!ratio || !contactName) return null;
+  const { ratio, contactName } = await getContactProductRatio(matchedContactId, finalProduct, isRecovery);
+  if (!contactName) return null;
+
+  if (!ratio) {
+    return { filled: false, differs: false, missing: true, contactName, productType: finalProduct, isRecovery };
+  }
 
   if (!currentRatioReal) {
     await supabase.from("projects").update({ ratio_real: ratio }).eq("id", projectId);
-    return { filled: true, differs: false, contactName, productType: finalProduct, theirRatio: ratio };
+    return { filled: true, differs: false, missing: false, contactName, productType: finalProduct, isRecovery, theirRatio: ratio };
   }
   if (currentRatioReal !== ratio) {
     // Never overwritten without an explicit "Use <theirRatio>" click
@@ -646,8 +660,10 @@ async function autoFillRatio(
     return {
       filled: false,
       differs: true,
+      missing: false,
       contactName,
       productType: finalProduct,
+      isRecovery,
       theirRatio: ratio,
       currentRatio: currentRatioReal,
     };
@@ -669,7 +685,7 @@ export async function updateProjectMatchedContact(
 
     const { data: current, error: readError } = await supabase
       .from("projects")
-      .select("final_product, ratio_real")
+      .select("final_product, ratio_real, is_recovery")
       .eq("id", projectId)
       .maybeSingle();
     if (readError || !current) {
@@ -686,7 +702,61 @@ export async function updateProjectMatchedContact(
 
     const autoFill =
       matchedContactId && current.final_product
-        ? await autoFillRatio(supabase, projectId, matchedContactId, current.final_product, current.ratio_real)
+        ? await autoFillRatio(
+            supabase,
+            projectId,
+            matchedContactId,
+            current.final_product,
+            current.ratio_real,
+            current.is_recovery
+          )
+        : null;
+
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null, autoFill };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err), autoFill: null };
+  }
+}
+
+// The detail page's Recovery checkbox (components/projects/recovery-
+// toggle.tsx) — saves immediately and, if the project already has both
+// a final product and a matched contact, re-runs the ratio auto-fill
+// against whichever ratio column the new is_recovery value now points
+// at (recovery_ratio vs ratio). Same "snapshot, not live" rules as
+// every other auto-fill trigger here.
+export async function updateProjectIsRecovery(
+  projectId: string,
+  isRecovery: boolean
+): Promise<{ error: string | null; autoFill: RatioAutoFillResult | null }> {
+  try {
+    const supabase = await createClient();
+
+    const { data: current, error: readError } = await supabase
+      .from("projects")
+      .select("final_product, matched_contact_id, ratio_real")
+      .eq("id", projectId)
+      .maybeSingle();
+    if (readError || !current) {
+      return { error: readError?.message ?? "Project not found.", autoFill: null };
+    }
+
+    const { error } = await supabase.from("projects").update({ is_recovery: isRecovery }).eq("id", projectId);
+    if (error) {
+      return { error: error.message, autoFill: null };
+    }
+
+    const autoFill =
+      current.final_product && current.matched_contact_id
+        ? await autoFillRatio(
+            supabase,
+            projectId,
+            current.matched_contact_id,
+            current.final_product,
+            current.ratio_real,
+            isRecovery
+          )
         : null;
 
     revalidatePath("/projects");
@@ -749,7 +819,7 @@ export async function setProjectFinalProduct(
 
     const { data: current, error: readError } = await supabase
       .from("projects")
-      .select("matched_contact_id, ratio_real")
+      .select("matched_contact_id, ratio_real, is_recovery")
       .eq("id", projectId)
       .maybeSingle();
     if (readError || !current) {
@@ -765,7 +835,14 @@ export async function setProjectFinalProduct(
     // product left to look a ratio up for.
     const autoFill =
       product && current.matched_contact_id
-        ? await autoFillRatio(supabase, projectId, current.matched_contact_id, product, current.ratio_real)
+        ? await autoFillRatio(
+            supabase,
+            projectId,
+            current.matched_contact_id,
+            product,
+            current.ratio_real,
+            current.is_recovery
+          )
         : null;
 
     revalidatePath("/projects");

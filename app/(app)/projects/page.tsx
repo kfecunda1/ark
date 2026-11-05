@@ -5,7 +5,7 @@ import { GlassCard } from "@/components/glass-card";
 import { ClickableRow } from "@/components/clickable-row";
 import { ClickableCard } from "@/components/clickable-card";
 import { ProjectFilters } from "@/components/projects/project-filters";
-import { StageBadge } from "@/components/projects/badges";
+import { StageBadge, RecoveryBadge } from "@/components/projects/badges";
 import { StatusSelect } from "@/components/projects/status-select";
 import { DueDateBadge } from "@/components/projects/due-date-badge";
 import { SortableHeader, MobileSortControl, type SortOption } from "@/components/sort-controls";
@@ -49,6 +49,7 @@ interface ProjectsPageProps {
     product_type?: string;
     stage?: string;
     status?: string;
+    recovery?: string;
     sort?: string;
     dir?: string;
     archived?: string;
@@ -70,6 +71,11 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
   }
   if (params.status) {
     query = query.eq("status", params.status);
+  }
+  if (params.recovery === "true") {
+    query = query.eq("is_recovery", true);
+  } else if (params.recovery === "false") {
+    query = query.eq("is_recovery", false);
   }
 
   const { data: projectsData, error } = await query.order("created_at", { ascending: false });
@@ -135,7 +141,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
   const title = showArchived ? "Archived Projects" : "Projects";
   const subtitle = showArchived ? "Projects that have been archived." : "Track and manage incoming projects.";
   const emptyTitle = showArchived ? "No archived projects" : "No projects yet";
-  const filtered = Boolean(params.product_type || params.stage || params.status);
+  const filtered = Boolean(params.product_type || params.stage || params.status || params.recovery);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -231,10 +237,15 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                     >
                       <td className="px-4 py-3 text-white/80 group-hover:text-white">{project.name}</td>
                       <td className="px-4 py-3 text-white/70 group-hover:text-white">
-                        {productLabel ?? "—"}
-                        {!project.final_product && options.length > 1 && (
-                          <span className="ml-1.5 text-xs text-white/35">(+{options.length - 1})</span>
-                        )}
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          {project.is_recovery && <RecoveryBadge />}
+                          <span>
+                            {productLabel ?? "—"}
+                            {!project.final_product && options.length > 1 && (
+                              <span className="ml-1.5 text-xs text-white/35">(+{options.length - 1})</span>
+                            )}
+                          </span>
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <StageBadge stage={project.stage} />
@@ -282,11 +293,14 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                   <dl className="flex flex-col gap-2 text-sm">
                     <div>
                       <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Product</dt>
-                      <dd className="mt-0.5 text-white/70">
-                        {productLabel ?? "—"}
-                        {!project.final_product && options.length > 1 && (
-                          <span className="ml-1.5 text-xs text-white/35">(+{options.length - 1})</span>
-                        )}
+                      <dd className="mt-0.5 flex flex-wrap items-center gap-1.5 text-white/70">
+                        {project.is_recovery && <RecoveryBadge />}
+                        <span>
+                          {productLabel ?? "—"}
+                          {!project.final_product && options.length > 1 && (
+                            <span className="ml-1.5 text-xs text-white/35">(+{options.length - 1})</span>
+                          )}
+                        </span>
                       </dd>
                     </div>
                     <div>

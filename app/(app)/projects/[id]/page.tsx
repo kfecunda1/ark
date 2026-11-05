@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
-import { PriorityBadge } from "@/components/projects/badges";
+import { PriorityBadge, RecoveryBadge } from "@/components/projects/badges";
 import { StageSelect } from "@/components/projects/stage-select";
 import { StatusSelect } from "@/components/projects/status-select";
 import { ArchiveProjectButton } from "@/components/projects/archive-project-button";
@@ -10,6 +10,7 @@ import { ProjectDocuments } from "@/components/projects/project-documents";
 import { TranchesSection } from "@/components/projects/tranches-section";
 import { MatchedContactSelect } from "@/components/projects/matched-contact-select";
 import { ProjectProductOptions } from "@/components/projects/project-product-options";
+import { RecoveryToggle } from "@/components/projects/recovery-toggle";
 import { ProjectTimeline } from "@/components/projects/project-timeline";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveDocumentTypes } from "@/lib/document-types";
@@ -129,7 +130,15 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
               </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-white/45">{project.final_product ?? "Product not decided"}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-white/45">
+            {project.is_recovery && (
+              <>
+                <RecoveryBadge />
+                <span>·</span>
+              </>
+            )}
+            <span>{project.final_product ?? "Product not decided"}</span>
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <ArchiveProjectButton projectId={project.id} archived={Boolean(project.archived_at)} />
@@ -165,6 +174,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         <PriorityBadge priority={project.priority} />
         <StageSelect projectId={project.id} currentStage={project.stage} />
         <StatusSelect projectId={project.id} currentStatus={project.status} />
+        <RecoveryToggle projectId={project.id} isRecovery={project.is_recovery} />
       </div>
 
       <div className="mb-6">
@@ -175,6 +185,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             options={projectProducts.map((p) => p.product)}
             finalProduct={project.final_product}
             matchedContactId={project.matched_contact_id}
+            isRecovery={project.is_recovery}
           />
         </GlassCard>
       </div>

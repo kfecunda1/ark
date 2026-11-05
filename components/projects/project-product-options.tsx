@@ -10,11 +10,13 @@ interface ProjectProductOptionsProps {
   options: string[];
   finalProduct: string | null;
   matchedContactId: string | null;
+  isRecovery: boolean;
 }
 
 type Message =
   | { tone: "filled"; text: string }
-  | { tone: "differs"; contactName: string; productType: string; theirRatio: string; currentRatio: string };
+  | { tone: "differs"; contactName: string; productType: string; theirRatio: string; currentRatio: string }
+  | { tone: "missing"; contactName: string; productType: string; isRecovery: boolean };
 
 // The detail page's chips for a project's product options — "Choose as
 // final" while nothing's decided, "Rejected" + "Make final instead" for
@@ -22,7 +24,13 @@ type Message =
 // decided. Adding/removing options themselves only ever happens through
 // the Edit form (components/projects/product-options-picker.tsx); this
 // only ever changes which existing option (if any) is final.
-export function ProjectProductOptions({ projectId, options, finalProduct, matchedContactId }: ProjectProductOptionsProps) {
+export function ProjectProductOptions({
+  projectId,
+  options,
+  finalProduct,
+  matchedContactId,
+  isRecovery,
+}: ProjectProductOptionsProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +50,7 @@ export function ProjectProductOptions({ projectId, options, finalProduct, matche
         if (!cancelled) setInfoRatios(null);
         return;
       }
-      const ratios = await getContactProductRatios(matchedContactId, options);
+      const ratios = await getContactProductRatios(matchedContactId, options, isRecovery);
       if (!cancelled) setInfoRatios(ratios);
     }
     run();
@@ -50,7 +58,7 @@ export function ProjectProductOptions({ projectId, options, finalProduct, matche
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- optionsKey stands in for options (array identity isn't stable across renders)
-  }, [finalProduct, matchedContactId, optionsKey]);
+  }, [finalProduct, matchedContactId, optionsKey, isRecovery]);
 
   function applyFinal(product: string | null) {
     setError(null);
@@ -64,12 +72,14 @@ export function ProjectProductOptions({ projectId, options, finalProduct, matche
           return;
         }
         if (result.autoFill) {
-          const { filled, contactName, productType, theirRatio, currentRatio } = result.autoFill;
-          setMessage(
-            filled
-              ? { tone: "filled", text: `Real ratio filled from ${contactName} (${productType}).` }
-              : { tone: "differs", contactName, productType, theirRatio, currentRatio: currentRatio ?? "" }
-          );
+          const { filled, differs, contactName, productType, theirRatio, currentRatio, isRecovery } = result.autoFill;
+          if (filled) {
+            setMessage({ tone: "filled", text: `Real ratio filled from ${contactName} (${productType}).` });
+          } else if (differs) {
+            setMessage({ tone: "differs", contactName, productType, theirRatio: theirRatio!, currentRatio: currentRatio ?? "" });
+          } else {
+            setMessage({ tone: "missing", contactName, productType, isRecovery });
+          }
         }
         router.refresh();
       } catch (err) {
@@ -168,7 +178,9 @@ export function ProjectProductOptions({ projectId, options, finalProduct, matche
 
       {infoRatios && Object.keys(infoRatios).length > 0 && (
         <div className="rounded-lg border border-white/10 bg-white/[0.04] p-2.5">
-          <p className="text-xs text-white/50">Matched contact&apos;s ratio on record, per option (not filled yet):</p>
+          <p className="text-xs text-white/50">
+            Matched contact&apos;s {isRecovery ? "recovery ratio" : "ratio"} on record, per option (not filled yet):
+          </p>
           <ul className="mt-1 flex flex-col gap-0.5">
             {Object.entries(infoRatios).map(([product, ratio]) => (
               <li key={product} className="text-xs text-white/70">
@@ -207,6 +219,11 @@ export function ProjectProductOptions({ projectId, options, finalProduct, matche
         </div>
       )}
 
+      {message?.tone === "missing" && (
+        <p className="text-xs text-amber-300">
+          {message.contactName} has no {message.isRecovery ? "recovery ratio" : "ratio"} set for {message.productType}.
+        </p>
+      )}
       {error && <p className="text-xs text-rose-300">{error}</p>}
     </div>
   );

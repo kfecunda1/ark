@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Layers } from "lucide-react";
+import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Layers, RotateCcw } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { DueTodayAndOverdue, type DueItem } from "@/components/dashboard/due-today";
 import { createClient } from "@/lib/supabase/server";
@@ -195,6 +195,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     danger: "border-red-500/25 bg-red-500/10 text-red-300",
   };
 
+  const openRecoveryCount = openProjects.filter((project) => project.is_recovery).length;
+
   const STATS = [
     {
       label: "Total Open Projects",
@@ -209,6 +211,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       icon: CheckCircle2,
       tone: "text-emerald-300",
       href: "/projects?status=completed",
+    },
+    {
+      label: "Open Recovery Projects",
+      value: openRecoveryCount,
+      icon: RotateCcw,
+      tone: "text-amber-300",
+      href: "/projects?recovery=true",
     },
   ];
 
@@ -244,7 +253,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </GlassCard>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {STATS.map((stat) => (
           <Link key={stat.label} href={stat.href} className="block">
             <GlassCard className="p-6">

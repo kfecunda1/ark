@@ -43,6 +43,7 @@ interface SubmittedProduct {
   id: string | null;
   product_type: ProductType;
   ratio: string | null;
+  recovery_ratio: string | null;
   notes: string | null;
 }
 
@@ -50,6 +51,7 @@ function parseSubmittedProducts(formData: FormData): SubmittedProduct[] {
   const ids = formData.getAll("product_id").map((v) => v.toString());
   const types = formData.getAll("product_type_row").map((v) => v.toString());
   const ratios = formData.getAll("product_ratio").map((v) => v.toString().trim());
+  const recoveryRatios = formData.getAll("product_recovery_ratio").map((v) => v.toString().trim());
   const notes = formData.getAll("product_notes").map((v) => v.toString().trim());
 
   return types
@@ -57,6 +59,7 @@ function parseSubmittedProducts(formData: FormData): SubmittedProduct[] {
       id: ids[i]?.trim() || null,
       product_type: product_type as ProductType,
       ratio: ratios[i] || null,
+      recovery_ratio: recoveryRatios[i] || null,
       notes: notes[i] || null,
     }))
     .filter((p) => p.product_type);
@@ -69,20 +72,28 @@ async function syncContactProducts(
 ): Promise<void> {
   const { data: existing } = await supabase
     .from("contact_products")
-    .select("id, product_type, ratio, notes")
+    .select("id, product_type, ratio, recovery_ratio, notes")
     .eq("contact_id", contactId);
 
   const existingById = new Map(
-    ((existing as { id: string; product_type: ProductType; ratio: string | null; notes: string | null }[] | null) ?? []).map(
-      (p) => [p.id, p]
-    )
+    (
+      (existing as
+        | { id: string; product_type: ProductType; ratio: string | null; recovery_ratio: string | null; notes: string | null }[]
+        | null) ?? []
+    ).map((p) => [p.id, p])
   );
   const submittedIds = new Set(submitted.filter((p) => p.id).map((p) => p.id));
 
   const idsToDelete = [...existingById.keys()].filter((id) => !submittedIds.has(id));
   const toInsert = submitted
     .filter((p) => !p.id)
-    .map((p) => ({ contact_id: contactId, product_type: p.product_type, ratio: p.ratio, notes: p.notes }));
+    .map((p) => ({
+      contact_id: contactId,
+      product_type: p.product_type,
+      ratio: p.ratio,
+      recovery_ratio: p.recovery_ratio,
+      notes: p.notes,
+    }));
   const toUpdate = submitted.filter((p) => {
     if (!p.id) return false;
     const existingProduct = existingById.get(p.id);
@@ -90,6 +101,7 @@ async function syncContactProducts(
       existingProduct &&
       (existingProduct.product_type !== p.product_type ||
         existingProduct.ratio !== p.ratio ||
+        existingProduct.recovery_ratio !== p.recovery_ratio ||
         existingProduct.notes !== p.notes)
     );
   });
@@ -107,7 +119,12 @@ async function syncContactProducts(
   for (const product of toUpdate) {
     const { error } = await supabase
       .from("contact_products")
-      .update({ product_type: product.product_type, ratio: product.ratio, notes: product.notes })
+      .update({
+        product_type: product.product_type,
+        ratio: product.ratio,
+        recovery_ratio: product.recovery_ratio,
+        notes: product.notes,
+      })
       .eq("id", product.id!);
     if (error) console.error("[syncContactProducts] failed to update product:", error.message);
   }
@@ -138,9 +155,15 @@ export async function createContactWithId(
 
     const products = parseSubmittedProducts(formData);
     if (products.length > 0) {
-      const { error: productError } = await supabase
-        .from("contact_products")
-        .insert(products.map((p) => ({ contact_id: newId, product_type: p.product_type, ratio: p.ratio, notes: p.notes })));
+      const { error: productError } = await supabase.from("contact_products").insert(
+        products.map((p) => ({
+          contact_id: newId,
+          product_type: p.product_type,
+          ratio: p.ratio,
+          recovery_ratio: p.recovery_ratio,
+          notes: p.notes,
+        }))
+      );
       if (productError) {
         console.error("[createContactWithId] failed to insert products:", productError.message);
       }
@@ -220,6 +243,7 @@ export async function upsertContactProduct(
   contactId: string,
   productType: ProductType,
   ratio: string,
+  recoveryRatio: string,
   notes: string
 ): Promise<{ error: string | null }> {
   try {
@@ -229,6 +253,7 @@ export async function upsertContactProduct(
         contact_id: contactId,
         product_type: productType,
         ratio: ratio.trim() || null,
+        recovery_ratio: recoveryRatio.trim() || null,
         notes: notes.trim() || null,
       },
       { onConflict: "contact_id,product_type" }
@@ -426,28 +451,35 @@ export async function addContactNote(
 // ----------------------------------------------------------------------------
 
 export interface ContactProductRatio {
+  // Already resolved to whichever column applies, per the caller's
+  // `isRecovery` — recovery_ratio when true, ratio when false. Callers
+  // never need to know which column backed it, only the matching
+  // "no ratio set" / "no recovery ratio set" wording (see
+  // lib/actions/projects.ts's autoFillRatio).
   ratio: string | null;
   contactName: string | null;
 }
 
 export async function getContactProductRatio(
   contactId: string,
-  productType: ProductType
+  productType: ProductType,
+  isRecovery: boolean
 ): Promise<ContactProductRatio> {
   try {
     const supabase = await createClient();
     const [{ data: product }, { data: contact }] = await Promise.all([
       supabase
         .from("contact_products")
-        .select("ratio")
+        .select("ratio, recovery_ratio")
         .eq("contact_id", contactId)
         .eq("product_type", productType)
         .maybeSingle(),
       supabase.from("contacts").select("full_name").eq("id", contactId).maybeSingle(),
     ]);
 
+    const row = product as { ratio: string | null; recovery_ratio: string | null } | null;
     return {
-      ratio: (product as { ratio: string | null } | null)?.ratio ?? null,
+      ratio: (isRecovery ? row?.recovery_ratio : row?.ratio) ?? null,
       contactName: (contact as { full_name: string } | null)?.full_name ?? null,
     };
   } catch (err) {
@@ -457,12 +489,14 @@ export async function getContactProductRatio(
 }
 
 // Batched sibling of getContactProductRatio — used by
-// components/projects/project-product-options.tsx to show the matched
-// contact's ratio for *every* undecided option at once (information
-// only, never written anywhere) instead of one round trip per option.
+// components/projects/project-product-options.tsx and the create/edit
+// form's own client-side preview to show the matched contact's ratio
+// for *every* undecided option at once (information only, never
+// written anywhere) instead of one round trip per option.
 export async function getContactProductRatios(
   contactId: string,
-  productTypes: ProductType[]
+  productTypes: ProductType[],
+  isRecovery: boolean
 ): Promise<Record<string, string | null>> {
   if (productTypes.length === 0) return {};
 
@@ -470,7 +504,7 @@ export async function getContactProductRatios(
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("contact_products")
-      .select("product_type, ratio")
+      .select("product_type, ratio, recovery_ratio")
       .eq("contact_id", contactId)
       .in("product_type", productTypes);
 
@@ -479,8 +513,8 @@ export async function getContactProductRatios(
       return {};
     }
 
-    const rows = (data as { product_type: ProductType; ratio: string | null }[] | null) ?? [];
-    return Object.fromEntries(rows.map((row) => [row.product_type, row.ratio]));
+    const rows = (data as { product_type: ProductType; ratio: string | null; recovery_ratio: string | null }[] | null) ?? [];
+    return Object.fromEntries(rows.map((row) => [row.product_type, (isRecovery ? row.recovery_ratio : row.ratio) ?? null]));
   } catch (err) {
     console.error("[getContactProductRatios] unexpected error:", unexpectedErrorMessage(err));
     return {};

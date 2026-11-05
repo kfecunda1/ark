@@ -80,10 +80,12 @@ const FIELD_LABELS: Record<string, string> = {
   stage: "stage",
   status: "status",
   archived: "archived",
+  is_recovery: "recovery",
   // contacts
   full_name: "name",
   // contact products
   ratio: "ratio",
+  recovery_ratio: "recovery ratio",
   // documents
   document_type: "document type",
   file_name: "file name",
@@ -132,6 +134,7 @@ const FIELDS_DESCRIBED_SEPARATELY = new Set([
   "event",
   "final_product",
   "reminder_done",
+  "is_recovery",
 ]);
 
 function asPair<T>(value: T | [T, T] | undefined): [T, T] | null {
@@ -187,6 +190,10 @@ export function activityDetailChips(row: ActivityLog): string[] {
 
   if (details.archived) {
     chips.push(details.archived[1] ? "archived" : "unarchived");
+  }
+
+  if (details.is_recovery) {
+    chips.push(details.is_recovery[1] ? "marked recovery" : "unmarked recovery");
   }
 
   if (details.full_name) {
