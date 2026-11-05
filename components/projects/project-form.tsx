@@ -23,6 +23,7 @@ import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
 import { CURRENCIES, STAGES, STAGE_LABELS, STATUSES, STATUS_LABELS, PRIORITIES, PRIORITY_LABELS } from "@/lib/projects";
+import { amountInWords } from "@/lib/money";
 import type { Currency, DocumentTypeRecord, Product, Project, ProjectProduct, ProjectStage } from "@/lib/types";
 
 interface ProjectFormProps {
@@ -94,6 +95,16 @@ export function ProjectForm({
   const [matchedContactId, setMatchedContactId] = useState<string | null>(project?.matched_contact_id ?? null);
   const [ratioReal, setRatioReal] = useState(project?.ratio_real ?? "");
   const [isRecovery, setIsRecovery] = useState(project?.is_recovery ?? false);
+  // Tracked only to drive the live spelled-out amount below the field —
+  // the field itself still reads out of FormData on submit like every
+  // other field on this form, same as before MoneyInput existed.
+  const [totalFaceValueText, setTotalFaceValueText] = useState(
+    project?.total_face_value != null ? String(project.total_face_value) : ""
+  );
+  const [selectedCurrency, setSelectedCurrency] = useState<Currency>(project?.currency ?? defaultCurrency ?? "USD");
+  const totalFaceValueWords = totalFaceValueText.trim()
+    ? amountInWords(Number(totalFaceValueText), selectedCurrency)
+    : "";
   type AutoFillMessage =
     | { tone: "filled"; text: string }
     | { tone: "differs"; contactName: string; productType: string; theirRatio: string; currentRatio: string }
@@ -469,8 +480,10 @@ export function ProjectForm({
             id="total_face_value"
             name="total_face_value"
             defaultValue={project?.total_face_value ?? ""}
+            onChange={setTotalFaceValueText}
             className={fieldClass}
           />
+          {totalFaceValueWords && <p className="mt-1.5 text-xs text-white/40">{totalFaceValueWords}</p>}
         </div>
 
         <div>
@@ -481,6 +494,7 @@ export function ProjectForm({
             id="currency"
             name="currency"
             defaultValue={project?.currency ?? defaultCurrency ?? "USD"}
+            onChange={(e) => setSelectedCurrency(e.target.value as Currency)}
             className={fieldClass}
           >
             {CURRENCIES.map((currency) => (

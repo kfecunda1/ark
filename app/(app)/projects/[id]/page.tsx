@@ -16,7 +16,7 @@ import { ProjectTimeline } from "@/components/projects/project-timeline";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { formatDateTime } from "@/lib/format";
-import { formatMoney } from "@/lib/money";
+import { amountInWords, formatMoney } from "@/lib/money";
 import type { Contact, Note, Person, Project, ProjectDocument, ProjectProduct, ProjectStep, ProjectTranche } from "@/lib/types";
 
 interface ProjectDetailPageProps {
@@ -150,7 +150,14 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     { label: "Ratio Real", value: project.ratio_real || "—" },
     {
       label: "Total Face Value",
-      value: formatMoney(project.total_face_value, project.currency),
+      value: (
+        <>
+          {formatMoney(project.total_face_value, project.currency)}
+          {project.total_face_value != null && (
+            <p className="mt-0.5 text-xs text-white/40">{amountInWords(project.total_face_value, project.currency)}</p>
+          )}
+        </>
+      ),
     },
     { label: "Last Activity", value: formatDateTime(project.last_activity_at) },
     { label: "Created", value: formatDateTime(project.created_at) },
