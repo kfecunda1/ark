@@ -8,7 +8,8 @@ export type ProductType =
   | "T2T"
   | "S2S"
   | "VISA"
-  | "GPI";
+  | "GPI"
+  | "KTK";
 
 export type ProjectStage = "new" | "documents_received" | "match" | "status";
 
@@ -169,7 +170,8 @@ export type ActivityEntityType =
   | "contact_product"
   | "contact_document"
   | "project_step"
-  | "backup";
+  | "backup"
+  | "password_change";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 

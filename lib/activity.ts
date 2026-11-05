@@ -36,6 +36,7 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   contact_document: "Contact document",
   project_step: "Timeline entry",
   backup: "Backup",
+  password_change: "Password change",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {

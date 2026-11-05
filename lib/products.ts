@@ -4,7 +4,8 @@ import type { ProductType } from "@/lib/types";
 // field, this is a closed list — adding a new product is a code change,
 // not something a user types in. Kept in sync by hand with the
 // product_type enum in supabase/migrations/001_ark_schema.sql (and its
-// later additions in 005_add_products.sql and 008_add_gpi.sql).
+// later additions in 005_add_products.sql, 008_add_gpi.sql and
+// 010_add_ktk.sql).
 export const PRODUCT_TYPES: ProductType[] = [
   "SBLC",
   "MX103",
@@ -16,4 +17,5 @@ export const PRODUCT_TYPES: ProductType[] = [
   "S2S",
   "VISA",
   "GPI",
+  "KTK",
 ];

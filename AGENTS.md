@@ -14,7 +14,7 @@ ARK is a private, two-user tracker for banking-product client projects. It is a 
 
 ## What ARK tracks
 
-Projects run on one of these banking products: **SBLC, MX103, MT103, IP-IP, API, API Cash, T2T, S2S, VISA, GPI** (`lib/products.ts`, a fixed list kept in sync by hand with the `product_type` enum in the schema — adding a new product is a code change, not a user-entered value). There is no "business line" concept in ARK.
+Projects run on one of these banking products: **SBLC, MX103, MT103, IP-IP, API, API Cash, T2T, S2S, VISA, GPI, KTK** (`lib/products.ts`, a fixed list kept in sync by hand with the `product_type` enum in the schema — adding a new product is a code change, not a user-entered value). There is no "business line" concept in ARK.
 
 A project moves through four **stages** — New, Documents Received, Match, Status — and once it reaches Status it also carries a **status**: Open, With Receiver, With Sender, Waiting, In Process, Completed, Lost (`lib/projects.ts`). A project has a Client Contact and an Assigned Contact (both ordinary Contacts, not internal users), Ratio Presented/Ratio Real (free text, e.g. "70/30"), a Total Face Value + currency — all manual entry, no profit field, no formulas.
 
