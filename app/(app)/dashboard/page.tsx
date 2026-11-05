@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Layers } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
-import { FollowUpsDue, type FollowUpItem } from "@/components/dashboard/follow-ups-due";
+import { DueTodayAndOverdue, type DueItem } from "@/components/dashboard/due-today";
 import { createClient } from "@/lib/supabase/server";
 import { dateKeyInTimeZone, formatDateTime } from "@/lib/format";
 import { STAGES, STAGE_LABELS, isClosedStatus } from "@/lib/projects";
@@ -99,10 +99,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     .filter((project) => now.getTime() - new Date(project.last_activity_at).getTime() >= STUCK_AFTER_MS)
     .sort((a, b) => new Date(a.last_activity_at).getTime() - new Date(b.last_activity_at).getTime());
 
-  // Follow-ups due: open next steps, due today or overdue, across every
-  // non-archived project.
+  // Due today & overdue: open next steps AND note reminders, due today
+  // or overdue, across every non-archived project (note reminders on a
+  // contact, or unlinked, carry no "archived" concept and are always
+  // included).
   const todayKey = dateKeyInTimeZone(new Date().toISOString());
-  let followUps: FollowUpItem[] = [];
+  const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
+
+  let dueItems: DueItem[] = [];
   if (projects.length > 0) {
     const { data: stepsData } = await supabase
       .from("project_steps")
@@ -116,17 +120,66 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       .lte("due_date", todayKey)
       .order("due_date", { ascending: true });
 
-    const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
-    followUps = (
+    dueItems = (
       (stepsData as { id: string; project_id: string; body: string; due_date: string }[] | null) ?? []
     ).map((step) => ({
       id: step.id,
+      kind: "step" as const,
       projectId: step.project_id,
-      projectName: projectNameById.get(step.project_id) ?? "Project",
+      parentName: projectNameById.get(step.project_id) ?? "Project",
       body: step.body,
       dueDate: step.due_date,
+      href: `/projects/${step.project_id}`,
     }));
   }
+
+  const { data: reminderNotesData } = await supabase
+    .from("notes")
+    .select("id, content, due_date, project_id, contact_id")
+    .eq("is_reminder", true)
+    .eq("reminder_done", false)
+    .lte("due_date", todayKey)
+    .order("due_date", { ascending: true });
+
+  const reminderNotes =
+    (reminderNotesData as
+      | { id: string; content: string; due_date: string; project_id: string | null; contact_id: string | null }[]
+      | null) ?? [];
+
+  const reminderContactIds = [
+    ...new Set(reminderNotes.map((n) => n.contact_id).filter((id): id is string => Boolean(id))),
+  ];
+  const { data: reminderContactsData } =
+    reminderContactIds.length > 0
+      ? await supabase.from("contacts").select("id, full_name").in("id", reminderContactIds)
+      : { data: [] };
+  const contactNameById = new Map(
+    ((reminderContactsData as { id: string; full_name: string }[] | null) ?? []).map((c) => [c.id, c.full_name])
+  );
+
+  const noteDueItems: DueItem[] = reminderNotes
+    // A project-linked reminder whose project is archived (or otherwise
+    // not in the non-archived `projects` list) is dropped, matching the
+    // next-step query's scope above.
+    .filter((note) => !note.project_id || projectNameById.has(note.project_id))
+    .map((note) => ({
+      id: note.id,
+      kind: "note" as const,
+      body: note.content,
+      dueDate: note.due_date,
+      parentName: note.project_id
+        ? projectNameById.get(note.project_id) ?? "Project"
+        : note.contact_id
+          ? contactNameById.get(note.contact_id) ?? "Contact"
+          : "—",
+      href: note.project_id
+        ? `/projects/${note.project_id}`
+        : note.contact_id
+          ? `/contacts/${note.contact_id}`
+          : `/notes/${note.id}/edit`,
+    }));
+
+  dueItems = [...dueItems, ...noteDueItems].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
   const backupTone: "ok" | "warning" | "danger" =
     daysSinceBackup === null ? "danger" : daysSinceBackup > 14 ? "danger" : daysSinceBackup > 7 ? "warning" : "ok";
@@ -281,9 +334,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <GlassCard interactive={false} className="p-6">
           <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
             <CalendarClock className="h-4 w-4 text-white/40" />
-            Follow-ups Due
+            Due today & overdue
           </h2>
-          <FollowUpsDue items={followUps} />
+          <DueTodayAndOverdue items={dueItems} />
         </GlassCard>
 
         <GlassCard interactive={false} className="p-6">

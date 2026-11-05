@@ -42,6 +42,7 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   app_settings: "Settings",
   user: "User",
   project_product: "Product option",
+  note: "Note",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -58,7 +59,8 @@ export function isDocumentEntity(entityType: ActivityEntityType): boolean {
     entityType === "project_document" ||
     entityType === "contact_document" ||
     entityType === "project_step" ||
-    entityType === "project_product"
+    entityType === "project_product" ||
+    entityType === "note"
   );
 }
 
@@ -102,6 +104,11 @@ const FIELD_LABELS: Record<string, string> = {
   // project_products
   final_product: "final product",
   product: "product",
+  // notes
+  title: "title",
+  content: "text",
+  is_reminder: "reminder",
+  reminder_done: "reminder done",
 };
 
 export function fieldLabel(field: string): string {
@@ -124,6 +131,7 @@ const FIELDS_DESCRIBED_SEPARATELY = new Set([
   "role",
   "event",
   "final_product",
+  "reminder_done",
 ]);
 
 function asPair<T>(value: T | [T, T] | undefined): [T, T] | null {
@@ -235,6 +243,14 @@ export function activityDetailChips(row: ActivityLog): string[] {
     else if (!after && before) chips.push("final product undone");
   }
 
+  if (details.is_reminder) {
+    chips.push("reminder");
+  }
+
+  if (details.reminder_done) {
+    chips.push(details.reminder_done[1] ? "reminder done" : "reminder reopened");
+  }
+
   const rest = (details.fields ?? []).filter((f) => !FIELDS_DESCRIBED_SEPARATELY.has(f));
   if (rest.length > 0) {
     chips.push(`${rest.map(fieldLabel).join(", ")} changed`);
@@ -264,6 +280,13 @@ export function activityTarget(row: ActivityLog): ActivityTarget | null {
     case "contact_product":
     case "contact_document":
       return row.details?.parent_id ? { table: "contacts", id: row.details.parent_id } : null;
+    // A note's parent is either a project or a contact (or neither),
+    // chosen dynamically per row instead of being fixed by entity_type.
+    case "note":
+      if (!row.details?.parent_id || !row.details?.parent_type) return null;
+      return row.details.parent_type === "project"
+        ? { table: "projects", id: row.details.parent_id }
+        : { table: "contacts", id: row.details.parent_id };
     default:
       return null;
   }

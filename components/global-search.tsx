@@ -9,9 +9,10 @@ const GROUP_LABELS: Record<SearchResultType, string> = {
   project: "Projects",
   contact: "Contacts",
   document: "Documents",
+  note: "Notes",
 };
 
-const GROUP_ORDER: SearchResultType[] = ["project", "contact", "document"];
+const GROUP_ORDER: SearchResultType[] = ["project", "contact", "document", "note"];
 
 export function GlobalSearch() {
   const router = useRouter();
@@ -87,7 +88,7 @@ export function GlobalSearch() {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
-        placeholder="Search projects, contacts…"
+        placeholder="Search projects, contacts, notes…"
         className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-2 pr-3 pl-9 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]"
       />
 

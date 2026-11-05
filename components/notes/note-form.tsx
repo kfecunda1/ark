@@ -10,8 +10,10 @@ import type { Note } from "@/lib/types";
 interface NoteFormProps {
   mode: "create" | "edit";
   note?: Note;
+  projects: LinkOption[];
   contacts: LinkOption[];
-  defaultContactId?: string | null;
+  defaultLinkType?: "none" | "project" | "contact";
+  defaultLinkId?: string | null;
 }
 
 const initialState: NoteFormState = { error: null };
@@ -20,7 +22,9 @@ const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
-export function NoteForm({ mode, note, contacts, defaultContactId }: NoteFormProps) {
+export function NoteForm({ mode, note, projects, contacts, defaultLinkType, defaultLinkId }: NoteFormProps) {
+  const resolvedLinkType = defaultLinkType ?? (note?.project_id ? "project" : note?.contact_id ? "contact" : "none");
+  const resolvedLinkId = defaultLinkId ?? note?.project_id ?? note?.contact_id ?? null;
   const action = mode === "edit" && note ? updateNote.bind(null, note.id) : createNote;
   const [state, formAction, isPending] = useActionState(action, initialState);
   const [isReminder, setIsReminder] = useState(note?.is_reminder ?? false);
@@ -78,7 +82,12 @@ export function NoteForm({ mode, note, contacts, defaultContactId }: NoteFormPro
           </div>
         )}
 
-        <NoteLinkPicker contacts={contacts} defaultContactId={defaultContactId ?? note?.contact_id ?? null} />
+        <NoteLinkPicker
+          projects={projects}
+          contacts={contacts}
+          defaultLinkType={resolvedLinkType}
+          defaultLinkId={resolvedLinkId}
+        />
       </GlassCard>
 
       {state?.error && (

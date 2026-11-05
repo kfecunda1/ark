@@ -14,7 +14,7 @@ import { ProjectTimeline } from "@/components/projects/project-timeline";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { formatDateTime } from "@/lib/format";
-import type { Contact, Project, ProjectDocument, ProjectProduct, ProjectStep, ProjectTranche } from "@/lib/types";
+import type { Contact, Note, Project, ProjectDocument, ProjectProduct, ProjectStep, ProjectTranche } from "@/lib/types";
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
@@ -49,21 +49,30 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     { data: projectDocumentsData },
     { data: tranchesData },
     { data: stepsData },
+    { data: notesData },
     { data: projectProductsData },
     documentTypes,
   ] = await Promise.all([
     supabase.from("project_documents").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
     supabase.from("project_tranches").select("*").eq("project_id", project.id).order("tranche_number"),
     supabase.from("project_steps").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
+    supabase.from("notes").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
     supabase.from("project_products").select("*").eq("project_id", project.id).order("sort_order"),
     getActiveDocumentTypes(),
   ]);
   const projectDocuments = (projectDocumentsData as ProjectDocument[] | null) ?? [];
   const tranches = (tranchesData as ProjectTranche[] | null) ?? [];
   const steps = (stepsData as ProjectStep[] | null) ?? [];
+  const notes = (notesData as Note[] | null) ?? [];
   const projectProducts = (projectProductsData as ProjectProduct[] | null) ?? [];
 
-  const authorIds = [...new Set(steps.map((s) => s.author_id).filter((id): id is string => Boolean(id)))];
+  const authorIds = [
+    ...new Set(
+      [...steps.map((s) => s.author_id), ...notes.map((n) => n.created_by)].filter((id): id is string =>
+        Boolean(id)
+      )
+    ),
+  ];
   let authorNameById: Record<string, string> = {};
   if (authorIds.length > 0) {
     const { data: profilesData } = await supabase.from("profiles").select("id, full_name, email").in("id", authorIds);
@@ -196,7 +205,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Timeline</h2>
         <GlassCard interactive={false} className="p-6">
-          <ProjectTimeline projectId={project.id} steps={steps} authorNameById={authorNameById} />
+          <ProjectTimeline projectId={project.id} steps={steps} notes={notes} authorNameById={authorNameById} />
         </GlassCard>
       </div>
     </div>

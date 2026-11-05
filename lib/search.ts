@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 
-export type SearchResultType = "project" | "contact" | "document";
+export type SearchResultType = "project" | "contact" | "document" | "note";
 
 export interface SearchResult {
   type: SearchResultType;
@@ -8,8 +8,11 @@ export interface SearchResult {
   title: string;
   subtitle: string;
   // document results only: which project to navigate to, since a
-  // document has no page of its own.
+  // document has no page of its own. note results reuse both fields:
+  // a note has no page of its own either, so it navigates to whichever
+  // parent it's linked to (or nowhere, if unlinked).
   parentId?: string;
+  parentType?: "project" | "contact";
 }
 
 const RESULT_LIMIT = 5;
@@ -40,6 +43,17 @@ async function fetchProjectsByIds(supabase: SupabaseBrowserClient, ids: string[]
   return (data as ProjectFields[] | null) ?? [];
 }
 
+interface ContactFields {
+  id: string;
+  full_name: string;
+}
+
+async function fetchContactsByIds(supabase: SupabaseBrowserClient, ids: string[]): Promise<ContactFields[]> {
+  if (ids.length === 0) return [];
+  const { data } = await supabase.from("contacts").select("id, full_name").in("id", ids);
+  return (data as ContactFields[] | null) ?? [];
+}
+
 export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]> {
   const query = rawQuery.trim();
   if (query.length < 2) return [];
@@ -48,18 +62,27 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
   const likePattern = `%${escapeLike(query)}%`;
   const orSafePattern = `%${escapeLike(sanitizeForOrFilter(query))}%`;
 
-  const [contactsRes, projectDocsRes] = await Promise.all([
+  const [contactsRes, projectDocsRes, notesRes] = await Promise.all([
     supabase.from("contacts").select("id, full_name").ilike("full_name", likePattern).limit(RESULT_LIMIT),
     supabase
       .from("project_documents")
       .select("id, file_name, project_id")
       .ilike("file_name", likePattern)
       .limit(RESULT_LIMIT),
+    supabase
+      .from("notes")
+      .select("id, title, content, project_id, contact_id")
+      .or(`title.ilike.${orSafePattern},content.ilike.${orSafePattern}`)
+      .limit(RESULT_LIMIT),
   ]);
 
   const contactMatches = (contactsRes.data as { id: string; full_name: string }[] | null) ?? [];
   const projectDocMatches =
     (projectDocsRes.data as { id: string; file_name: string; project_id: string }[] | null) ?? [];
+  const noteMatches =
+    (notesRes.data as
+      | { id: string; title: string | null; content: string; project_id: string | null; contact_id: string | null }[]
+      | null) ?? [];
   const contactIds = contactMatches.map((c) => c.id);
 
   // "Matched with" is the only contact a project carries now
@@ -71,12 +94,17 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
     projectFilters.push(`matched_contact_id.in.(${contactIds.join(",")})`);
   }
 
-  // Parent lookup for the Documents group: a matched document's project
-  // may not itself match the text search above (only its filename did),
-  // so its display fields need their own fetch.
-  const [{ data: projectRows }, docParentProjects] = await Promise.all([
+  const noteProjectIds = [...new Set(noteMatches.map((n) => n.project_id).filter((id): id is string => Boolean(id)))];
+  const noteContactIds = [...new Set(noteMatches.map((n) => n.contact_id).filter((id): id is string => Boolean(id)))];
+
+  // Parent lookup for the Documents and Notes groups: a matched row's
+  // project/contact may not itself match the text search above (only
+  // its own text did), so its display name needs its own fetch.
+  const [{ data: projectRows }, docParentProjects, noteParentProjects, noteParentContacts] = await Promise.all([
     supabase.from("projects").select("id, name, final_product").or(projectFilters.join(",")).limit(RESULT_LIMIT),
     fetchProjectsByIds(supabase, [...new Set(projectDocMatches.map((d) => d.project_id))]),
+    fetchProjectsByIds(supabase, noteProjectIds),
+    fetchContactsByIds(supabase, noteContactIds),
   ]);
 
   const projectMatches = (projectRows as ProjectFields[] | null) ?? [];
@@ -96,8 +124,9 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
   }));
 
   const projectById = new Map(
-    [...projectMatches, ...docParentProjects].map((p): [string, ProjectFields] => [p.id, p])
+    [...projectMatches, ...docParentProjects, ...noteParentProjects].map((p): [string, ProjectFields] => [p.id, p])
   );
+  const contactById = new Map(noteParentContacts.map((c): [string, ContactFields] => [c.id, c]));
 
   const documentResults: SearchResult[] = projectDocMatches.map((doc) => {
     const project = projectById.get(doc.project_id);
@@ -107,10 +136,38 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
       title: doc.file_name,
       subtitle: `Project: ${project?.name ?? "Unknown project"}`,
       parentId: doc.project_id,
+      parentType: "project",
     };
   });
 
-  return [...projectResults, ...contactResults, ...documentResults];
+  const noteResults: SearchResult[] = noteMatches.map((note) => {
+    const title = note.title?.trim() || note.content.slice(0, 60);
+    if (note.project_id) {
+      const project = projectById.get(note.project_id);
+      return {
+        type: "note",
+        id: note.id,
+        title,
+        subtitle: `Note on project: ${project?.name ?? "Unknown project"}`,
+        parentId: note.project_id,
+        parentType: "project",
+      };
+    }
+    if (note.contact_id) {
+      const contact = contactById.get(note.contact_id);
+      return {
+        type: "note",
+        id: note.id,
+        title,
+        subtitle: `Note on contact: ${contact?.full_name ?? "Unknown contact"}`,
+        parentId: note.contact_id,
+        parentType: "contact",
+      };
+    }
+    return { type: "note", id: note.id, title, subtitle: "Note" };
+  });
+
+  return [...projectResults, ...contactResults, ...documentResults, ...noteResults];
 }
 
 export function searchResultHref(result: SearchResult): string {
@@ -121,5 +178,9 @@ export function searchResultHref(result: SearchResult): string {
       return `/contacts/${result.id}`;
     case "document":
       return `/projects/${result.parentId}`;
+    case "note":
+      if (result.parentType === "project") return `/projects/${result.parentId}`;
+      if (result.parentType === "contact") return `/contacts/${result.parentId}`;
+      return `/notes/${result.id}/edit`;
   }
 }

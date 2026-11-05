@@ -178,8 +178,10 @@ export interface ContactDocument {
 }
 
 // The project timeline (components/projects/project-timeline.tsx),
-// replacing the old per-project Notes section.
-export type ProjectStepKind = "step_taken" | "next_step" | "note";
+// replacing the old per-project Notes section. "note" was a legal kind
+// here through migration 013; migration 014 moved notes onto the notes
+// table (see Note below) and nothing writes kind "note" anymore.
+export type ProjectStepKind = "step_taken" | "next_step";
 
 export interface ProjectStep {
   id: string;
@@ -195,8 +197,8 @@ export interface ProjectStep {
   created_at: string;
 }
 
-// Projects no longer link to notes (supabase/migrations/004_timeline.sql
-// dropped notes.project_id) — a note links to a contact or nothing.
+// supabase/migrations/014_notes_projects_reminders.sql re-added
+// project_id - a note links to a project, a contact, or nothing.
 export interface Note {
   id: string;
   created_at: string;
@@ -206,6 +208,8 @@ export interface Note {
   is_reminder: boolean;
   due_date: string | null;
   reminded_at: string | null;
+  reminder_done: boolean;
+  project_id: string | null;
   contact_id: string | null;
 }
 
@@ -232,7 +236,8 @@ export type ActivityEntityType =
   | "document_type"
   | "app_settings"
   | "user"
-  | "project_product";
+  | "project_product"
+  | "note";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
@@ -269,6 +274,11 @@ export interface ActivityDetails {
   // final_product (a pair on updated, like stage/status above)
   product?: string;
   final_product?: [string | null, string | null];
+  // note (parent_type/parent_id above double as its project-or-contact
+  // link; is_reminder is a scalar on created, reminder_done a pair on
+  // updated, matching the done convention above)
+  is_reminder?: boolean;
+  reminder_done?: [boolean, boolean];
 }
 
 export interface ActivityLog {

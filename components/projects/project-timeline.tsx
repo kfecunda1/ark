@@ -9,23 +9,35 @@ import {
   setProjectStepDone,
   updateProjectStep,
 } from "@/lib/actions/project-steps";
+import { addProjectNote, deleteProjectNote, setNoteReminderDone, updateProjectNote } from "@/lib/actions/notes";
 import { DueDateBadge } from "@/components/projects/due-date-badge";
 import { formatDateTime } from "@/lib/format";
-import type { ProjectStep, ProjectStepKind } from "@/lib/types";
+import type { Note, ProjectStep, ProjectStepKind } from "@/lib/types";
+
+// A project's timeline is step_taken/next_step entries (project_steps)
+// and the project's own notes (notes.project_id) merged into one feed
+// — see supabase/migrations/014_notes_projects_reminders.sql, which
+// moved "Note" off project_steps and onto the notes table everyone
+// else already uses. "composer" below is the one add-kind the UI
+// still offers for notes alongside the two real step kinds.
+type ComposerKind = ProjectStepKind | "note";
+
+type TimelineEntry = { kind: "step"; data: ProjectStep } | { kind: "note"; data: Note };
 
 interface ProjectTimelineProps {
   projectId: string;
   steps: ProjectStep[];
+  notes: Note[];
   authorNameById: Record<string, string>;
 }
 
-const KIND_ICON: Record<ProjectStepKind, typeof CalendarClock> = {
+const KIND_ICON: Record<ComposerKind, typeof CalendarClock> = {
   step_taken: CheckCircle2,
   next_step: CalendarClock,
   note: StickyNote,
 };
 
-const KIND_LABEL: Record<ProjectStepKind, string> = {
+const KIND_LABEL: Record<ComposerKind, string> = {
   step_taken: "Step taken",
   next_step: "Next step",
   note: "Note",
@@ -35,32 +47,34 @@ const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 
 interface TimelineRowProps {
-  step: ProjectStep;
+  entry: TimelineEntry;
   projectId: string;
   authorName: string;
   onRefresh: () => void;
 }
 
-function TimelineRow({ step, projectId, authorName, onRefresh }: TimelineRowProps) {
+function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowProps) {
+  const isNote = entry.kind === "note";
+  const step = entry.kind === "step" ? entry.data : null;
+  const note = entry.kind === "note" ? entry.data : null;
+
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [body, setBody] = useState(step.body);
-  const [dueDate, setDueDate] = useState(step.due_date ?? "");
+  const [body, setBody] = useState(step ? step.body : note!.content);
+  const [dueDate, setDueDate] = useState((step ? step.due_date : note!.due_date) ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const Icon = KIND_ICON[step.kind];
+  const composerKind: ComposerKind = step ? step.kind : "note";
+  const Icon = KIND_ICON[composerKind];
 
   function handleSave() {
     setError(null);
     startTransition(async () => {
       try {
-        const result = await updateProjectStep(
-          step.id,
-          projectId,
-          body,
-          step.kind === "next_step" ? dueDate || null : null
-        );
+        const result = step
+          ? await updateProjectStep(step.id, projectId, body, step.kind === "next_step" ? dueDate || null : null)
+          : await updateProjectNote(note!.id, projectId, body, dueDate || null);
         if (result.error) {
           setError(result.error);
           return;
@@ -77,7 +91,9 @@ function TimelineRow({ step, projectId, authorName, onRefresh }: TimelineRowProp
     setError(null);
     startTransition(async () => {
       try {
-        const result = await deleteProjectStep(step.id, projectId);
+        const result = step
+          ? await deleteProjectStep(step.id, projectId)
+          : await deleteProjectNote(note!.id, projectId);
         if (result.error) {
           setError(result.error);
           setConfirmingDelete(false);
@@ -95,7 +111,9 @@ function TimelineRow({ step, projectId, authorName, onRefresh }: TimelineRowProp
     setError(null);
     startTransition(async () => {
       try {
-        const result = await setProjectStepDone(step.id, projectId, done);
+        const result = step
+          ? await setProjectStepDone(step.id, projectId, done)
+          : await setNoteReminderDone(note!.id, done);
         if (result.error) {
           setError(result.error);
           return;
@@ -107,6 +125,12 @@ function TimelineRow({ step, projectId, authorName, onRefresh }: TimelineRowProp
     });
   }
 
+  const showCheckbox = step ? step.kind === "next_step" : note!.is_reminder;
+  const checked = step ? step.done : note!.reminder_done;
+  const createdAt = step ? step.created_at : note!.created_at;
+  const dueDateValue = step ? step.due_date : note!.due_date;
+  const doneAt = step?.done_at ?? null;
+
   if (editing) {
     return (
       <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3">
@@ -117,14 +141,17 @@ function TimelineRow({ step, projectId, authorName, onRefresh }: TimelineRowProp
           className={fieldClass}
           disabled={isPending}
         />
-        {step.kind === "next_step" && (
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            disabled={isPending}
-            className={`${fieldClass} mt-2`}
-          />
+        {(step ? step.kind === "next_step" : true) && (
+          <div className="mt-2">
+            {isNote && <label className="mb-1 block text-xs font-medium text-white/55">Reminder date (optional)</label>}
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              disabled={isPending}
+              className={fieldClass}
+            />
+          </div>
         )}
         {error && <p className="mt-2 text-xs text-red-300">{error}</p>}
         <div className="mt-2 flex items-center gap-2">
@@ -140,8 +167,8 @@ function TimelineRow({ step, projectId, authorName, onRefresh }: TimelineRowProp
             type="button"
             onClick={() => {
               setEditing(false);
-              setBody(step.body);
-              setDueDate(step.due_date ?? "");
+              setBody(step ? step.body : note!.content);
+              setDueDate((step ? step.due_date : note!.due_date) ?? "");
               setError(null);
             }}
             disabled={isPending}
@@ -156,13 +183,13 @@ function TimelineRow({ step, projectId, authorName, onRefresh }: TimelineRowProp
 
   return (
     <div className="flex items-start gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-3">
-      {step.kind === "next_step" ? (
+      {showCheckbox ? (
         <input
           type="checkbox"
-          checked={step.done}
+          checked={checked}
           onChange={(e) => handleToggleDone(e.target.checked)}
           disabled={isPending}
-          aria-label={step.done ? "Mark as not done" : "Mark as done"}
+          aria-label={checked ? "Mark as not done" : "Mark as done"}
           className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
         />
       ) : (
@@ -172,16 +199,17 @@ function TimelineRow({ step, projectId, authorName, onRefresh }: TimelineRowProp
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
-            {KIND_LABEL[step.kind]}
+            {KIND_LABEL[composerKind]}
           </span>
-          {step.kind === "next_step" && step.due_date && !step.done && <DueDateBadge dueDate={step.due_date} />}
+          {dueDateValue && !checked && <DueDateBadge dueDate={dueDateValue} />}
         </div>
-        <p className={`mt-1 text-sm whitespace-pre-wrap ${step.done ? "text-white/40 line-through" : "text-white/85"}`}>
-          {step.body}
+        <p className={`mt-1 text-sm whitespace-pre-wrap ${checked ? "text-white/40 line-through" : "text-white/85"}`}>
+          {body}
         </p>
         <p className="mt-1 text-xs text-white/35">
-          {authorName} · {formatDateTime(step.created_at)}
-          {step.done && step.done_at && <> · Done {formatDateTime(step.done_at)}</>}
+          {authorName} · {formatDateTime(createdAt)}
+          {step && step.done && doneAt && <> · Done {formatDateTime(doneAt)}</>}
+          {note && note.is_reminder && note.reminder_done && <> · Reminder done</>}
         </p>
         {error && <p className="mt-1 text-xs text-red-300">{error}</p>}
       </div>
@@ -231,18 +259,18 @@ function TimelineRow({ step, projectId, authorName, onRefresh }: TimelineRowProp
   );
 }
 
-const QUICK_ADD_KINDS: ProjectStepKind[] = ["step_taken", "next_step", "note"];
+const QUICK_ADD_KINDS: ComposerKind[] = ["step_taken", "next_step", "note"];
 
-export function ProjectTimeline({ projectId, steps, authorNameById }: ProjectTimelineProps) {
+export function ProjectTimeline({ projectId, steps, notes, authorNameById }: ProjectTimelineProps) {
   const router = useRouter();
-  const [composerKind, setComposerKind] = useState<ProjectStepKind | null>(null);
+  const [composerKind, setComposerKind] = useState<ComposerKind | null>(null);
   const [body, setBody] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
 
-  function openComposer(kind: ProjectStepKind) {
+  function openComposer(kind: ComposerKind) {
     setComposerKind(kind);
     setBody("");
     setDueDate("");
@@ -255,12 +283,10 @@ export function ProjectTimeline({ projectId, steps, authorNameById }: ProjectTim
     setError(null);
     startTransition(async () => {
       try {
-        const result = await createProjectStep(
-          projectId,
-          composerKind,
-          body,
-          composerKind === "next_step" ? dueDate || null : null
-        );
+        const result =
+          composerKind === "note"
+            ? await addProjectNote(projectId, body, dueDate || null)
+            : await createProjectStep(projectId, composerKind, body, composerKind === "next_step" ? dueDate || null : null);
         if (result.error) {
           setError(result.error);
           return;
@@ -275,20 +301,24 @@ export function ProjectTimeline({ projectId, steps, authorNameById }: ProjectTim
     });
   }
 
-  function authorNameFor(step: ProjectStep): string {
-    return (step.author_id && authorNameById[step.author_id]) || "Unknown user";
+  function authorNameFor(entry: TimelineEntry): string {
+    const authorId = entry.kind === "step" ? entry.data.author_id : entry.data.created_by;
+    return (authorId && authorNameById[authorId]) || "Unknown user";
   }
 
   // Pinned: still-open next steps, earliest due date first. Everything
-  // else — step_taken, note, and next steps once checked off — lives
+  // else — step_taken, notes, and next steps once checked off — lives
   // only in History below, newest first; a next step moves there the
   // moment it's marked done.
-  const openNextSteps = steps
+  const openNextSteps: TimelineEntry[] = steps
     .filter((s) => s.kind === "next_step" && !s.done)
-    .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""));
-  const historySteps = steps
-    .filter((s) => !(s.kind === "next_step" && !s.done))
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""))
+    .map((data) => ({ kind: "step" as const, data }));
+
+  const historyEntries: TimelineEntry[] = [
+    ...steps.filter((s) => !(s.kind === "next_step" && !s.done)).map((data) => ({ kind: "step" as const, data })),
+    ...notes.map((data) => ({ kind: "note" as const, data })),
+  ].sort((a, b) => b.data.created_at.localeCompare(a.data.created_at));
 
   return (
     <div className="flex flex-col gap-5">
@@ -338,6 +368,18 @@ export function ProjectTimeline({ projectId, steps, authorNameById }: ProjectTim
               />
             </div>
           )}
+          {composerKind === "note" && (
+            <div className="mt-2">
+              <label className="mb-1 block text-xs font-medium text-white/55">Reminder date (optional)</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                disabled={isPending}
+                className={fieldClass}
+              />
+            </div>
+          )}
           {error && <p className="mt-2 text-xs text-red-300">{error}</p>}
           <div className="mt-2.5 flex items-center gap-2">
             <button
@@ -364,12 +406,12 @@ export function ProjectTimeline({ projectId, steps, authorNameById }: ProjectTim
         <div>
           <p className="mb-2 text-[11px] font-medium tracking-wide text-white/35 uppercase">Open Next Steps</p>
           <div className="flex flex-col gap-2">
-            {openNextSteps.map((step) => (
+            {openNextSteps.map((entry) => (
               <TimelineRow
-                key={step.id}
-                step={step}
+                key={entry.data.id}
+                entry={entry}
                 projectId={projectId}
-                authorName={authorNameFor(step)}
+                authorName={authorNameFor(entry)}
                 onRefresh={() => router.refresh()}
               />
             ))}
@@ -379,16 +421,16 @@ export function ProjectTimeline({ projectId, steps, authorNameById }: ProjectTim
 
       <div>
         <p className="mb-2 text-[11px] font-medium tracking-wide text-white/35 uppercase">History</p>
-        {historySteps.length === 0 ? (
+        {historyEntries.length === 0 ? (
           <p className="text-sm text-white/35">No timeline entries yet.</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {historySteps.map((step) => (
+            {historyEntries.map((entry) => (
               <TimelineRow
-                key={step.id}
-                step={step}
+                key={entry.data.id}
+                entry={entry}
                 projectId={projectId}
-                authorName={authorNameFor(step)}
+                authorName={authorNameFor(entry)}
                 onRefresh={() => router.refresh()}
               />
             ))}
