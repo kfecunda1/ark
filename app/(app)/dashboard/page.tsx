@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, CheckCircle2, Layers } from "lucide-react";
+import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Layers } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { FollowUpsDue, type FollowUpItem } from "@/components/dashboard/follow-ups-due";
 import { createClient } from "@/lib/supabase/server";
@@ -25,6 +25,33 @@ export default async function DashboardPage() {
   const openProjects = projects.filter((project) => !isClosedStatus(project.status));
 
   const now = new Date();
+
+  // "Last backup" is admin-only, both because only admins can trigger
+  // one (see 007_backup_log.sql's log_backup_export) and because a
+  // member has no action to take from seeing it.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  let isAdmin = false;
+  if (user) {
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+    isAdmin = (profile as { role: string | null } | null)?.role === "admin";
+  }
+
+  let daysSinceBackup: number | null = null;
+  if (isAdmin) {
+    const { data: backupRow } = await supabase
+      .from("activity_log")
+      .select("created_at")
+      .eq("entity_type", "backup")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const lastBackupAt = (backupRow as { created_at: string } | null)?.created_at ?? null;
+    daysSinceBackup = lastBackupAt
+      ? Math.floor((now.getTime() - new Date(lastBackupAt).getTime()) / 86_400_000)
+      : null;
+  }
   const completedThisMonth = projects.filter((project) => {
     if (!isClosedStatus(project.status) || project.status !== "completed") return false;
     const changed = new Date(project.last_activity_at);
@@ -84,6 +111,20 @@ export default async function DashboardPage() {
     }));
   }
 
+  const backupTone: "ok" | "warning" | "danger" =
+    daysSinceBackup === null ? "danger" : daysSinceBackup > 14 ? "danger" : daysSinceBackup > 7 ? "warning" : "ok";
+  const backupLabel =
+    daysSinceBackup === null
+      ? "Last backup: never"
+      : daysSinceBackup === 0
+        ? "Last backup: today"
+        : `Last backup: ${daysSinceBackup} day${daysSinceBackup === 1 ? "" : "s"} ago`;
+  const BACKUP_TONE_CLASSES: Record<typeof backupTone, string> = {
+    ok: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
+    warning: "border-amber-500/25 bg-amber-500/10 text-amber-300",
+    danger: "border-red-500/25 bg-red-500/10 text-red-300",
+  };
+
   const STATS = [
     {
       label: "Total Open Projects",
@@ -103,9 +144,19 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Dashboard</h1>
-        <p className="mt-1 text-sm text-white/45">Overview of your pipeline at a glance.</p>
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">Dashboard</h1>
+          <p className="mt-1 text-sm text-white/45">Overview of your pipeline at a glance.</p>
+        </div>
+        {isAdmin && (
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium whitespace-nowrap ${BACKUP_TONE_CLASSES[backupTone]}`}
+          >
+            <Archive className="h-3.5 w-3.5" />
+            {backupLabel}
+          </span>
+        )}
       </div>
 
       {error && (

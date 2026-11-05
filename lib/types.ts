@@ -1,4 +1,14 @@
-export type ProductType = "SBLC" | "MX103" | "MT103" | "IP-IP" | "API" | "API Cash" | "T2T" | "S2S" | "VISA";
+export type ProductType =
+  | "SBLC"
+  | "MX103"
+  | "MT103"
+  | "IP-IP"
+  | "API"
+  | "API Cash"
+  | "T2T"
+  | "S2S"
+  | "VISA"
+  | "GPI";
 
 export type ProjectStage = "new" | "documents_received" | "match" | "status";
 
@@ -158,7 +168,8 @@ export type ActivityEntityType =
   | "project_document"
   | "contact_product"
   | "contact_document"
-  | "project_step";
+  | "project_step"
+  | "backup";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
