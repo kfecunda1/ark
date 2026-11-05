@@ -6,11 +6,13 @@ import { Plus, Trash2 } from "lucide-react";
 import { upsertProjectTranche, deleteProjectTranche } from "@/lib/actions/projects";
 import { formatDateOnly } from "@/lib/projects";
 import { dateKeyInTimeZone } from "@/lib/format";
-import type { ProjectTranche } from "@/lib/types";
+import { MoneyInput } from "@/components/money-input";
+import type { Currency, ProjectTranche } from "@/lib/types";
 
 interface TranchesSectionProps {
   projectId: string;
   tranches: ProjectTranche[];
+  currency: Currency;
 }
 
 const fieldClass =
@@ -19,6 +21,7 @@ const fieldClass =
 interface RowProps {
   number: number;
   tranche: ProjectTranche | null;
+  currency: Currency;
   removable: boolean;
   disabled: boolean;
   onSave: (amount: string, sentOn: string, notes: string) => void;
@@ -36,7 +39,7 @@ function trancheKey(tranche: ProjectTranche | null): string {
   return `${tranche?.amount ?? ""}|${tranche?.sent_on ?? ""}|${tranche?.notes ?? ""}`;
 }
 
-function TrancheRow({ number, tranche, removable, disabled, onSave, onDelete, onCancel }: RowProps) {
+function TrancheRow({ number, tranche, currency, removable, disabled, onSave, onDelete, onCancel }: RowProps) {
   const [amount, setAmount] = useState(tranche?.amount != null ? String(tranche.amount) : "");
   const [sentOn, setSentOn] = useState(tranche?.sent_on ?? "");
   const [notes, setNotes] = useState(tranche?.notes ?? "");
@@ -82,15 +85,20 @@ function TrancheRow({ number, tranche, removable, disabled, onSave, onDelete, on
         )}
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <input
-          type="number"
-          step="0.01"
-          placeholder="Amount"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          disabled={disabled}
-          className={fieldClass}
-        />
+        <div className="relative">
+          <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-xs text-white/40">
+            {currency}
+          </span>
+          <MoneyInput
+            aria-label="Amount"
+            placeholder="Amount"
+            value={amount}
+            onChange={setAmount}
+            disabled={disabled}
+            className={fieldClass}
+            style={{ paddingLeft: "3.25rem" }}
+          />
+        </div>
         <input
           type="date"
           aria-label="Sent on"
@@ -154,7 +162,7 @@ function TrancheRow({ number, tranche, removable, disabled, onSave, onDelete, on
   );
 }
 
-export function TranchesSection({ projectId, tranches }: TranchesSectionProps) {
+export function TranchesSection({ projectId, tranches, currency }: TranchesSectionProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -207,6 +215,7 @@ export function TranchesSection({ projectId, tranches }: TranchesSectionProps) {
           <TrancheRow
             number={number}
             tranche={byNumber.get(number) ?? null}
+            currency={currency}
             removable={number > 2}
             disabled={isPending}
             onSave={(amount, sentOn, notes) => handleSave(number, amount, sentOn, notes)}
@@ -222,6 +231,7 @@ export function TranchesSection({ projectId, tranches }: TranchesSectionProps) {
         <TrancheRow
           number={nextNumber}
           tranche={null}
+          currency={currency}
           removable={false}
           disabled={isPending}
           onSave={(amount, sentOn, notes) => handleSave(nextNumber, amount, sentOn, notes)}

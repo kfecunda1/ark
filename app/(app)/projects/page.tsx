@@ -14,6 +14,7 @@ import { getAllProducts } from "@/lib/products";
 import { getProjectProductsByProjectIds, countedProducts, displayProduct } from "@/lib/project-products";
 import { compareNullsLast, parseSortDirection } from "@/lib/sort";
 import { formatDateTime } from "@/lib/format";
+import { formatMoney } from "@/lib/money";
 import { STAGES, STATUSES } from "@/lib/projects";
 import { personLabel } from "@/lib/people";
 import type { Person, Project, ProjectStatus, ProjectStep } from "@/lib/types";
@@ -273,7 +274,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                         {project.contact_person_id ? contactPersonNameById.get(project.contact_person_id) ?? "—" : "—"}
                       </td>
                       <td className="px-4 py-3 text-white/70">
-                        {project.total_face_value != null ? `${project.currency} ${project.total_face_value}` : "—"}
+                        {formatMoney(project.total_face_value, project.currency)}
                       </td>
                       <td className="px-4 py-3">
                         {nextStepByProjectId.has(project.id) ? (
@@ -344,7 +345,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                           Total Face Value
                         </dt>
                         <dd className="mt-0.5 text-white/70">
-                          {project.currency} {project.total_face_value}
+                          {formatMoney(project.total_face_value, project.currency)}
                         </dd>
                       </div>
                     )}

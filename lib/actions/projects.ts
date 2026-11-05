@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getContactProductRatio } from "@/lib/actions/contacts";
 import { STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
+import { parseMoneyFormValue } from "@/lib/money";
 import type { Currency, ProjectDocumentType, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
 
 export interface ProjectFormState {
@@ -45,7 +46,6 @@ function buildProjectPayload(formData: FormData) {
   }
 
   const matchedContactId = formData.get("matched_contact_id")?.toString().trim();
-  const totalFaceValueRaw = formData.get("total_face_value")?.toString().trim();
 
   return {
     name: (formData.get("name") as string).trim(),
@@ -55,7 +55,7 @@ function buildProjectPayload(formData: FormData) {
     contact_person_id: formData.get("contact_person_id")?.toString().trim() || null,
     ratio_presented: formData.get("ratio_presented")?.toString().trim() || null,
     ratio_real: formData.get("ratio_real")?.toString().trim() || null,
-    total_face_value: totalFaceValueRaw ? Number(totalFaceValueRaw) : null,
+    total_face_value: parseMoneyFormValue(formData.get("total_face_value")?.toString()),
     currency: (formData.get("currency")?.toString().trim() || "USD") as Currency,
     priority: formData.get("priority") as ProjectPriority,
     is_recovery: formData.get("is_recovery") === "on",
@@ -358,7 +358,7 @@ export async function upsertProjectTranche(
       {
         project_id: projectId,
         tranche_number: trancheNumber,
-        amount: amountRaw.trim() ? Number(amountRaw) : null,
+        amount: parseMoneyFormValue(amountRaw),
         sent_on: sentOnRaw.trim() || null,
         notes: notesRaw.trim() || null,
       },

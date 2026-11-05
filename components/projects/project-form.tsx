@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GlassCard } from "@/components/glass-card";
+import { MoneyInput } from "@/components/money-input";
 import { EntityPicker, type EntityOption } from "@/components/entity-picker";
 import { ProductOptionsPicker } from "@/components/projects/product-options-picker";
 import { StagedDocumentPicker, type StagedDocument } from "@/components/projects/staged-document-picker";
@@ -464,11 +465,9 @@ export function ProjectForm({
           <label className={labelClass} htmlFor="total_face_value">
             Total Face Value
           </label>
-          <input
+          <MoneyInput
             id="total_face_value"
             name="total_face_value"
-            type="number"
-            step="0.01"
             defaultValue={project?.total_face_value ?? ""}
             className={fieldClass}
           />

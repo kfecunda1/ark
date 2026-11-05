@@ -16,6 +16,7 @@ import { ProjectTimeline } from "@/components/projects/project-timeline";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { formatDateTime } from "@/lib/format";
+import { formatMoney } from "@/lib/money";
 import type { Contact, Note, Person, Project, ProjectDocument, ProjectProduct, ProjectStep, ProjectTranche } from "@/lib/types";
 
 interface ProjectDetailPageProps {
@@ -149,7 +150,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     { label: "Ratio Real", value: project.ratio_real || "—" },
     {
       label: "Total Face Value",
-      value: project.total_face_value != null ? `${project.currency} ${project.total_face_value}` : "—",
+      value: formatMoney(project.total_face_value, project.currency),
     },
     { label: "Last Activity", value: formatDateTime(project.last_activity_at) },
     { label: "Created", value: formatDateTime(project.created_at) },
@@ -243,7 +244,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
 
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Tranches</h2>
-        <TranchesSection projectId={project.id} tranches={tranches} />
+        <TranchesSection projectId={project.id} tranches={tranches} currency={project.currency} />
       </div>
 
       <div className="mt-6">
