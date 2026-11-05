@@ -9,6 +9,7 @@ import { StageBadge } from "@/components/projects/badges";
 import { StatusSelect } from "@/components/projects/status-select";
 import { DueDateBadge } from "@/components/projects/due-date-badge";
 import { createClient } from "@/lib/supabase/server";
+import { getAllProducts } from "@/lib/products";
 import { formatDateTime } from "@/lib/format";
 import type { Project, ProjectStep } from "@/lib/types";
 
@@ -48,6 +49,8 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
 
   const { data: projectsData, error } = await query;
   let projects = (projectsData as Project[] | null) ?? [];
+
+  const products = await getAllProducts();
 
   const { data: contactsData } = await supabase.from("contacts").select("id, full_name");
   const contactNameById = new Map(
@@ -108,7 +111,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
 
       <div className="mb-4">
         <Suspense>
-          <ProjectFilters />
+          <ProjectFilters products={products} />
         </Suspense>
       </div>
 

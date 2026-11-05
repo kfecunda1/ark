@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { ContactForm } from "@/components/contacts/contact-form";
 import { createClient } from "@/lib/supabase/server";
+import { getAllProducts } from "@/lib/products";
+import { getActiveDocumentTypes } from "@/lib/document-types";
 import type { Contact, ContactProduct } from "@/lib/types";
 
 interface EditContactPageProps {
@@ -18,11 +20,11 @@ export default async function EditContactPage({ params }: EditContactPageProps) 
     notFound();
   }
 
-  const { data: productsData } = await supabase
-    .from("contact_products")
-    .select("*")
-    .eq("contact_id", id)
-    .order("created_at");
+  const [{ data: productsData }, allProducts, documentTypes] = await Promise.all([
+    supabase.from("contact_products").select("*").eq("contact_id", id).order("created_at"),
+    getAllProducts(),
+    getActiveDocumentTypes(),
+  ]);
   const products = (productsData as ContactProduct[] | null) ?? [];
 
   return (
@@ -31,7 +33,13 @@ export default async function EditContactPage({ params }: EditContactPageProps) 
         <h1 className="text-2xl font-semibold tracking-tight text-white">Edit Contact</h1>
         <p className="mt-1 text-sm text-white/45">Update details for {contact.full_name}.</p>
       </div>
-      <ContactForm mode="edit" contact={contact} products={products} />
+      <ContactForm
+        mode="edit"
+        contact={contact}
+        products={products}
+        allProducts={allProducts}
+        documentTypes={documentTypes}
+      />
     </div>
   );
 }

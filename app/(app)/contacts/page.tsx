@@ -6,6 +6,7 @@ import { ClickableRow } from "@/components/clickable-row";
 import { ClickableCard } from "@/components/clickable-card";
 import { ContactFilters } from "@/components/contacts/contact-filters";
 import { createClient } from "@/lib/supabase/server";
+import { getAllProducts } from "@/lib/products";
 import type { Contact, ContactProduct, ProductType } from "@/lib/types";
 
 interface ContactsPageProps {
@@ -17,6 +18,8 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
   const supabase = await createClient();
   const { data, error } = await supabase.from("contacts").select("*").order("full_name");
   const allContacts = (data as Contact[] | null) ?? [];
+
+  const products = await getAllProducts();
 
   const { data: productsData } = await supabase.from("contact_products").select("*").order("created_at");
   const productsByContactId = new Map<string, ContactProduct[]>();
@@ -59,7 +62,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
 
       <div className="mb-4">
         <Suspense>
-          <ContactFilters />
+          <ContactFilters products={products} />
         </Suspense>
       </div>
 

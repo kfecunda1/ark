@@ -15,12 +15,14 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
-import type { Contact, ContactProduct } from "@/lib/types";
+import type { Contact, ContactProduct, DocumentTypeRecord, Product } from "@/lib/types";
 
 interface ContactFormProps {
   mode: "create" | "edit";
   contact?: Contact;
   products?: ContactProduct[];
+  allProducts: Product[];
+  documentTypes: DocumentTypeRecord[];
 }
 
 const initialState: ContactFormState = { error: null };
@@ -31,7 +33,7 @@ const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
 type CreateStatus = "idle" | "creating" | "uploading";
 
-export function ContactForm({ mode, contact, products = [] }: ContactFormProps) {
+export function ContactForm({ mode, contact, products = [], allProducts, documentTypes }: ContactFormProps) {
   const router = useRouter();
 
   // Edit mode keeps the existing server-action/useActionState flow — it
@@ -148,13 +150,17 @@ export function ContactForm({ mode, contact, products = [] }: ContactFormProps) 
 
       <GlassCard interactive={false} className="p-6">
         <p className={labelClass}>Products & Ratios</p>
-        <ProductFields initialProducts={products} />
+        <ProductFields initialProducts={products} products={allProducts} />
       </GlassCard>
 
       {mode === "create" && (
         <GlassCard interactive={false} className="p-6">
           <p className={labelClass}>Documents</p>
-          <StagedDocumentPicker documents={stagedDocuments} onChange={setStagedDocuments} />
+          <StagedDocumentPicker
+            documents={stagedDocuments}
+            onChange={setStagedDocuments}
+            documentTypes={documentTypes}
+          />
         </GlassCard>
       )}
 

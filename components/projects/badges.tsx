@@ -65,7 +65,12 @@ export function PriorityBadge({ priority }: { priority: ProjectPriority }) {
   );
 }
 
-const DOCUMENT_TYPE_STYLES: Record<ProjectDocumentType, string> = {
+// Document types are admin-managed data now (supabase/migrations/
+// 011_settings_tables.sql's document_types table), not a closed set, so
+// this can no longer be an exhaustive Record — any name not in this
+// fixed palette (the 8 original types, plus whatever an admin renames
+// one to) falls back to DEFAULT_DOCUMENT_TYPE_STYLE below.
+const DOCUMENT_TYPE_STYLES: Record<string, string> = {
   CIS: "bg-violet-500/15 text-violet-300 border-violet-500/25",
   POF: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25",
   DOA: "bg-teal-500/15 text-teal-300 border-teal-500/25",
@@ -75,11 +80,12 @@ const DOCUMENT_TYPE_STYLES: Record<ProjectDocumentType, string> = {
   "Supporting Documents": "bg-amber-500/15 text-amber-300 border-amber-500/25",
   "Additional Documents": "bg-white/[0.06] text-white/50 border-white/10",
 };
+const DEFAULT_DOCUMENT_TYPE_STYLE = "bg-white/[0.06] text-white/50 border-white/10";
 
 export function ProjectDocumentTypeBadge({ type }: { type: ProjectDocumentType }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${DOCUMENT_TYPE_STYLES[type]}`}
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${DOCUMENT_TYPE_STYLES[type] ?? DEFAULT_DOCUMENT_TYPE_STYLE}`}
     >
       {type}
     </span>

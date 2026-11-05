@@ -4,12 +4,16 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { upsertContactProduct, deleteContactProduct } from "@/lib/actions/contacts";
-import { PRODUCT_TYPES } from "@/lib/products";
-import type { ContactProduct, ProductType } from "@/lib/types";
+import type { ContactProduct, Product, ProductType } from "@/lib/types";
 
 interface ContactProductsSectionProps {
   contactId: string;
   products: ContactProduct[];
+  // Active products only — an existing row always shows its own
+  // current value regardless (see ProductRow below), so there's no
+  // need for the hidden-but-still-in-use override this component's
+  // sibling (components/contacts/product-fields.tsx) needs.
+  availableProducts: Product[];
 }
 
 const fieldClass =
@@ -98,14 +102,14 @@ function ProductRow({ product, productType, availableProductTypes, disabled, onS
   );
 }
 
-export function ContactProductsSection({ contactId, products }: ContactProductsSectionProps) {
+export function ContactProductsSection({ contactId, products, availableProducts }: ContactProductsSectionProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
   const usedTypes = new Set(products.map((p) => p.product_type));
-  const availableTypes = PRODUCT_TYPES.filter((p) => !usedTypes.has(p));
+  const availableTypes = availableProducts.filter((p) => !usedTypes.has(p.name)).map((p) => p.name);
 
   function handleSave(productType: ProductType, ratio: string, notes: string) {
     setError(null);

@@ -6,6 +6,8 @@ import { ContactProductsSection } from "@/components/contacts/contact-products-s
 import { ContactDocuments } from "@/components/contacts/contact-documents";
 import { ContactNotesSection } from "@/components/contacts/contact-notes-section";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveProducts } from "@/lib/products";
+import { getActiveDocumentTypes } from "@/lib/document-types";
 import type { Contact, ContactDocument, ContactProduct, Note, Project } from "@/lib/types";
 
 interface ContactDetailPageProps {
@@ -26,7 +28,7 @@ export default async function ContactDetailPage({ params, searchParams }: Contac
     notFound();
   }
 
-  const [{ data: projectsData }, { data: productsData }, { data: documentsData }, { data: notesData }] =
+  const [{ data: projectsData }, { data: productsData }, { data: documentsData }, { data: notesData }, availableProducts, documentTypes] =
     await Promise.all([
       supabase
         .from("projects")
@@ -36,6 +38,8 @@ export default async function ContactDetailPage({ params, searchParams }: Contac
       supabase.from("contact_products").select("*").eq("contact_id", id).order("created_at"),
       supabase.from("contact_documents").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
       supabase.from("notes").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
+      getActiveProducts(),
+      getActiveDocumentTypes(),
     ]);
 
   const relatedProjects = (projectsData as Project[] | null) ?? [];
@@ -114,13 +118,13 @@ export default async function ContactDetailPage({ params, searchParams }: Contac
 
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Products & Ratios</h2>
-        <ContactProductsSection contactId={contact.id} products={products} />
+        <ContactProductsSection contactId={contact.id} products={products} availableProducts={availableProducts} />
       </div>
 
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Documents</h2>
         <GlassCard interactive={false} className="p-6">
-          <ContactDocuments contactId={contact.id} documents={documentsWithUrls} />
+          <ContactDocuments contactId={contact.id} documents={documentsWithUrls} documentTypes={documentTypes} />
         </GlassCard>
       </div>
 

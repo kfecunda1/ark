@@ -3,12 +3,18 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
-import { PRODUCT_TYPES } from "@/lib/products";
+import type { Product } from "@/lib/types";
 
 const selectClass =
   "rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 
-export function ContactFilters() {
+interface ContactFiltersProps {
+  // Every product, active or not — a contact already tagged with a
+  // since-hidden product must still be findable by filtering on it.
+  products: Product[];
+}
+
+export function ContactFilters({ products }: ContactFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -64,9 +70,9 @@ export function ContactFilters() {
         <option value="" className="bg-[#0a0e17]">
           All products
         </option>
-        {PRODUCT_TYPES.map((product) => (
-          <option key={product} value={product} className="bg-[#0a0e17]">
-            {product}
+        {products.map((product) => (
+          <option key={product.id} value={product.name} className="bg-[#0a0e17]">
+            {product.name}
           </option>
         ))}
       </select>

@@ -37,6 +37,9 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   project_step: "Timeline entry",
   backup: "Backup",
   password_change: "Password change",
+  product: "Product",
+  document_type: "Document type",
+  app_settings: "Settings",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -81,6 +84,11 @@ const FIELD_LABELS: Record<string, string> = {
   body: "text",
   due_date: "due date",
   done: "done",
+  // products / document_types / app_settings
+  active: "active",
+  sort_order: "order",
+  default_currency: "default currency",
+  stuck_after_days: "stuck after (days)",
 };
 
 export function fieldLabel(field: string): string {
@@ -89,7 +97,18 @@ export function fieldLabel(field: string): string {
 
 // Fields whose change is already spelled out as its own "x -> y" chip, so
 // listing them again under "fields changed" would just be repetition.
-const FIELDS_DESCRIBED_SEPARATELY = new Set(["stage", "status", "priority", "archived", "full_name", "done"]);
+const FIELDS_DESCRIBED_SEPARATELY = new Set([
+  "stage",
+  "status",
+  "priority",
+  "archived",
+  "full_name",
+  "done",
+  "name",
+  "active",
+  "default_currency",
+  "stuck_after_days",
+]);
 
 function asPair<T>(value: T | [T, T] | undefined): [T, T] | null {
   return Array.isArray(value) ? (value as [T, T]) : null;
@@ -161,6 +180,23 @@ export function activityDetailChips(row: ActivityLog): string[] {
 
   if (details.done) {
     chips.push(details.done[1] ? "marked done" : "reopened");
+  }
+
+  if (details.name) {
+    const [before, after] = details.name;
+    if (before !== after) chips.push(`renamed ${before ?? "—"} -> ${after ?? "—"}`);
+  }
+
+  if (details.active) {
+    chips.push(details.active[1] ? "shown" : "hidden");
+  }
+
+  if (details.default_currency) {
+    chips.push(`default currency ${details.default_currency[0]} -> ${details.default_currency[1]}`);
+  }
+
+  if (details.stuck_after_days) {
+    chips.push(`stuck after ${details.stuck_after_days[0]} -> ${details.stuck_after_days[1]} days`);
   }
 
   const rest = (details.fields ?? []).filter((f) => !FIELDS_DESCRIBED_SEPARATELY.has(f));

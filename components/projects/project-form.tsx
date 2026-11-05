@@ -20,13 +20,20 @@ import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
 import { CURRENCIES, STAGES, STAGE_LABELS, STATUSES, STATUS_LABELS, PRIORITIES, PRIORITY_LABELS } from "@/lib/projects";
-import { PRODUCT_TYPES } from "@/lib/products";
-import type { Project, ProjectStage, ProductType } from "@/lib/types";
+import type { Currency, DocumentTypeRecord, Product, Project, ProjectStage, ProductType } from "@/lib/types";
 
 interface ProjectFormProps {
   mode: "create" | "edit";
   project?: Project;
   contacts: ContactOption[];
+  // All products (not just active) — the Product Type dropdown needs
+  // every active one, plus the project's own current value even if
+  // it's since been hidden (see optionsForProductType below).
+  products: Product[];
+  documentTypes: DocumentTypeRecord[];
+  // Create mode only: the Settings → Defaults value, used as the
+  // Currency field's initial selection for a brand-new project.
+  defaultCurrency?: Currency;
 }
 
 const initialState: ProjectFormState = { error: null };
@@ -37,8 +44,14 @@ const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
 type CreateStatus = "idle" | "creating" | "uploading";
 
-export function ProjectForm({ mode, project, contacts }: ProjectFormProps) {
+export function ProjectForm({ mode, project, contacts, products, documentTypes, defaultCurrency }: ProjectFormProps) {
   const router = useRouter();
+
+  // Hidden products disappear from this dropdown for a brand-new
+  // project, but a project already set to one must keep showing it —
+  // otherwise saving the form with no changes would silently drop a
+  // valid value the select never offered.
+  const productOptions = products.filter((p) => p.active || p.name === project?.product_type);
 
   // Edit mode keeps the existing server-action/useActionState flow — it
   // redirects to the project on success, same as before.
@@ -227,9 +240,9 @@ export function ProjectForm({ mode, project, contacts }: ProjectFormProps) {
             <option value="" disabled className="bg-[#0a0e17]">
               Select…
             </option>
-            {PRODUCT_TYPES.map((product) => (
-              <option key={product} value={product} className="bg-[#0a0e17]">
-                {product}
+            {productOptions.map((product) => (
+              <option key={product.id} value={product.name} className="bg-[#0a0e17]">
+                {product.name}
               </option>
             ))}
           </select>
@@ -391,7 +404,12 @@ export function ProjectForm({ mode, project, contacts }: ProjectFormProps) {
           <label className={labelClass} htmlFor="currency">
             Currency
           </label>
-          <select id="currency" name="currency" defaultValue={project?.currency ?? "USD"} className={fieldClass}>
+          <select
+            id="currency"
+            name="currency"
+            defaultValue={project?.currency ?? defaultCurrency ?? "USD"}
+            className={fieldClass}
+          >
             {CURRENCIES.map((currency) => (
               <option key={currency} value={currency} className="bg-[#0a0e17]">
                 {currency}
@@ -404,7 +422,11 @@ export function ProjectForm({ mode, project, contacts }: ProjectFormProps) {
       {mode === "create" && (
         <GlassCard interactive={false} className="p-6">
           <p className={labelClass}>Documents</p>
-          <StagedDocumentPicker documents={stagedDocuments} onChange={setStagedDocuments} />
+          <StagedDocumentPicker
+            documents={stagedDocuments}
+            onChange={setStagedDocuments}
+            documentTypes={documentTypes}
+          />
         </GlassCard>
       )}
 

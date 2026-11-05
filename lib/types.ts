@@ -1,15 +1,20 @@
-export type ProductType =
-  | "SBLC"
-  | "MX103"
-  | "MT103"
-  | "IP-IP"
-  | "API"
-  | "API Cash"
-  | "T2T"
-  | "S2S"
-  | "VISA"
-  | "GPI"
-  | "KTK";
+// Was a fixed literal union; now admin-managed data (supabase/migrations/
+// 011_settings_tables.sql's `products` table, see lib/products.ts) — any
+// current product name is valid, so this is just `string` now.
+export type ProductType = string;
+
+// One row of the `products` table (Settings → Products, admin only).
+// Hiding a product sets active = false rather than deleting it, so
+// existing projects/contacts that reference it keep displaying
+// correctly — only *new* entries stop offering it.
+export interface Product {
+  id: string;
+  name: string;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export type ProjectStage = "new" | "documents_received" | "match" | "status";
 
@@ -93,15 +98,22 @@ export interface ProjectTranche {
   created_at: string;
 }
 
-export type ProjectDocumentType =
-  | "CIS"
-  | "POF"
-  | "DOA"
-  | "PGL"
-  | "JSON"
-  | "Proof of Fulfillment"
-  | "Supporting Documents"
-  | "Additional Documents";
+// Was a fixed literal union; now admin-managed data (supabase/migrations/
+// 011_settings_tables.sql's `document_types` table, see
+// lib/document-types.ts) — any current document type name is valid, so
+// this is just `string` now.
+export type ProjectDocumentType = string;
+
+// One row of the `document_types` table (Settings → Document Types,
+// admin only). Same hide-don't-delete behavior as Product above.
+export interface DocumentTypeRecord {
+  id: string;
+  name: string;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface ProjectDocument {
   id: string;
@@ -163,6 +175,16 @@ export interface Note {
   contact_id: string | null;
 }
 
+// The app_settings table is a single row (see supabase/migrations/
+// 011_settings_tables.sql's `id boolean primary key check (id)`
+// singleton trick) — there's exactly one, so no id-based lookup is
+// needed; lib/app-settings.ts fetches it directly.
+export interface AppSettings {
+  default_currency: Currency;
+  stuck_after_days: number;
+  updated_at: string;
+}
+
 export type ActivityEntityType =
   | "project"
   | "contact"
@@ -171,7 +193,10 @@ export type ActivityEntityType =
   | "contact_document"
   | "project_step"
   | "backup"
-  | "password_change";
+  | "password_change"
+  | "product"
+  | "document_type"
+  | "app_settings";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
@@ -192,6 +217,13 @@ export interface ActivityDetails {
   kind?: ProjectStepKind;
   due_date?: string | null;
   done?: [boolean, boolean];
+  // products / document_types
+  name?: [string | null, string | null];
+  active?: [boolean, boolean];
+  sort_order?: number;
+  // app_settings
+  default_currency?: [Currency, Currency];
+  stuck_after_days?: [number, number];
 }
 
 export interface ActivityLog {

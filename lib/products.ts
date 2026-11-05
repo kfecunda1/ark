@@ -1,21 +1,28 @@
-import type { ProductType } from "@/lib/types";
+import { createClient } from "@/lib/supabase/server";
+import type { Product } from "@/lib/types";
 
-// Fixed set of banking products ARK tracks. Unlike the old free-text
-// field, this is a closed list — adding a new product is a code change,
-// not something a user types in. Kept in sync by hand with the
-// product_type enum in supabase/migrations/001_ark_schema.sql (and its
-// later additions in 005_add_products.sql, 008_add_gpi.sql and
-// 010_add_ktk.sql).
-export const PRODUCT_TYPES: ProductType[] = [
-  "SBLC",
-  "MX103",
-  "MT103",
-  "IP-IP",
-  "API",
-  "API Cash",
-  "T2T",
-  "S2S",
-  "VISA",
-  "GPI",
-  "KTK",
-];
+// Products are now admin-managed data (supabase/migrations/011_settings_
+// tables.sql's `products` table, Settings → Products) rather than a
+// fixed list — these are server-only fetch helpers; client components
+// receive the result as a prop from whichever server page renders them.
+//
+// Always ordered by sort_order, so "keep the existing order on first
+// load" (every seeded row's sort_order matches the old hard-coded
+// list's order) holds everywhere without each caller re-sorting.
+export async function getAllProducts(): Promise<Product[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("products").select("*").order("sort_order");
+  if (error) {
+    console.error("[getAllProducts] query failed:", error.message);
+  }
+  return (data as Product[] | null) ?? [];
+}
+
+export async function getActiveProducts(): Promise<Product[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("products").select("*").eq("active", true).order("sort_order");
+  if (error) {
+    console.error("[getActiveProducts] query failed:", error.message);
+  }
+  return (data as Product[] | null) ?? [];
+}

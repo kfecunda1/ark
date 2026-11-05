@@ -11,6 +11,7 @@ import { TranchesSection } from "@/components/projects/tranches-section";
 import { MatchedContactSelect } from "@/components/projects/matched-contact-select";
 import { ProjectTimeline } from "@/components/projects/project-timeline";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveDocumentTypes } from "@/lib/document-types";
 import { formatDateTime } from "@/lib/format";
 import type { Contact, Project, ProjectDocument, ProjectStep, ProjectTranche } from "@/lib/types";
 
@@ -51,11 +52,13 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const { data: allContactsData } = await supabase.from("contacts").select("id, full_name").order("full_name");
   const allContacts = (allContactsData as { id: string; full_name: string }[] | null) ?? [];
 
-  const [{ data: projectDocumentsData }, { data: tranchesData }, { data: stepsData }] = await Promise.all([
-    supabase.from("project_documents").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
-    supabase.from("project_tranches").select("*").eq("project_id", project.id).order("tranche_number"),
-    supabase.from("project_steps").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
-  ]);
+  const [{ data: projectDocumentsData }, { data: tranchesData }, { data: stepsData }, documentTypes] =
+    await Promise.all([
+      supabase.from("project_documents").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
+      supabase.from("project_tranches").select("*").eq("project_id", project.id).order("tranche_number"),
+      supabase.from("project_steps").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
+      getActiveDocumentTypes(),
+    ]);
   const projectDocuments = (projectDocumentsData as ProjectDocument[] | null) ?? [];
   const tranches = (tranchesData as ProjectTranche[] | null) ?? [];
   const steps = (stepsData as ProjectStep[] | null) ?? [];
@@ -201,7 +204,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Documents</h2>
         <GlassCard interactive={false} className="p-6">
-          <ProjectDocuments projectId={project.id} documents={documentsWithUrls} />
+          <ProjectDocuments projectId={project.id} documents={documentsWithUrls} documentTypes={documentTypes} />
         </GlassCard>
       </div>
 

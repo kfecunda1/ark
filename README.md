@@ -1,6 +1,6 @@
 # ARK
 
-A private, two-user tracker for banking-product client projects (SBLC, MX103, MT103, IP-IP, API, API Cash, T2T, S2S, VISA, GPI, KTK) — built on Next.js and Supabase.
+A private, two-user tracker for banking-product client projects — built on Next.js and Supabase. The banking products and document types it tracks (SBLC, MX103, MT103, … and CIS, POF, DOA, … by default) are admin-managed in Settings, not hard-coded.
 
 See `AGENTS.md` for the module map and the two-phase database migration plan.
 

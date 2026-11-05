@@ -9,18 +9,8 @@ import { createClient } from "@/lib/supabase/client";
 import { addProjectDocument, deleteProjectDocument, findProjectDocumentsByHash } from "@/lib/actions/projects";
 import { buildDocumentPath, computeFileHash, uploadFileWithProgress } from "@/lib/storage";
 import { formatDateTime } from "@/lib/format";
-import type { ProjectDocument, ProjectDocumentType } from "@/lib/types";
+import type { DocumentTypeRecord, ProjectDocument, ProjectDocumentType } from "@/lib/types";
 
-const DOCUMENT_TYPES: ProjectDocumentType[] = [
-  "CIS",
-  "POF",
-  "DOA",
-  "PGL",
-  "JSON",
-  "Proof of Fulfillment",
-  "Supporting Documents",
-  "Additional Documents",
-];
 const ACCEPTED_TYPES =
   ".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png";
 
@@ -31,6 +21,7 @@ interface ProjectDocumentWithUrl extends ProjectDocument {
 interface ProjectDocumentsProps {
   projectId: string;
   documents: ProjectDocumentWithUrl[];
+  documentTypes: DocumentTypeRecord[];
 }
 
 interface PendingUpload {
@@ -40,9 +31,9 @@ interface PendingUpload {
   otherProjectMatches: { projectId: string; projectLabel: string; fileName: string }[];
 }
 
-export function ProjectDocuments({ projectId, documents }: ProjectDocumentsProps) {
+export function ProjectDocuments({ projectId, documents, documentTypes }: ProjectDocumentsProps) {
   const router = useRouter();
-  const [documentType, setDocumentType] = useState<ProjectDocumentType>("CIS");
+  const [documentType, setDocumentType] = useState<ProjectDocumentType>(documentTypes[0]?.name ?? "");
   const [isChecking, setIsChecking] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -241,9 +232,9 @@ export function ProjectDocuments({ projectId, documents }: ProjectDocumentsProps
             disabled={isUploading || isChecking}
             className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
           >
-            {DOCUMENT_TYPES.map((type) => (
-              <option key={type} value={type} className="bg-[#0a0e17]">
-                {type}
+            {documentTypes.map((type) => (
+              <option key={type.id} value={type.name} className="bg-[#0a0e17]">
+                {type.name}
               </option>
             ))}
           </select>

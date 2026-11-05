@@ -5,10 +5,9 @@ import { FollowUpsDue, type FollowUpItem } from "@/components/dashboard/follow-u
 import { createClient } from "@/lib/supabase/server";
 import { dateKeyInTimeZone, formatDateTime } from "@/lib/format";
 import { STAGES, STAGE_LABELS, isClosedStatus } from "@/lib/projects";
-import { PRODUCT_TYPES } from "@/lib/products";
+import { getAllProducts } from "@/lib/products";
+import { getAppSettings } from "@/lib/app-settings";
 import type { Project, ProjectStage } from "@/lib/types";
-
-const STUCK_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 const STAGE_BAR_COLORS: Record<ProjectStage, string> = {
   new: "bg-accent/70",
@@ -23,6 +22,9 @@ export default async function DashboardPage() {
   const projects = (data as Project[] | null) ?? [];
 
   const openProjects = projects.filter((project) => !isClosedStatus(project.status));
+
+  const [products, appSettings] = await Promise.all([getAllProducts(), getAppSettings()]);
+  const STUCK_AFTER_MS = appSettings.stuck_after_days * 24 * 60 * 60 * 1000;
 
   const now = new Date();
 
@@ -67,14 +69,16 @@ export default async function DashboardPage() {
   );
   const maxStageCount = Math.max(1, ...STAGES.map((stage) => stageCounts[stage]));
 
-  const productTypeCounts = PRODUCT_TYPES.reduce(
+  // All products, not just active ones — a project already set to a
+  // since-hidden product must still count toward this breakdown.
+  const productTypeCounts = products.reduce(
     (acc, product) => {
-      acc[product] = openProjects.filter((project) => project.product_type === product).length;
+      acc[product.name] = openProjects.filter((project) => project.product_type === product.name).length;
       return acc;
     },
     {} as Record<string, number>
   );
-  const maxProductCount = Math.max(1, ...PRODUCT_TYPES.map((product) => productTypeCounts[product]));
+  const maxProductCount = Math.max(1, ...products.map((product) => productTypeCounts[product.name]));
 
   // Stuck: open, not archived (already guaranteed by the `projects`
   // query above), not completed/lost, no activity in 7+ days.
@@ -224,17 +228,17 @@ export default async function DashboardPage() {
             <p className="text-sm text-white/35">No open projects.</p>
           ) : (
             <div className="flex flex-col gap-3">
-              {PRODUCT_TYPES.map((product) => {
-                const count = productTypeCounts[product];
+              {products.map((product) => {
+                const count = productTypeCounts[product.name];
                 const width = count === 0 ? 0 : Math.max(4, (count / maxProductCount) * 100);
                 return (
                   <Link
-                    key={product}
-                    href={`/projects?product_type=${product}`}
+                    key={product.id}
+                    href={`/projects?product_type=${encodeURIComponent(product.name)}`}
                     className="group flex items-center gap-4 rounded-lg px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-white/[0.04]"
                   >
-                    <span className="w-14 shrink-0 text-sm text-white/60 group-hover:text-white/90">
-                      {product}
+                    <span className="w-14 shrink-0 truncate text-sm text-white/60 group-hover:text-white/90">
+                      {product.name}
                     </span>
                     <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
                       <span

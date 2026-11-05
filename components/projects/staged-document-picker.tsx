@@ -6,18 +6,8 @@ import { ProjectDocumentTypeBadge } from "@/components/projects/badges";
 import { DuplicateWarningBanner } from "@/components/duplicate-warning-banner";
 import { findProjectDocumentsByHash } from "@/lib/actions/projects";
 import { computeFileHash } from "@/lib/storage";
-import type { ProjectDocumentType } from "@/lib/types";
+import type { DocumentTypeRecord, ProjectDocumentType } from "@/lib/types";
 
-const DOCUMENT_TYPES: ProjectDocumentType[] = [
-  "CIS",
-  "POF",
-  "DOA",
-  "PGL",
-  "JSON",
-  "Proof of Fulfillment",
-  "Supporting Documents",
-  "Additional Documents",
-];
 const ACCEPTED_TYPES =
   ".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png";
 
@@ -41,10 +31,11 @@ interface PendingFile {
 interface StagedDocumentPickerProps {
   documents: StagedDocument[];
   onChange: (documents: StagedDocument[]) => void;
+  documentTypes: DocumentTypeRecord[];
 }
 
-export function StagedDocumentPicker({ documents, onChange }: StagedDocumentPickerProps) {
-  const [documentType, setDocumentType] = useState<ProjectDocumentType>("CIS");
+export function StagedDocumentPicker({ documents, onChange, documentTypes }: StagedDocumentPickerProps) {
+  const [documentType, setDocumentType] = useState<ProjectDocumentType>(documentTypes[0]?.name ?? "");
   const [checking, setChecking] = useState(false);
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingFile | null>(null);
@@ -176,9 +167,9 @@ export function StagedDocumentPicker({ documents, onChange }: StagedDocumentPick
           disabled={checking}
           className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
         >
-          {DOCUMENT_TYPES.map((type) => (
-            <option key={type} value={type} className="bg-[#0a0e17]">
-              {type}
+          {documentTypes.map((type) => (
+            <option key={type.id} value={type.name} className="bg-[#0a0e17]">
+              {type.name}
             </option>
           ))}
         </select>
