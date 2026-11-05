@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { isCurrentUserAdmin } from "@/lib/auth";
 import type { Contact, ContactDocumentType, ProductType } from "@/lib/types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -221,6 +222,85 @@ export async function updateContactPerson(contactId: string, personId: string | 
 
     revalidatePath("/receivers");
     revalidatePath(`/receivers/${contactId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// The detail page's Archive toggle (components/archive-toggle-
+// button.tsx, via lib/actions/archive.ts's setArchived dispatcher) —
+// everyone can archive/unarchive, unlike delete below. Archiving never
+// touches any other row: an archived receiver stays exactly as linked
+// as it was, just hidden from new-entry pickers, lists, and search.
+export async function toggleContactArchived(id: string, archived: boolean): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("contacts")
+      .update({ archived_at: archived ? new Date().toISOString() : null })
+      .eq("id", id);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/receivers");
+    revalidatePath(`/receivers/${id}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// Admin-only (also enforced by the contacts_delete_admin RLS policy,
+// supabase/migrations/017_archive_receivers_people.sql — this app-level
+// check just turns a denied RLS delete into a clean message instead of
+// a raw Postgres error). Blocked outright while any project is still
+// matched with this receiver — archiving or unlinking first is the
+// only way past that, same spirit as every other "warning, don't
+// silently cascade" rule in this app, just upgraded to a hard block
+// since there's no undoing a delete. contact_products/contact_documents/
+// notes rows cascade-delete with the contacts row (on delete cascade,
+// 001_ark_schema.sql / 003_contacts_upgrade.sql); documents' storage
+// files can't cascade with them, so those are removed afterward, same
+// order as deleteContactDocument above (DB row gone first, storage
+// cleanup is best-effort and never blocks the delete from completing).
+export async function deleteContact(id: string): Promise<{ error: string | null }> {
+  try {
+    if (!(await isCurrentUserAdmin())) {
+      return { error: "Only admins can delete receivers." };
+    }
+
+    const supabase = await createClient();
+
+    const { count: projectCount } = await supabase
+      .from("projects")
+      .select("id", { count: "exact", head: true })
+      .eq("matched_contact_id", id);
+
+    if ((projectCount ?? 0) > 0) {
+      return {
+        error: `Linked to ${projectCount} project${projectCount === 1 ? "" : "s"}. Archive instead, or unlink first.`,
+      };
+    }
+
+    const { data: documents } = await supabase.from("contact_documents").select("file_path").eq("contact_id", id);
+    const filePaths = ((documents as { file_path: string }[] | null) ?? []).map((d) => d.file_path);
+
+    const { error } = await supabase.from("contacts").delete().eq("id", id);
+    if (error) {
+      return { error: error.message };
+    }
+
+    if (filePaths.length > 0) {
+      const { error: storageError } = await supabase.storage.from("contact-documents").remove(filePaths);
+      if (storageError) {
+        console.error("[deleteContact] failed to remove storage files:", storageError.message);
+      }
+    }
+
+    revalidatePath("/receivers");
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };

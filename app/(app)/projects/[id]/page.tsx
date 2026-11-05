@@ -44,19 +44,26 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
 
   const contactPerson = project.contact_person_id
     ? (
-        await supabase.from("people").select("id, first_name, last_name").eq("id", project.contact_person_id).maybeSingle()
-      ).data as Pick<Person, "id" | "first_name" | "last_name"> | null
+        await supabase
+          .from("people")
+          .select("id, first_name, last_name, archived_at")
+          .eq("id", project.contact_person_id)
+          .maybeSingle()
+      ).data as Pick<Person, "id" | "first_name" | "last_name" | "archived_at"> | null
     : null;
 
   // The matched-receiver and contact-person pickers each need to
   // search every row of their own list, not just whichever one (if
-  // any) is already loaded above.
+  // any) is already loaded above. Archived rows are excluded from
+  // these search lists (same as every other picker) — the current
+  // selection, if any, is tracked separately above regardless of its
+  // own archived state, so it's never at risk of disappearing here.
   const [{ data: allContactsData }, { data: allPeopleData }] = await Promise.all([
-    supabase.from("contacts").select("id, full_name").order("full_name"),
-    supabase.from("people").select("id, first_name, last_name").order("first_name"),
+    supabase.from("contacts").select("id, full_name").is("archived_at", null).order("full_name"),
+    supabase.from("people").select("id, first_name, last_name, archived_at").is("archived_at", null).order("first_name"),
   ]);
   const allContacts = (allContactsData as { id: string; full_name: string }[] | null) ?? [];
-  const allPeople = (allPeopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? [];
+  const allPeople = (allPeopleData as Pick<Person, "id" | "first_name" | "last_name" | "archived_at">[] | null) ?? [];
 
   const [
     { data: projectDocumentsData },
@@ -119,7 +126,11 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         <MatchedReceiverSelect
           projectId={project.id}
           receivers={allContacts.map((c) => ({ id: c.id, label: c.full_name }))}
-          currentReceiver={matchedContact ? { id: matchedContact.id, label: matchedContact.full_name } : null}
+          currentReceiver={
+            matchedContact
+              ? { id: matchedContact.id, label: matchedContact.full_name + (matchedContact.archived_at ? " (Archived)" : "") }
+              : null
+          }
         />
       ),
     },

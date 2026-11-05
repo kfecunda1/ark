@@ -90,12 +90,12 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
   const contactPersonIds = [...new Set(projects.map((p) => p.contact_person_id).filter((id): id is string => Boolean(id)))];
   const { data: contactPeopleData } =
     contactPersonIds.length > 0
-      ? await supabase.from("people").select("id, first_name, last_name").in("id", contactPersonIds)
+      ? await supabase.from("people").select("id, first_name, last_name, archived_at").in("id", contactPersonIds)
       : { data: [] };
   const contactPersonNameById = new Map(
-    ((contactPeopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? []).map((p) => [
+    ((contactPeopleData as Pick<Person, "id" | "first_name" | "last_name" | "archived_at">[] | null) ?? []).map((p) => [
       p.id,
-      personLabel(p),
+      personLabel(p) + (p.archived_at ? " (Archived)" : ""),
     ])
   );
 

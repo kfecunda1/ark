@@ -9,8 +9,8 @@ import type { Person } from "@/lib/types";
 export default async function NewProjectPage() {
   const supabase = await createClient();
   const [{ data: receiversData }, { data: peopleData }, products, documentTypes, appSettings] = await Promise.all([
-    supabase.from("contacts").select("id, full_name").order("full_name"),
-    supabase.from("people").select("id, first_name, last_name").order("first_name"),
+    supabase.from("contacts").select("id, full_name").is("archived_at", null).order("full_name"),
+    supabase.from("people").select("id, first_name, last_name").is("archived_at", null).order("first_name"),
     getAllProducts(),
     getActiveDocumentTypes(),
     getAppSettings(),

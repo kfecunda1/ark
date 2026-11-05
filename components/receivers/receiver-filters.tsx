@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search } from "lucide-react";
+import { Archive, Search } from "lucide-react";
 import type { Product } from "@/lib/types";
 
 const selectClass =
@@ -19,6 +19,7 @@ export function ReceiverFilters({ products }: ReceiverFiltersProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
+  const showArchived = searchParams.get("archived") === "true";
 
   useEffect(() => {
     const currentQ = searchParams.get("q") ?? "";
@@ -37,12 +38,12 @@ export function ReceiverFilters({ products }: ReceiverFiltersProps) {
     return () => clearTimeout(timeout);
   }, [query, searchParams, pathname, router]);
 
-  function setProduct(value: string) {
+  function setParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
     if (value) {
-      params.set("product_type", value);
+      params.set(key, value);
     } else {
-      params.delete("product_type");
+      params.delete(key);
     }
     router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
   }
@@ -64,7 +65,7 @@ export function ReceiverFilters({ products }: ReceiverFiltersProps) {
       <select
         aria-label="Filter by product"
         value={searchParams.get("product_type") ?? ""}
-        onChange={(e) => setProduct(e.target.value)}
+        onChange={(e) => setParam("product_type", e.target.value)}
         className={selectClass}
       >
         <option value="" className="bg-[#0a0e17]">
@@ -76,6 +77,20 @@ export function ReceiverFilters({ products }: ReceiverFiltersProps) {
           </option>
         ))}
       </select>
+
+      <button
+        type="button"
+        onClick={() => setParam("archived", showArchived ? "" : "true")}
+        aria-pressed={showArchived}
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors duration-150 ease-out ${
+          showArchived
+            ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
+            : "border-white/[0.06] bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"
+        }`}
+      >
+        <Archive className="h-3.5 w-3.5" />
+        {showArchived ? "Showing Archived" : "Show Archived"}
+      </button>
     </div>
   );
 }

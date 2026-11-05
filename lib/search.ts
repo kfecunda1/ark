@@ -68,7 +68,12 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
   const orSafePattern = `%${escapeLike(sanitizeForOrFilter(query))}%`;
 
   const [contactsRes, projectDocsRes, notesRes, peopleRes] = await Promise.all([
-    supabase.from("contacts").select("id, full_name").ilike("full_name", likePattern).limit(RESULT_LIMIT),
+    supabase
+      .from("contacts")
+      .select("id, full_name")
+      .is("archived_at", null)
+      .ilike("full_name", likePattern)
+      .limit(RESULT_LIMIT),
     supabase
       .from("project_documents")
       .select("id, file_name, project_id")
@@ -82,6 +87,7 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
     supabase
       .from("people")
       .select("id, first_name, last_name, phone, email")
+      .is("archived_at", null)
       .or(
         [
           `first_name.ilike.${orSafePattern}`,

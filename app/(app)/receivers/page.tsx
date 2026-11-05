@@ -4,6 +4,7 @@ import { Plus, Users } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { ClickableRow } from "@/components/clickable-row";
 import { ClickableCard } from "@/components/clickable-card";
+import { ArchivedBadge } from "@/components/archived-badge";
 import { ReceiverFilters } from "@/components/receivers/receiver-filters";
 import { SortableHeader, MobileSortControl, type SortOption } from "@/components/sort-controls";
 import { createClient } from "@/lib/supabase/server";
@@ -27,7 +28,7 @@ const SORT_OPTIONS: SortOption[] = [
 ];
 
 interface ReceiversPageProps {
-  searchParams: Promise<{ q?: string; product_type?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{ q?: string; product_type?: string; sort?: string; dir?: string; archived?: string }>;
 }
 
 // UI: Receivers. The underlying table/type stays `contacts`/`Contact`
@@ -37,8 +38,12 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
   const sort: ReceiverSortKey = isReceiverSortKey(params.sort) ? params.sort : "name";
   const dir = parseSortDirection(params.dir);
 
+  const showArchived = params.archived === "true";
+
   const supabase = await createClient();
-  const { data, error } = await supabase.from("contacts").select("*");
+  let query = supabase.from("contacts").select("*");
+  query = showArchived ? query.not("archived_at", "is", null) : query.is("archived_at", null);
+  const { data, error } = await query;
   const allContacts = (data as Contact[] | null) ?? [];
 
   const products = await getAllProducts();
@@ -94,8 +99,12 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
     <div className="mx-auto max-w-5xl">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Receivers</h1>
-          <p className="mt-1 text-sm text-white/45">People linked to projects.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">
+            {showArchived ? "Archived Receivers" : "Receivers"}
+          </h1>
+          <p className="mt-1 text-sm text-white/45">
+            {showArchived ? "Receivers that have been archived." : "People linked to projects."}
+          </p>
         </div>
         <Link
           href="/receivers/new"
@@ -128,12 +137,14 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
             <Users className="h-5 w-5 text-white/40" />
           </div>
           <p className="text-sm font-medium text-white/70">
-            {searchTerm || productFilter ? "No matching receivers" : "No receivers yet"}
+            {searchTerm || productFilter || showArchived ? "No matching receivers" : "No receivers yet"}
           </p>
           <p className="max-w-xs text-xs text-white/35">
-            {searchTerm || productFilter
-              ? "No receivers match your filters."
-              : "Receivers you create here can be linked to projects."}
+            {showArchived
+              ? "No archived receivers."
+              : searchTerm || productFilter
+                ? "No receivers match your filters."
+                : "Receivers you create here can be linked to projects."}
           </p>
         </GlassCard>
       )}
@@ -179,8 +190,11 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
                       className="border-b border-white/[0.04] transition-colors duration-150 ease-out last:border-0 hover:bg-white/[0.03]"
                     >
                       <td className="px-4 py-3">
-                        <span className="font-medium text-white/85 group-hover:text-white">
-                          {contact.full_name}
+                        <span className="flex items-center gap-2">
+                          <span className="font-medium text-white/85 group-hover:text-white">
+                            {contact.full_name}
+                          </span>
+                          {contact.archived_at && <ArchivedBadge />}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -214,7 +228,10 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
               const contactProducts = productsByContactId.get(contact.id) ?? [];
               return (
                 <ClickableCard key={contact.id} href={`/receivers/${contact.id}`}>
-                  <span className="font-medium text-white/85">{contact.full_name}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-medium text-white/85">{contact.full_name}</span>
+                    {contact.archived_at && <ArchivedBadge />}
+                  </span>
                   {contactProducts.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {contactProducts.map((product) => (

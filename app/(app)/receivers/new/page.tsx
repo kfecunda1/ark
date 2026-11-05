@@ -10,7 +10,7 @@ export default async function NewReceiverPage() {
   const [allProducts, documentTypes, { data: peopleData }] = await Promise.all([
     getAllProducts(),
     getActiveDocumentTypes(),
-    supabase.from("people").select("id, first_name, last_name").order("first_name"),
+    supabase.from("people").select("id, first_name, last_name").is("archived_at", null).order("first_name"),
   ]);
   const people = ((peopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? []).map((p) => ({
     id: p.id,

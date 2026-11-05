@@ -8,7 +8,7 @@ import { quickCreatePerson } from "@/lib/actions/people";
 import { personLabel } from "@/lib/people";
 import type { Person } from "@/lib/types";
 
-type PersonOption = Pick<Person, "id" | "first_name" | "last_name">;
+type PersonOption = Pick<Person, "id" | "first_name" | "last_name" | "archived_at">;
 
 interface ContactPersonSelectProps {
   entityType: ContactPersonEntityType;
@@ -105,7 +105,11 @@ export function ContactPersonSelect({ entityType, entityId, people, currentPerso
         <div className="relative w-56">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
           <input
-            value={currentPerson && !open ? personLabel(currentPerson) : query}
+            value={
+              currentPerson && !open
+                ? personLabel(currentPerson) + (currentPerson.archived_at ? " (Archived)" : "")
+                : query
+            }
             onChange={(e) => {
               setQuery(e.target.value);
               setOpen(true);

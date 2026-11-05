@@ -12,11 +12,20 @@ export default async function NewNotePage({ searchParams }: NewNotePageProps) {
   const supabase = await createClient();
 
   const [{ data: contactsData }, { data: projectsData }] = await Promise.all([
-    supabase.from("contacts").select("id, full_name"),
+    supabase.from("contacts").select("id, full_name, archived_at"),
     supabase.from("projects").select("id, name"),
   ]);
   const contacts = (contactsData as Contact[] | null) ?? [];
-  const contactOptions = contacts.map((contact) => ({ id: contact.id, label: contactLabel(contact) }));
+  // Archived receivers are excluded, except the one this page was
+  // linked to directly (e.g. "Add note" from an archived receiver's
+  // own page) — same "an existing link keeps showing" rule used
+  // everywhere else archiving touches a picker.
+  const contactOptions = contacts
+    .filter((contact) => !contact.archived_at || contact.id === params.contact_id)
+    .map((contact) => ({
+      id: contact.id,
+      label: contactLabel(contact) + (contact.archived_at ? " (Archived)" : ""),
+    }));
   const projects = (projectsData as Pick<Project, "id" | "name">[] | null) ?? [];
   const projectOptions = projects.map((project) => ({ id: project.id, label: project.name }));
 

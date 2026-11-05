@@ -66,6 +66,9 @@ export interface Contact {
   // this Contact — see AGENTS.md's UI-naming-vs-database-naming note:
   // in the UI, this whole table/type is "Receivers").
   contact_person_id: string | null;
+  // supabase/migrations/017_archive_receivers_people.sql. null = active,
+  // same "null means active" convention as projects.archived_at.
+  archived_at: string | null;
 }
 
 // supabase/migrations/016_receivers_and_people.sql. The real, simple
@@ -80,6 +83,8 @@ export interface Person {
   email: string | null;
   created_at: string;
   updated_at: string;
+  // supabase/migrations/017_archive_receivers_people.sql. null = active.
+  archived_at: string | null;
 }
 
 // One row per product a contact handles. Unique (contact_id,

@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { isCurrentUserAdmin } from "@/lib/auth";
 import { personLabel } from "@/lib/people";
 import type { Person } from "@/lib/types";
 
@@ -141,9 +142,57 @@ export async function updatePerson(
   redirect(`/people/${id}`);
 }
 
-export async function deletePerson(id: string): Promise<{ error: string | null }> {
+// The detail page's Archive toggle (components/archive-toggle-
+// button.tsx, via lib/actions/archive.ts's setArchived dispatcher) —
+// everyone can archive/unarchive, unlike delete below.
+export async function togglePersonArchived(id: string, archived: boolean): Promise<{ error: string | null }> {
   try {
     const supabase = await createClient();
+    const { error } = await supabase
+      .from("people")
+      .update({ archived_at: archived ? new Date().toISOString() : null })
+      .eq("id", id);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/people");
+    revalidatePath(`/people/${id}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// Admin-only (also enforced by the people_delete_admin RLS policy,
+// supabase/migrations/017_archive_receivers_people.sql). Blocked
+// outright while any project or receiver still links to this person as
+// its Contact Person — same "archive or unlink first" rule as
+// deleteContact in lib/actions/contacts.ts. A person has no products,
+// documents, or notes of its own to cascade-clean (both FKs into
+// `people` are ON DELETE SET NULL, never CASCADE), so this is a plain
+// delete once the link check clears.
+export async function deletePerson(id: string): Promise<{ error: string | null }> {
+  try {
+    if (!(await isCurrentUserAdmin())) {
+      return { error: "Only admins can delete contacts." };
+    }
+
+    const supabase = await createClient();
+
+    const [{ count: projectCount }, { count: receiverCount }] = await Promise.all([
+      supabase.from("projects").select("id", { count: "exact", head: true }).eq("contact_person_id", id),
+      supabase.from("contacts").select("id", { count: "exact", head: true }).eq("contact_person_id", id),
+    ]);
+
+    if ((projectCount ?? 0) > 0 || (receiverCount ?? 0) > 0) {
+      const parts: string[] = [];
+      if (projectCount) parts.push(`${projectCount} project${projectCount === 1 ? "" : "s"}`);
+      if (receiverCount) parts.push(`${receiverCount} receiver${receiverCount === 1 ? "" : "s"}`);
+      return { error: `Linked to ${parts.join(" and ")}. Archive instead, or unlink first.` };
+    }
+
     const { error } = await supabase.from("people").delete().eq("id", id);
 
     if (error) {

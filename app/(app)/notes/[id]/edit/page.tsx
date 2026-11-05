@@ -20,11 +20,19 @@ export default async function EditNotePage({ params }: EditNotePageProps) {
   }
 
   const [{ data: contactsData }, { data: projectsData }] = await Promise.all([
-    supabase.from("contacts").select("id, full_name"),
+    supabase.from("contacts").select("id, full_name, archived_at"),
     supabase.from("projects").select("id, name"),
   ]);
   const contacts = (contactsData as Contact[] | null) ?? [];
-  const contactOptions = contacts.map((contact) => ({ id: contact.id, label: contactLabel(contact) }));
+  // Archived receivers are excluded, except the one this note is
+  // already linked to — same "an existing link keeps showing" rule
+  // used everywhere else archiving touches a picker.
+  const contactOptions = contacts
+    .filter((contact) => !contact.archived_at || contact.id === note.contact_id)
+    .map((contact) => ({
+      id: contact.id,
+      label: contactLabel(contact) + (contact.archived_at ? " (Archived)" : ""),
+    }));
   const projects = (projectsData as Pick<Project, "id" | "name">[] | null) ?? [];
   const projectOptions = projects.map((project) => ({ id: project.id, label: project.name }));
 

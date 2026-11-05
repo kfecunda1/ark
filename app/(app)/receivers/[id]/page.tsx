@@ -2,11 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
+import { ArchivedBadge } from "@/components/archived-badge";
+import { ArchiveToggleButton } from "@/components/archive-toggle-button";
 import { ReceiverProductsSection } from "@/components/receivers/receiver-products-section";
 import { ReceiverDocuments } from "@/components/receivers/receiver-documents";
 import { ReceiverNotesSection } from "@/components/receivers/receiver-notes-section";
+import { DeleteReceiverButton } from "@/components/receivers/delete-receiver-button";
 import { ContactPersonSelect } from "@/components/contact-person-select";
 import { createClient } from "@/lib/supabase/server";
+import { isCurrentUserAdmin } from "@/lib/auth";
 import { getActiveProducts } from "@/lib/products";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { getProjectProductsByProjectIds, displayProduct } from "@/lib/project-products";
@@ -40,6 +44,7 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
     { data: allPeopleData },
     availableProducts,
     documentTypes,
+    isAdmin,
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -49,9 +54,14 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
     supabase.from("contact_products").select("*").eq("contact_id", id).order("created_at"),
     supabase.from("contact_documents").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
     supabase.from("notes").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
-    supabase.from("people").select("id, first_name, last_name").order("first_name"),
+    // Archived people disappear from this picker's search, same as
+    // every other picker — the current contact person (if any) is
+    // fetched separately below regardless of its own archived state,
+    // so this list never needs to special-case preserving it.
+    supabase.from("people").select("id, first_name, last_name, archived_at").is("archived_at", null).order("first_name"),
     getActiveProducts(),
     getActiveDocumentTypes(),
+    isCurrentUserAdmin(),
   ]);
 
   // The query above already scopes to matched_contact_id = this
@@ -63,9 +73,15 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
   const products = (productsData as ContactProduct[] | null) ?? [];
   const documents = (documentsData as ContactDocument[] | null) ?? [];
   const notes = (notesData as Note[] | null) ?? [];
-  const allPeople = (allPeopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? [];
+  const allPeople = (allPeopleData as Pick<Person, "id" | "first_name" | "last_name" | "archived_at">[] | null) ?? [];
   const contactPerson = contact.contact_person_id
-    ? allPeople.find((p) => p.id === contact.contact_person_id) ?? null
+    ? ((
+        await supabase
+          .from("people")
+          .select("id, first_name, last_name, archived_at")
+          .eq("id", contact.contact_person_id)
+          .maybeSingle()
+      ).data as Pick<Person, "id" | "first_name" | "last_name" | "archived_at"> | null)
     : null;
 
   let documentsWithUrls = documents.map((doc) => ({ ...doc, signedUrl: null as string | null }));
@@ -90,15 +106,30 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
           <Link href="/receivers" className="text-xs font-medium text-white/40 hover:text-white/70">
             ← Back to receivers
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white">{contact.full_name}</h1>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight text-white">{contact.full_name}</h1>
+            {contact.archived_at && <ArchivedBadge />}
+          </div>
         </div>
-        <Link
-          href={`/receivers/${contact.id}/edit`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
-        >
-          <Pencil className="h-4 w-4" />
-          Edit
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/receivers/${contact.id}/edit`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
+          >
+            <Pencil className="h-4 w-4" />
+            Edit
+          </Link>
+          <ArchiveToggleButton entityType="receiver" entityId={contact.id} archived={Boolean(contact.archived_at)} />
+          {isAdmin && (
+            <DeleteReceiverButton
+              contactId={contact.id}
+              linkedProjectCount={matchedProjects.length}
+              productCount={products.length}
+              documentCount={documents.length}
+              noteCount={notes.length}
+            />
+          )}
+        </div>
       </div>
 
       {failedDocNames.length > 0 && (

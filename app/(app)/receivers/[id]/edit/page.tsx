@@ -25,13 +25,16 @@ export default async function EditReceiverPage({ params }: EditReceiverPageProps
     supabase.from("contact_products").select("*").eq("contact_id", id).order("created_at"),
     getAllProducts(),
     getActiveDocumentTypes(),
-    supabase.from("people").select("id, first_name, last_name").order("first_name"),
+    supabase.from("people").select("id, first_name, last_name, archived_at").order("first_name"),
   ]);
   const products = (productsData as ContactProduct[] | null) ?? [];
-  const people = ((peopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? []).map((p) => ({
-    id: p.id,
-    label: personLabel(p),
-  }));
+  // Same "an existing link keeps showing even if it's since been
+  // archived" rule as the project edit form — only the contact's own
+  // current contact_person_id is exempt from the archived filter.
+  const allPeople = (peopleData as Pick<Person, "id" | "first_name" | "last_name" | "archived_at">[] | null) ?? [];
+  const people = allPeople
+    .filter((p) => !p.archived_at || p.id === contact.contact_person_id)
+    .map((p) => ({ id: p.id, label: personLabel(p) + (p.archived_at ? " (Archived)" : "") }));
 
   return (
     <div className="mx-auto max-w-lg">

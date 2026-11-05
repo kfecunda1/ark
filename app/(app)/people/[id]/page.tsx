@@ -2,8 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
+import { ArchivedBadge } from "@/components/archived-badge";
+import { ArchiveToggleButton } from "@/components/archive-toggle-button";
 import { DeletePersonButton } from "@/components/people/delete-person-button";
 import { createClient } from "@/lib/supabase/server";
+import { isCurrentUserAdmin } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { personLabel } from "@/lib/people";
 import { displayProduct, getProjectProductsByProjectIds } from "@/lib/project-products";
@@ -24,12 +27,13 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
     notFound();
   }
 
-  const [{ data: receiversData }, { data: projectsData }] = await Promise.all([
-    supabase.from("contacts").select("id, full_name").eq("contact_person_id", id).order("full_name"),
+  const [{ data: receiversData }, { data: projectsData }, isAdmin] = await Promise.all([
+    supabase.from("contacts").select("id, full_name, archived_at").eq("contact_person_id", id).order("full_name"),
     supabase.from("projects").select("*").eq("contact_person_id", id).order("created_at", { ascending: false }),
+    isCurrentUserAdmin(),
   ]);
 
-  const linkedReceivers = (receiversData as Pick<Contact, "id" | "full_name">[] | null) ?? [];
+  const linkedReceivers = (receiversData as Pick<Contact, "id" | "full_name" | "archived_at">[] | null) ?? [];
   const linkedProjects = (projectsData as Project[] | null) ?? [];
   const linkedProjectProductsById = await getProjectProductsByProjectIds(linkedProjects.map((p) => p.id));
 
@@ -46,7 +50,10 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
           <Link href="/people" className="text-xs font-medium text-white/40 hover:text-white/70">
             ← Back to contacts
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white">{personLabel(person)}</h1>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight text-white">{personLabel(person)}</h1>
+            {person.archived_at && <ArchivedBadge />}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -56,7 +63,15 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
             <Pencil className="h-4 w-4" />
             Edit
           </Link>
-          <DeletePersonButton personId={person.id} redirectTo="/people" />
+          <ArchiveToggleButton entityType="person" entityId={person.id} archived={Boolean(person.archived_at)} />
+          {isAdmin && (
+            <DeletePersonButton
+              personId={person.id}
+              redirectTo="/people"
+              linkedProjectCount={linkedProjects.length}
+              linkedReceiverCount={linkedReceivers.length}
+            />
+          )}
         </div>
       </div>
 
@@ -84,6 +99,7 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
                 className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
               >
                 <span className="min-w-0 flex-1 truncate text-sm text-white/80">{receiver.full_name}</span>
+                {receiver.archived_at && <ArchivedBadge />}
               </Link>
             ))}
           </div>
