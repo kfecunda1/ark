@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { dateKeyInTimeZone, formatDateTime } from "@/lib/format";
 import { STAGES, STAGE_LABELS, isClosedStatus } from "@/lib/projects";
 import { getAllProducts } from "@/lib/products";
+import { countedProducts, getProjectProductsByProjectIds } from "@/lib/project-products";
 import { getAppSettings } from "@/lib/app-settings";
 import type { Project, ProjectStage } from "@/lib/types";
 
@@ -76,10 +77,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const maxStageCount = Math.max(1, ...STAGES.map((stage) => stageCounts[stage]));
 
   // All products, not just active ones — a project already set to a
-  // since-hidden product must still count toward this breakdown.
+  // since-hidden product must still count toward this breakdown. Each
+  // open project counts under its final product once it has one,
+  // otherwise under every option still in play — same rule the
+  // Projects list's product filter uses.
+  const openProjectProductsById = await getProjectProductsByProjectIds(openProjects.map((p) => p.id));
   const productTypeCounts = products.reduce(
     (acc, product) => {
-      acc[product.name] = openProjects.filter((project) => project.product_type === product.name).length;
+      acc[product.name] = openProjects.filter((project) =>
+        countedProducts(project.final_product, openProjectProductsById.get(project.id) ?? []).includes(product.name)
+      ).length;
       return acc;
     },
     {} as Record<string, number>

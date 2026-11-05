@@ -5,18 +5,13 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getContactProductRatio } from "@/lib/actions/contacts";
 import { STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
-import type {
-  Currency,
-  ProductType,
-  ProjectDocumentType,
-  ProjectPriority,
-  ProjectStage,
-  ProjectStatus,
-} from "@/lib/types";
+import type { Currency, ProjectDocumentType, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
 
 export interface ProjectFormState {
   error: string | null;
 }
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 // Supabase-js resolves query errors as a returned `{ error }` value, not
 // a thrown exception — every `if (error) return { error: error.message }`
@@ -29,7 +24,8 @@ function unexpectedErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong. Please try again.";
 }
 
-const REQUIRED_FIELDS = ["name", "product_type"] as const;
+const REQUIRED_FIELDS = ["name"] as const;
+const MAX_PRODUCT_OPTIONS = 3;
 
 function buildProjectPayload(formData: FormData) {
   for (const field of REQUIRED_FIELDS) {
@@ -48,18 +44,13 @@ function buildProjectPayload(formData: FormData) {
     throw new Error('"Status" is required once Stage is Status.');
   }
 
-  const clientContactId = formData.get("client_contact_id")?.toString().trim();
-  const assignedContactId = formData.get("assigned_contact_id")?.toString().trim();
   const matchedContactId = formData.get("matched_contact_id")?.toString().trim();
   const totalFaceValueRaw = formData.get("total_face_value")?.toString().trim();
 
   return {
     name: (formData.get("name") as string).trim(),
-    product_type: formData.get("product_type") as ProductType,
     stage,
     status,
-    client_contact_id: clientContactId || null,
-    assigned_contact_id: assignedContactId || null,
     matched_contact_id: matchedContactId || null,
     ratio_presented: formData.get("ratio_presented")?.toString().trim() || null,
     ratio_real: formData.get("ratio_real")?.toString().trim() || null,
@@ -69,15 +60,36 @@ function buildProjectPayload(formData: FormData) {
   };
 }
 
+// A project has 1-3 product options, submitted as repeated same-named
+// fields (see components/projects/project-form.tsx's product option
+// rows) — not a single "product_type" anymore.
+function parseProductOptions(formData: FormData): string[] {
+  const raw = formData
+    .getAll("product_options")
+    .map((v) => v.toString().trim())
+    .filter(Boolean);
+  const unique = [...new Set(raw)];
+
+  if (unique.length === 0) {
+    throw new Error("At least one product is required.");
+  }
+  if (unique.length > MAX_PRODUCT_OPTIONS) {
+    throw new Error(`A project can have at most ${MAX_PRODUCT_OPTIONS} products.`);
+  }
+  return unique;
+}
+
 // Returns the new project's id instead of redirecting, so the caller can
 // upload staged documents (which needs the project's id) before
 // navigating.
 export async function createProjectWithId(
   formData: FormData
 ): Promise<{ id: string | null; error: string | null }> {
-  let payload;
+  let payload: ReturnType<typeof buildProjectPayload>;
+  let products: string[];
   try {
     payload = buildProjectPayload(formData);
+    products = parseProductOptions(formData);
   } catch (err) {
     return { id: null, error: err instanceof Error ? err.message : "Invalid form data." };
   }
@@ -88,6 +100,9 @@ export async function createProjectWithId(
       data: { user },
     } = await supabase.auth.getUser();
 
+    // final_product starts null — it can only ever reference a row in
+    // project_products (validate_final_product enforces this), and
+    // that row doesn't exist until the insert just below.
     const { data, error } = await supabase
       .from("projects")
       .insert({ ...payload, created_by: user?.id ?? null })
@@ -98,11 +113,100 @@ export async function createProjectWithId(
       return { id: null, error: error?.message ?? "Failed to create project." };
     }
 
+    const projectId = data.id;
+
+    const { error: productsError } = await supabase
+      .from("project_products")
+      .insert(products.map((product, index) => ({ project_id: projectId, product, sort_order: index + 1 })));
+
+    if (productsError) {
+      // Don't leave a project behind with no product options at all —
+      // it's an invalid state nothing else in the app expects.
+      await supabase.from("projects").delete().eq("id", projectId);
+      return { id: null, error: productsError.message };
+    }
+
+    // A single option counts as final automatically.
+    if (products.length === 1) {
+      const { error: finalError } = await supabase
+        .from("projects")
+        .update({ final_product: products[0] })
+        .eq("id", projectId);
+      if (finalError) {
+        return { id: null, error: finalError.message };
+      }
+    }
+
     revalidatePath("/projects");
-    return { id: data.id, error: null };
+    return { id: projectId, error: null };
   } catch (err) {
     return { id: null, error: unexpectedErrorMessage(err) };
   }
+}
+
+// Reconciles a project's product_products rows with what the edit form
+// submitted, then re-settles final_product: cleared if it's no longer
+// among the submitted products, auto-set if exactly one option remains
+// (and none was already final) — same "one option = automatically
+// final" rule createProjectWithId applies at creation.
+//
+// Inserts new options *before* deleting removed ones — not the other
+// order — because protect_last_project_product (supabase/migrations/
+// 013_projects_restructure.sql) blocks deleting a project's very last
+// option: replacing a project's sole option with a different one is a
+// delete-then-insert from the form's point of view, but deleting first
+// would momentarily leave zero rows and get refused.
+async function syncProjectProducts(
+  supabase: SupabaseServerClient,
+  projectId: string,
+  submitted: string[]
+): Promise<{ error: string | null }> {
+  const { data: existing, error: existingError } = await supabase
+    .from("project_products")
+    .select("id, product")
+    .eq("project_id", projectId);
+  if (existingError) {
+    return { error: existingError.message };
+  }
+
+  const existingRows = (existing as { id: string; product: string }[] | null) ?? [];
+  const existingByProduct = new Map(existingRows.map((r) => [r.product, r.id]));
+  const submittedSet = new Set(submitted);
+
+  const toInsert = submitted.filter((p) => !existingByProduct.has(p));
+  const toDelete = existingRows.filter((r) => !submittedSet.has(r.product));
+
+  if (toInsert.length > 0) {
+    const startOrder = existingRows.length + 1;
+    const { error } = await supabase
+      .from("project_products")
+      .insert(toInsert.map((product, i) => ({ project_id: projectId, product, sort_order: startOrder + i })));
+    if (error) return { error: error.message };
+  }
+
+  if (toDelete.length > 0) {
+    const { error } = await supabase
+      .from("project_products")
+      .delete()
+      .in(
+        "id",
+        toDelete.map((r) => r.id)
+      );
+    if (error) return { error: error.message };
+  }
+
+  const { data: projectRow } = await supabase.from("projects").select("final_product").eq("id", projectId).maybeSingle();
+  const currentFinal = (projectRow as { final_product: string | null } | null)?.final_product ?? null;
+
+  if (currentFinal && !submittedSet.has(currentFinal)) {
+    const { error } = await supabase.from("projects").update({ final_product: null }).eq("id", projectId);
+    if (error) return { error: error.message };
+  } else if (!currentFinal && submitted.length === 1) {
+    const { error } = await supabase.from("projects").update({ final_product: submitted[0] }).eq("id", projectId);
+    if (error) return { error: error.message };
+  }
+
+  return { error: null };
 }
 
 export async function updateProject(
@@ -110,9 +214,11 @@ export async function updateProject(
   _prevState: ProjectFormState,
   formData: FormData
 ): Promise<ProjectFormState> {
-  let payload;
+  let payload: ReturnType<typeof buildProjectPayload>;
+  let products: string[];
   try {
     payload = buildProjectPayload(formData);
+    products = parseProductOptions(formData);
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Invalid form data." };
   }
@@ -127,6 +233,11 @@ export async function updateProject(
 
     if (error) {
       return { error: error.message };
+    }
+
+    const syncResult = await syncProjectProducts(supabase, id, products);
+    if (syncResult.error) {
+      return { error: syncResult.error };
     }
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
@@ -411,9 +522,9 @@ export async function findProjectDocumentsByHash(hash: string): Promise<ProjectD
 }
 
 // ----------------------------------------------------------------------------
-// Duplicate detection — a warning only. One client can have several
-// deals of the same product, so this never blocks a save; it just tells
-// the Add Anyway banner what to show.
+// Duplicate detection — a warning only. One matched contact can have
+// several deals on the same product, so this never blocks a save; it
+// just tells the Add Anyway banner what to show.
 // ----------------------------------------------------------------------------
 
 export interface DuplicateProjectMatch {
@@ -422,37 +533,61 @@ export interface DuplicateProjectMatch {
   meta: string;
 }
 
-// Projects sharing the same client contact and product type as the one
-// about to be created. Scans every project regardless of archived state
-// or stage — including a closed-out duplicate is still useful
-// information — and the caller is told the stage/status/archived state
-// of each so it can show that in the warning.
+// Projects sharing the same matched contact as the one about to be
+// created/edited, and at least one overlapping product option.
+// excludeProjectId leaves room for an eventual edit-mode check (not
+// currently wired up — the edit form doesn't re-run this — but the
+// signature already supports it rather than needing another one
+// later). Scans every project regardless of archived state or stage.
 export async function findDuplicateProjects(input: {
-  clientContactId: string;
-  productType: ProductType;
+  matchedContactId: string;
+  productOptions: string[];
+  excludeProjectId?: string;
 }): Promise<DuplicateProjectMatch[]> {
-  if (!input.clientContactId) return [];
+  if (!input.matchedContactId || input.productOptions.length === 0) return [];
 
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    let candidateQuery = supabase
       .from("projects")
       .select("id, name, stage, status, archived_at")
-      .eq("client_contact_id", input.clientContactId)
-      .eq("product_type", input.productType);
+      .eq("matched_contact_id", input.matchedContactId);
+    if (input.excludeProjectId) {
+      candidateQuery = candidateQuery.neq("id", input.excludeProjectId);
+    }
 
+    const { data: candidateRows, error } = await candidateQuery;
     if (error) {
       console.error("[findDuplicateProjects] query failed:", error.message);
       return [];
     }
 
-    const rows =
-      (data as
+    const candidates =
+      (candidateRows as
         | { id: string; name: string; stage: ProjectStage; status: ProjectStatus | null; archived_at: string | null }[]
         | null) ?? [];
-    if (rows.length === 0) return [];
+    if (candidates.length === 0) return [];
 
-    return rows.map((row) => {
+    const { data: optionRows, error: optionsError } = await supabase
+      .from("project_products")
+      .select("project_id, product")
+      .in(
+        "project_id",
+        candidates.map((c) => c.id)
+      )
+      .in("product", input.productOptions);
+    if (optionsError) {
+      console.error("[findDuplicateProjects] options query failed:", optionsError.message);
+      return [];
+    }
+
+    const matchingIds = new Set(
+      ((optionRows as { project_id: string; product: string }[] | null) ?? []).map((r) => r.project_id)
+    );
+    const matches = candidates.filter((c) => matchingIds.has(c.id));
+    if (matches.length === 0) return [];
+
+    return matches.map((row) => {
       const stageLabel = row.status ? STATUS_LABELS[row.status] : STAGE_LABELS[row.stage];
       return {
         id: row.id,
@@ -467,21 +602,21 @@ export async function findDuplicateProjects(input: {
 }
 
 // ----------------------------------------------------------------------------
-// Matched contact — the detail page's inline quick-picker (project-form.
-// tsx has its own client-side version of the ratio check, since there
-// the project may not be saved yet; this one persists immediately, so
-// it does the DB-backed version: set matched_contact_id, then look up
-// that contact's ratio for the project's *current* (already-saved)
-// product_type and fill ratio_real if it's empty. A snapshot, not a
-// live link — once filled (or reported as differing), nothing here
-// keeps watching the contact's ratio for future changes.
+// Matched contact & final product — both can trigger the ratio
+// auto-fill (snapshot, not live: once filled, or reported as
+// differing, nothing here keeps watching for future changes), but only
+// once a final product actually exists. Before that, there's nothing
+// to look a single ratio up for — components/projects/project-product-
+// options.tsx instead shows the matched contact's ratio per option as
+// plain information, with no action that writes anything.
 // ----------------------------------------------------------------------------
 
 export interface RatioAutoFillResult {
   filled: boolean;
   differs: boolean;
   contactName: string;
-  productType: ProductType;
+  // The final product this ratio is for.
+  productType: string;
   // The matched contact's ratio on record for this product.
   theirRatio: string;
   // Only set when differs is true — the project's own ratio_real at the
@@ -490,6 +625,41 @@ export interface RatioAutoFillResult {
   currentRatio?: string;
 }
 
+async function autoFillRatio(
+  supabase: SupabaseServerClient,
+  projectId: string,
+  matchedContactId: string,
+  finalProduct: string,
+  currentRatioReal: string | null
+): Promise<RatioAutoFillResult | null> {
+  const { ratio, contactName } = await getContactProductRatio(matchedContactId, finalProduct);
+  if (!ratio || !contactName) return null;
+
+  if (!currentRatioReal) {
+    await supabase.from("projects").update({ ratio_real: ratio }).eq("id", projectId);
+    return { filled: true, differs: false, contactName, productType: finalProduct, theirRatio: ratio };
+  }
+  if (currentRatioReal !== ratio) {
+    // Never overwritten without an explicit "Use <theirRatio>" click
+    // from the caller (see updateProjectRatioReal below) — this only
+    // reports the difference.
+    return {
+      filled: false,
+      differs: true,
+      contactName,
+      productType: finalProduct,
+      theirRatio: ratio,
+      currentRatio: currentRatioReal,
+    };
+  }
+  return null;
+}
+
+// The detail page's inline quick-picker for matched_contact_id — saves
+// immediately (same pattern as StageSelect/StatusSelect) and, if the
+// project already has a final product, runs the ratio auto-fill
+// against it. The create/edit form has its own client-side version of
+// the same check, since there the project may not be saved yet.
 export async function updateProjectMatchedContact(
   projectId: string,
   matchedContactId: string | null
@@ -499,7 +669,7 @@ export async function updateProjectMatchedContact(
 
     const { data: current, error: readError } = await supabase
       .from("projects")
-      .select("product_type, ratio_real")
+      .select("final_product, ratio_real")
       .eq("id", projectId)
       .maybeSingle();
     if (readError || !current) {
@@ -514,28 +684,10 @@ export async function updateProjectMatchedContact(
       return { error: error.message, autoFill: null };
     }
 
-    let autoFill: RatioAutoFillResult | null = null;
-    if (matchedContactId) {
-      const { ratio, contactName } = await getContactProductRatio(matchedContactId, current.product_type);
-      if (ratio && contactName) {
-        if (!current.ratio_real) {
-          await supabase.from("projects").update({ ratio_real: ratio }).eq("id", projectId);
-          autoFill = { filled: true, differs: false, contactName, productType: current.product_type, theirRatio: ratio };
-        } else if (current.ratio_real !== ratio) {
-          // Never overwritten without an explicit "Use <theirRatio>"
-          // click from the caller (see updateProjectRatioReal below) —
-          // this only reports the difference.
-          autoFill = {
-            filled: false,
-            differs: true,
-            contactName,
-            productType: current.product_type,
-            theirRatio: ratio,
-            currentRatio: current.ratio_real,
-          };
-        }
-      }
-    }
+    const autoFill =
+      matchedContactId && current.final_product
+        ? await autoFillRatio(supabase, projectId, matchedContactId, current.final_product, current.ratio_real)
+        : null;
 
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
@@ -546,10 +698,10 @@ export async function updateProjectMatchedContact(
 }
 
 // The explicit "Use <theirRatio>" action from the ratio-differs prompt
-// (both the detail page's MatchedContactSelect and, on save, the create/
-// edit form go through this same path for the DB-persisted case) — the
-// only way ratio_real is ever overwritten once it already holds a
-// different value than the matched contact's.
+// (both the detail page's MatchedContactSelect/ProjectProductOptions
+// and, on save, the create/edit form go through this same path for the
+// DB-persisted case) — the only way ratio_real is ever overwritten once
+// it already holds a different value than the matched contact's.
 export async function updateProjectRatioReal(projectId: string, ratio: string): Promise<{ error: string | null }> {
   try {
     const supabase = await createClient();
@@ -564,5 +716,62 @@ export async function updateProjectRatioReal(projectId: string, ratio: string): 
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Final product — "Choose as final" / "Make final instead" (product is
+// one of the project's own options) and "Undo choice" (product is
+// null). The DB's validate_final_product trigger double-checks that
+// `product`, when given, is really one of this project's options, but
+// this also checks it itself first so a bad call gets a plain error
+// message instead of a raw Postgres exception.
+// ----------------------------------------------------------------------------
+
+export async function setProjectFinalProduct(
+  projectId: string,
+  product: string | null
+): Promise<{ error: string | null; autoFill: RatioAutoFillResult | null }> {
+  try {
+    const supabase = await createClient();
+
+    if (product) {
+      const { data: option } = await supabase
+        .from("project_products")
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("product", product)
+        .maybeSingle();
+      if (!option) {
+        return { error: "That product is not one of this project's options.", autoFill: null };
+      }
+    }
+
+    const { data: current, error: readError } = await supabase
+      .from("projects")
+      .select("matched_contact_id, ratio_real")
+      .eq("id", projectId)
+      .maybeSingle();
+    if (readError || !current) {
+      return { error: readError?.message ?? "Project not found.", autoFill: null };
+    }
+
+    const { error } = await supabase.from("projects").update({ final_product: product }).eq("id", projectId);
+    if (error) {
+      return { error: error.message, autoFill: null };
+    }
+
+    // Undoing (product === null) never auto-fills — there's no final
+    // product left to look a ratio up for.
+    const autoFill =
+      product && current.matched_contact_id
+        ? await autoFillRatio(supabase, projectId, current.matched_contact_id, product, current.ratio_real)
+        : null;
+
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null, autoFill };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err), autoFill: null };
   }
 }

@@ -79,14 +79,11 @@ export interface ContactProduct {
 export interface Project {
   id: string;
   name: string;
-  product_type: ProductType;
   stage: ProjectStage;
   // Only meaningful once stage === "status" — the DB enforces "required
   // when stage = status" but not the reverse, so this can still be set
   // from an earlier visit to the Status stage.
   status: ProjectStatus | null;
-  client_contact_id: string | null;
-  assigned_contact_id: string | null;
   ratio_presented: string | null;
   ratio_real: string | null;
   total_face_value: number | null;
@@ -98,9 +95,28 @@ export interface Project {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  // The contact the ratio auto-fill (components/projects/project-form.
-  // tsx) reads from — independent of client/assigned above.
+  // The only contact a project carries (supabase/migrations/013_
+  // projects_restructure.sql dropped client_contact_id and
+  // assigned_contact_id) — also what the ratio auto-fill
+  // (components/projects/project-form.tsx) reads from.
   matched_contact_id: string | null;
+  // Null until exactly one project_products option exists (auto-set)
+  // or someone picks one via "Choose as final" / "Make final instead"
+  // — see components/projects/project-product-options.tsx. Always one
+  // of this project's own project_products.product values; enforced by
+  // the validate_final_product DB trigger, not just the app.
+  final_product: string | null;
+}
+
+// A project's 1-3 product options (supabase/migrations/013_projects_
+// restructure.sql). sort_order reflects the order they were added in —
+// display order, not a ranking.
+export interface ProjectProduct {
+  id: string;
+  project_id: string;
+  product: string;
+  sort_order: number;
+  created_at: string;
 }
 
 // Tranche 1 and 2 are permanent slots the UI always shows, even with no
@@ -215,7 +231,8 @@ export type ActivityEntityType =
   | "product"
   | "document_type"
   | "app_settings"
-  | "user";
+  | "user"
+  | "project_product";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
@@ -248,6 +265,10 @@ export interface ActivityDetails {
   // wording instead of "hidden"/"shown" — see lib/activity.ts)
   role?: [UserRole | null, UserRole | null];
   event?: "password_reset";
+  // project_product (scalar on created/deleted) and projects'
+  // final_product (a pair on updated, like stage/status above)
+  product?: string;
+  final_product?: [string | null, string | null];
 }
 
 export interface ActivityLog {

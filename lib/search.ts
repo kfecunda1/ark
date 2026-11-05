@@ -31,12 +31,12 @@ function sanitizeForOrFilter(text: string): string {
 interface ProjectFields {
   id: string;
   name: string;
-  product_type: string;
+  final_product: string | null;
 }
 
 async function fetchProjectsByIds(supabase: SupabaseBrowserClient, ids: string[]): Promise<ProjectFields[]> {
   if (ids.length === 0) return [];
-  const { data } = await supabase.from("projects").select("id, name, product_type").in("id", ids);
+  const { data } = await supabase.from("projects").select("id, name, final_product").in("id", ids);
   return (data as ProjectFields[] | null) ?? [];
 }
 
@@ -62,17 +62,20 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
     (projectDocsRes.data as { id: string; file_name: string; project_id: string }[] | null) ?? [];
   const contactIds = contactMatches.map((c) => c.id);
 
-  const projectFilters = [`name.ilike.${orSafePattern}`, `product_type.ilike.${orSafePattern}`];
+  // "Matched with" is the only contact a project carries now
+  // (supabase/migrations/013_projects_restructure.sql dropped
+  // client_contact_id/assigned_contact_id), so a contact-name match
+  // surfaces the projects matched with them.
+  const projectFilters = [`name.ilike.${orSafePattern}`, `final_product.ilike.${orSafePattern}`];
   if (contactIds.length > 0) {
-    projectFilters.push(`client_contact_id.in.(${contactIds.join(",")})`);
-    projectFilters.push(`assigned_contact_id.in.(${contactIds.join(",")})`);
+    projectFilters.push(`matched_contact_id.in.(${contactIds.join(",")})`);
   }
 
   // Parent lookup for the Documents group: a matched document's project
   // may not itself match the text search above (only its filename did),
   // so its display fields need their own fetch.
   const [{ data: projectRows }, docParentProjects] = await Promise.all([
-    supabase.from("projects").select("id, name, product_type").or(projectFilters.join(",")).limit(RESULT_LIMIT),
+    supabase.from("projects").select("id, name, final_product").or(projectFilters.join(",")).limit(RESULT_LIMIT),
     fetchProjectsByIds(supabase, [...new Set(projectDocMatches.map((d) => d.project_id))]),
   ]);
 
@@ -82,7 +85,7 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
     type: "project",
     id: project.id,
     title: project.name,
-    subtitle: project.product_type,
+    subtitle: project.final_product ?? "Product not decided",
   }));
 
   const contactResults: SearchResult[] = contactMatches.map((contact) => ({

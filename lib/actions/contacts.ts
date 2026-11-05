@@ -455,3 +455,34 @@ export async function getContactProductRatio(
     return { ratio: null, contactName: null };
   }
 }
+
+// Batched sibling of getContactProductRatio — used by
+// components/projects/project-product-options.tsx to show the matched
+// contact's ratio for *every* undecided option at once (information
+// only, never written anywhere) instead of one round trip per option.
+export async function getContactProductRatios(
+  contactId: string,
+  productTypes: ProductType[]
+): Promise<Record<string, string | null>> {
+  if (productTypes.length === 0) return {};
+
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("contact_products")
+      .select("product_type, ratio")
+      .eq("contact_id", contactId)
+      .in("product_type", productTypes);
+
+    if (error) {
+      console.error("[getContactProductRatios] query failed:", error.message);
+      return {};
+    }
+
+    const rows = (data as { product_type: ProductType; ratio: string | null }[] | null) ?? [];
+    return Object.fromEntries(rows.map((row) => [row.product_type, row.ratio]));
+  } catch (err) {
+    console.error("[getContactProductRatios] unexpected error:", unexpectedErrorMessage(err));
+    return {};
+  }
+}

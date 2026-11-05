@@ -93,23 +93,6 @@ export function ProjectFilters({ products }: ProjectFiltersProps) {
         <Archive className="h-3.5 w-3.5" />
         {showArchived ? "Showing Archived" : "Show Archived"}
       </button>
-
-      <select
-        aria-label="Sort projects"
-        value={searchParams.get("sort") ?? "last_activity_at"}
-        onChange={(e) => setParam("sort", e.target.value)}
-        className={`${selectClass} ml-auto`}
-      >
-        <option value="last_activity_at" className="bg-[#0a0e17]">
-          Sort: Last activity
-        </option>
-        <option value="created_at" className="bg-[#0a0e17]">
-          Sort: Oldest first
-        </option>
-        <option value="next_step_due" className="bg-[#0a0e17]">
-          Sort: Next step due
-        </option>
-      </select>
     </div>
   );
 }

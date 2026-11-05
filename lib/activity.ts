@@ -19,7 +19,7 @@ export const ACTIVITY_FILTER_LABELS: Record<ActivityFilter, string> = {
 };
 
 export const ACTIVITY_FILTER_ENTITY_TYPES: Record<ActivityFilter, ActivityEntityType[]> = {
-  project: ["project", "project_step"],
+  project: ["project", "project_step", "project_product"],
   contact: ["contact", "contact_product"],
   document: ["project_document", "contact_document"],
 };
@@ -41,6 +41,7 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   document_type: "Document type",
   app_settings: "Settings",
   user: "User",
+  project_product: "Product option",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -53,7 +54,12 @@ export const ACTION_LABELS: Record<ActivityAction, string> = {
 // parent (which, unlike the child, still exists) — originally just the
 // two document types, now also project_step entries.
 export function isDocumentEntity(entityType: ActivityEntityType): boolean {
-  return entityType === "project_document" || entityType === "contact_document" || entityType === "project_step";
+  return (
+    entityType === "project_document" ||
+    entityType === "contact_document" ||
+    entityType === "project_step" ||
+    entityType === "project_product"
+  );
 }
 
 // Column names as they appear in details.fields, prettified for display.
@@ -93,6 +99,9 @@ const FIELD_LABELS: Record<string, string> = {
   // users
   role: "role",
   event: "event",
+  // project_products
+  final_product: "final product",
+  product: "product",
 };
 
 export function fieldLabel(field: string): string {
@@ -114,6 +123,7 @@ const FIELDS_DESCRIBED_SEPARATELY = new Set([
   "stuck_after_days",
   "role",
   "event",
+  "final_product",
 ]);
 
 function asPair<T>(value: T | [T, T] | undefined): [T, T] | null {
@@ -214,6 +224,17 @@ export function activityDetailChips(row: ActivityLog): string[] {
     chips.push("password reset");
   }
 
+  if (details.product) {
+    chips.push(details.product);
+  }
+
+  if (details.final_product) {
+    const [before, after] = details.final_product;
+    if (after && !before) chips.push(`final product chosen: ${after}`);
+    else if (after && before && after !== before) chips.push(`final product changed ${before} -> ${after}`);
+    else if (!after && before) chips.push("final product undone");
+  }
+
   const rest = (details.fields ?? []).filter((f) => !FIELDS_DESCRIBED_SEPARATELY.has(f));
   if (rest.length > 0) {
     chips.push(`${rest.map(fieldLabel).join(", ")} changed`);
@@ -238,6 +259,7 @@ export function activityTarget(row: ActivityLog): ActivityTarget | null {
     // at their owner.
     case "project_document":
     case "project_step":
+    case "project_product":
       return row.details?.parent_id ? { table: "projects", id: row.details.parent_id } : null;
     case "contact_product":
     case "contact_document":

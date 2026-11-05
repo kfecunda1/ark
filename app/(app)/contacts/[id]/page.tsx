@@ -8,6 +8,7 @@ import { ContactNotesSection } from "@/components/contacts/contact-notes-section
 import { createClient } from "@/lib/supabase/server";
 import { getActiveProducts } from "@/lib/products";
 import { getActiveDocumentTypes } from "@/lib/document-types";
+import { getProjectProductsByProjectIds, displayProduct } from "@/lib/project-products";
 import type { Contact, ContactDocument, ContactProduct, Note, Project } from "@/lib/types";
 
 interface ContactDetailPageProps {
@@ -33,7 +34,7 @@ export default async function ContactDetailPage({ params, searchParams }: Contac
       supabase
         .from("projects")
         .select("*")
-        .or(`client_contact_id.eq.${id},assigned_contact_id.eq.${id},matched_contact_id.eq.${id}`)
+        .eq("matched_contact_id", id)
         .order("created_at", { ascending: false }),
       supabase.from("contact_products").select("*").eq("contact_id", id).order("created_at"),
       supabase.from("contact_documents").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
@@ -42,7 +43,12 @@ export default async function ContactDetailPage({ params, searchParams }: Contac
       getActiveDocumentTypes(),
     ]);
 
-  const relatedProjects = (projectsData as Project[] | null) ?? [];
+  // The query above already scopes to matched_contact_id = this
+  // contact — "Matched with" is the only relation a project carries to
+  // a contact now (supabase/migrations/013_projects_restructure.sql
+  // dropped client_contact_id and assigned_contact_id).
+  const matchedProjects = (projectsData as Project[] | null) ?? [];
+  const matchedProjectProductsById = await getProjectProductsByProjectIds(matchedProjects.map((p) => p.id));
   const products = (productsData as ContactProduct[] | null) ?? [];
   const documents = (documentsData as ContactDocument[] | null) ?? [];
   const notes = (notesData as Note[] | null) ?? [];
@@ -61,19 +67,6 @@ export default async function ContactDetailPage({ params, searchParams }: Contac
       signedUrl: (doc.file_path && urlByPath.get(doc.file_path)) || null,
     }));
   }
-
-  // Grouped by role rather than a flat list — a project can appear in
-  // more than one group (e.g. this contact is both Assigned and Matched
-  // With on the same project).
-  const clientProjects = relatedProjects.filter((p) => p.client_contact_id === contact.id);
-  const assignedProjects = relatedProjects.filter((p) => p.assigned_contact_id === contact.id);
-  const matchedProjects = relatedProjects.filter((p) => p.matched_contact_id === contact.id);
-
-  const projectGroups: { label: string; projects: Project[] }[] = [
-    { label: "Client", projects: clientProjects },
-    { label: "Assigned", projects: assignedProjects },
-    { label: "Matched With", projects: matchedProjects },
-  ].filter((group) => group.projects.length > 0);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -129,29 +122,22 @@ export default async function ContactDetailPage({ params, searchParams }: Contac
       </div>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Related Projects</h2>
-        {projectGroups.length === 0 ? (
-          <p className="text-sm text-white/35">Not yet linked to any projects.</p>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Matched Projects</h2>
+        {matchedProjects.length === 0 ? (
+          <p className="text-sm text-white/35">Not yet matched with any projects.</p>
         ) : (
-          <div className="flex flex-col gap-4">
-            {projectGroups.map((group) => (
-              <div key={group.label}>
-                <p className="mb-1.5 text-[11px] font-medium tracking-wide text-white/35 uppercase">
-                  {group.label}
-                </p>
-                <div className="flex flex-col gap-2">
-                  {group.projects.map((project) => (
-                    <Link
-                      key={project.id}
-                      href={`/projects/${project.id}`}
-                      className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
-                      <span className="shrink-0 text-xs text-white/35">{project.product_type}</span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
+          <div className="flex flex-col gap-2">
+            {matchedProjects.map((project) => (
+              <Link
+                key={project.id}
+                href={`/projects/${project.id}`}
+                className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
+                <span className="shrink-0 text-xs text-white/35">
+                  {displayProduct(project.final_product, matchedProjectProductsById.get(project.id) ?? []) ?? "—"}
+                </span>
+              </Link>
             ))}
           </div>
         )}

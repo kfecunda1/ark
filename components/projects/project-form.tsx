@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GlassCard } from "@/components/glass-card";
 import { ContactPicker, type ContactOption } from "@/components/contacts/contact-picker";
+import { ProductOptionsPicker } from "@/components/projects/product-options-picker";
 import { StagedDocumentPicker, type StagedDocument } from "@/components/projects/staged-document-picker";
 import { DuplicateWarningBanner } from "@/components/duplicate-warning-banner";
 import {
@@ -15,20 +16,19 @@ import {
   type DuplicateProjectMatch,
   type ProjectFormState,
 } from "@/lib/actions/projects";
-import { getContactProductRatio } from "@/lib/actions/contacts";
+import { getContactProductRatio, getContactProductRatios } from "@/lib/actions/contacts";
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
 import { CURRENCIES, STAGES, STAGE_LABELS, STATUSES, STATUS_LABELS, PRIORITIES, PRIORITY_LABELS } from "@/lib/projects";
-import type { Currency, DocumentTypeRecord, Product, Project, ProjectStage, ProductType } from "@/lib/types";
+import type { Currency, DocumentTypeRecord, Product, Project, ProjectProduct, ProjectStage } from "@/lib/types";
 
 interface ProjectFormProps {
   mode: "create" | "edit";
   project?: Project;
+  // Edit mode only — the project's current product options.
+  projectProducts?: ProjectProduct[];
   contacts: ContactOption[];
-  // All products (not just active) — the Product Type dropdown needs
-  // every active one, plus the project's own current value even if
-  // it's since been hidden (see optionsForProductType below).
   products: Product[];
   documentTypes: DocumentTypeRecord[];
   // Create mode only: the Settings → Defaults value, used as the
@@ -44,14 +44,16 @@ const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
 type CreateStatus = "idle" | "creating" | "uploading";
 
-export function ProjectForm({ mode, project, contacts, products, documentTypes, defaultCurrency }: ProjectFormProps) {
+export function ProjectForm({
+  mode,
+  project,
+  projectProducts = [],
+  contacts,
+  products,
+  documentTypes,
+  defaultCurrency,
+}: ProjectFormProps) {
   const router = useRouter();
-
-  // Hidden products disappear from this dropdown for a brand-new
-  // project, but a project already set to one must keep showing it —
-  // otherwise saving the form with no changes would silently drop a
-  // valid value the select never offered.
-  const productOptions = products.filter((p) => p.active || p.name === project?.product_type);
 
   // Edit mode keeps the existing server-action/useActionState flow — it
   // redirects to the project on success, same as before.
@@ -77,23 +79,30 @@ export function ProjectForm({ mode, project, contacts, products, documentTypes, 
   // saved.
   const [stage, setStage] = useState<ProjectStage>(project?.stage ?? "new");
 
-  // ---- Ratio auto-fill (snapshot, not live) --------------------------
-  // product_type and ratio_real need to be controlled (not just
-  // defaultValue) so this can read and, for ratio_real, write them.
-  const [productType, setProductType] = useState<ProductType | "">(project?.product_type ?? "");
+  // ---- Product options + ratio auto-fill (snapshot, not live) -------
+  const [productOptions, setProductOptions] = useState<string[]>(
+    projectProducts.length > 0 ? projectProducts.map((p) => p.product) : [""]
+  );
   const [matchedContactId, setMatchedContactId] = useState<string | null>(project?.matched_contact_id ?? null);
   const [ratioReal, setRatioReal] = useState(project?.ratio_real ?? "");
   type AutoFillMessage =
     | { tone: "filled"; text: string }
-    | { tone: "differs"; contactName: string; productType: ProductType; theirRatio: string; currentRatio: string };
+    | { tone: "differs"; contactName: string; productType: string; theirRatio: string; currentRatio: string };
   const [autoFillMessage, setAutoFillMessage] = useState<AutoFillMessage | null>(null);
+  // Shown only while 2-3 products are chosen and undecided — the
+  // matched contact's ratio per option, as information only. Cleared
+  // the moment there's a single chosen product instead, which gets the
+  // real fill/differs treatment above.
+  const [infoRatios, setInfoRatios] = useState<Record<string, string | null> | null>(null);
   // Read inside the effect without making it a reactive dependency —
-  // this should only re-run when the match or the product changes, not
-  // every time the user types into Ratio Real themselves.
+  // this should only re-run when the match or the chosen products
+  // change, not every time the user types into Ratio Real themselves.
   const ratioRealRef = useRef(ratioReal);
   useEffect(() => {
     ratioRealRef.current = ratioReal;
   }, [ratioReal]);
+
+  const chosenProductsKey = productOptions.filter(Boolean).join(",");
 
   useEffect(() => {
     let cancelled = false;
@@ -103,20 +112,44 @@ export function ProjectForm({ mode, project, contacts, products, documentTypes, 
     // the effect body, so a quick matched/product change can't set
     // state out of order with an in-flight lookup from the previous one.
     async function run() {
-      if (!matchedContactId || !productType) {
+      const chosen = chosenProductsKey ? chosenProductsKey.split(",") : [];
+
+      if (!matchedContactId || chosen.length === 0) {
+        if (!cancelled) {
+          setAutoFillMessage(null);
+          setInfoRatios(null);
+        }
+        return;
+      }
+
+      if (chosen.length > 1) {
+        // 2-3 undecided options: show the matched contact's ratio per
+        // option as information only — never fills or flags a
+        // difference, since there's no single final product yet to
+        // check ratio_real against.
+        if (!cancelled) setAutoFillMessage(null);
+        const ratios = await getContactProductRatios(matchedContactId, chosen);
+        if (!cancelled) setInfoRatios(ratios);
+        return;
+      }
+
+      // Exactly one product chosen — the same "snapshot" fill/differs
+      // check as before, treating it as the would-be final product.
+      if (!cancelled) setInfoRatios(null);
+      const product = chosen[0];
+      const { ratio, contactName } = await getContactProductRatio(matchedContactId, product);
+      if (cancelled || !ratio || !contactName) {
         if (!cancelled) setAutoFillMessage(null);
         return;
       }
-      const { ratio, contactName } = await getContactProductRatio(matchedContactId, productType);
-      if (cancelled || !ratio || !contactName) return;
       const current = ratioRealRef.current.trim();
       if (!current) {
         setRatioReal(ratio);
-        setAutoFillMessage({ tone: "filled", text: `Real ratio filled from ${contactName} (${productType}).` });
+        setAutoFillMessage({ tone: "filled", text: `Real ratio filled from ${contactName} (${product}).` });
       } else if (current !== ratio) {
         // Never overwritten automatically — only the "Use <theirRatio>"
         // button below ever changes ratioReal from here.
-        setAutoFillMessage({ tone: "differs", contactName, productType, theirRatio: ratio, currentRatio: current });
+        setAutoFillMessage({ tone: "differs", contactName, productType: product, theirRatio: ratio, currentRatio: current });
       } else {
         setAutoFillMessage(null);
       }
@@ -126,7 +159,7 @@ export function ProjectForm({ mode, project, contacts, products, documentTypes, 
     return () => {
       cancelled = true;
     };
-  }, [matchedContactId, productType]);
+  }, [matchedContactId, chosenProductsKey]);
 
   async function handleCreateSubmit(e: React.FormEvent<HTMLFormElement>) {
     disableSubmitButton(submitButtonRef);
@@ -142,12 +175,15 @@ export function ProjectForm({ mode, project, contacts, products, documentTypes, 
     setCreateStatus("creating");
 
     if (!skipDuplicateCheck) {
-      const clientContactId = formData.get("client_contact_id")?.toString().trim();
-      const productType = formData.get("product_type")?.toString().trim();
-      if (clientContactId && productType) {
+      const matchedContact = formData.get("matched_contact_id")?.toString().trim();
+      const chosenProducts = formData
+        .getAll("product_options")
+        .map((v) => v.toString().trim())
+        .filter(Boolean);
+      if (matchedContact && chosenProducts.length > 0) {
         const matches = await findDuplicateProjects({
-          clientContactId,
-          productType: productType as ProductType,
+          matchedContactId: matchedContact,
+          productOptions: chosenProducts,
         });
         if (matches.length > 0) {
           setDuplicateMatches(matches);
@@ -225,27 +261,9 @@ export function ProjectForm({ mode, project, contacts, products, documentTypes, 
           />
         </div>
 
-        <div>
-          <label className={labelClass} htmlFor="product_type">
-            Product Type *
-          </label>
-          <select
-            id="product_type"
-            name="product_type"
-            required
-            value={productType}
-            onChange={(e) => setProductType(e.target.value as ProductType)}
-            className={fieldClass}
-          >
-            <option value="" disabled className="bg-[#0a0e17]">
-              Select…
-            </option>
-            {productOptions.map((product) => (
-              <option key={product.id} value={product.name} className="bg-[#0a0e17]">
-                {product.name}
-              </option>
-            ))}
-          </select>
+        <div className="sm:col-span-2">
+          <label className={labelClass}>Products *</label>
+          <ProductOptionsPicker products={products} value={productOptions} onChange={setProductOptions} />
         </div>
 
         <div>
@@ -300,24 +318,6 @@ export function ProjectForm({ mode, project, contacts, products, documentTypes, 
             </select>
           </div>
         )}
-
-        <div>
-          <ContactPicker
-            name="client_contact_id"
-            label="Client Contact"
-            contacts={contacts}
-            defaultContactId={project?.client_contact_id}
-          />
-        </div>
-
-        <div>
-          <ContactPicker
-            name="assigned_contact_id"
-            label="Assigned Contact"
-            contacts={contacts}
-            defaultContactId={project?.assigned_contact_id}
-          />
-        </div>
 
         <div>
           <ContactPicker
@@ -384,6 +384,18 @@ export function ProjectForm({ mode, project, contacts, products, documentTypes, 
               </div>
             </div>
           )}
+          {infoRatios && (
+            <div className="mt-1.5 rounded-lg border border-white/10 bg-white/[0.04] p-2.5">
+              <p className="text-xs text-white/50">Matched contact&apos;s ratio on record, per option (not filled yet):</p>
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {Object.entries(infoRatios).map(([product, ratio]) => (
+                  <li key={product} className="text-xs text-white/70">
+                    {product}: {ratio ?? "—"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <div>
@@ -432,7 +444,7 @@ export function ProjectForm({ mode, project, contacts, products, documentTypes, 
 
       {duplicateMatches && duplicateMatches.length > 0 && (
         <DuplicateWarningBanner
-          heading="A project with this same client contact and product type already exists:"
+          heading="A project with this same matched contact and an overlapping product already exists:"
           matches={duplicateMatches.map((m) => ({ id: m.id, href: `/projects/${m.id}`, label: m.label, meta: m.meta }))}
           onAddAnyway={handleAddAnyway}
         />

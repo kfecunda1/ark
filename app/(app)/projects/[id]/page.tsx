@@ -9,11 +9,12 @@ import { ArchiveProjectButton } from "@/components/projects/archive-project-butt
 import { ProjectDocuments } from "@/components/projects/project-documents";
 import { TranchesSection } from "@/components/projects/tranches-section";
 import { MatchedContactSelect } from "@/components/projects/matched-contact-select";
+import { ProjectProductOptions } from "@/components/projects/project-product-options";
 import { ProjectTimeline } from "@/components/projects/project-timeline";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { formatDateTime } from "@/lib/format";
-import type { Contact, Project, ProjectDocument, ProjectStep, ProjectTranche } from "@/lib/types";
+import type { Contact, Project, ProjectDocument, ProjectProduct, ProjectStep, ProjectTranche } from "@/lib/types";
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
@@ -33,35 +34,34 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     notFound();
   }
 
-  const contactIds = [project.client_contact_id, project.assigned_contact_id, project.matched_contact_id].filter(
-    (contactId): contactId is string => Boolean(contactId)
-  );
-  let contactsById = new Map<string, Contact>();
-  if (contactIds.length > 0) {
-    const { data: contactsData } = await supabase.from("contacts").select("*").in("id", contactIds);
-    contactsById = new Map(((contactsData as Contact[] | null) ?? []).map((c) => [c.id, c]));
-  }
-  const clientContact = project.client_contact_id ? (contactsById.get(project.client_contact_id) ?? null) : null;
-  const assignedContact = project.assigned_contact_id
-    ? (contactsById.get(project.assigned_contact_id) ?? null)
+  const matchedContact = project.matched_contact_id
+    ? (
+        await supabase.from("contacts").select("*").eq("id", project.matched_contact_id).maybeSingle()
+      ).data as Contact | null
     : null;
-  const matchedContact = project.matched_contact_id ? (contactsById.get(project.matched_contact_id) ?? null) : null;
 
   // The matched-contact picker needs to search every contact, not just
-  // the handful already loaded above.
+  // the matched one already loaded above.
   const { data: allContactsData } = await supabase.from("contacts").select("id, full_name").order("full_name");
   const allContacts = (allContactsData as { id: string; full_name: string }[] | null) ?? [];
 
-  const [{ data: projectDocumentsData }, { data: tranchesData }, { data: stepsData }, documentTypes] =
-    await Promise.all([
-      supabase.from("project_documents").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
-      supabase.from("project_tranches").select("*").eq("project_id", project.id).order("tranche_number"),
-      supabase.from("project_steps").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
-      getActiveDocumentTypes(),
-    ]);
+  const [
+    { data: projectDocumentsData },
+    { data: tranchesData },
+    { data: stepsData },
+    { data: projectProductsData },
+    documentTypes,
+  ] = await Promise.all([
+    supabase.from("project_documents").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
+    supabase.from("project_tranches").select("*").eq("project_id", project.id).order("tranche_number"),
+    supabase.from("project_steps").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
+    supabase.from("project_products").select("*").eq("project_id", project.id).order("sort_order"),
+    getActiveDocumentTypes(),
+  ]);
   const projectDocuments = (projectDocumentsData as ProjectDocument[] | null) ?? [];
   const tranches = (tranchesData as ProjectTranche[] | null) ?? [];
   const steps = (stepsData as ProjectStep[] | null) ?? [];
+  const projectProducts = (projectProductsData as ProjectProduct[] | null) ?? [];
 
   const authorIds = [...new Set(steps.map((s) => s.author_id).filter((id): id is string => Boolean(id)))];
   let authorNameById: Record<string, string> = {};
@@ -91,33 +91,6 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   }
 
   const fields: { label: string; value: React.ReactNode }[] = [
-    { label: "Product Type", value: project.product_type },
-    {
-      label: "Client Contact",
-      value: clientContact ? (
-        <Link
-          href={`/contacts/${clientContact.id}`}
-          className="text-white/85 underline decoration-white/20 underline-offset-2 hover:text-white"
-        >
-          {clientContact.full_name}
-        </Link>
-      ) : (
-        "—"
-      ),
-    },
-    {
-      label: "Assigned Contact",
-      value: assignedContact ? (
-        <Link
-          href={`/contacts/${assignedContact.id}`}
-          className="text-white/85 underline decoration-white/20 underline-offset-2 hover:text-white"
-        >
-          {assignedContact.full_name}
-        </Link>
-      ) : (
-        "—"
-      ),
-    },
     {
       label: "Matched With",
       value: <MatchedContactSelect projectId={project.id} contacts={allContacts} currentContact={matchedContact} />,
@@ -147,7 +120,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
               </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-white/45">{project.product_type}</p>
+          <p className="mt-1 text-sm text-white/45">{project.final_product ?? "Product not decided"}</p>
         </div>
         <div className="flex items-center gap-3">
           <ArchiveProjectButton projectId={project.id} archived={Boolean(project.archived_at)} />
@@ -183,6 +156,18 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         <PriorityBadge priority={project.priority} />
         <StageSelect projectId={project.id} currentStage={project.stage} />
         <StatusSelect projectId={project.id} currentStatus={project.status} />
+      </div>
+
+      <div className="mb-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Products</h2>
+        <GlassCard interactive={false} className="p-6">
+          <ProjectProductOptions
+            projectId={project.id}
+            options={projectProducts.map((p) => p.product)}
+            finalProduct={project.final_product}
+            matchedContactId={project.matched_contact_id}
+          />
+        </GlassCard>
       </div>
 
       <GlassCard interactive={false} className="p-6">
