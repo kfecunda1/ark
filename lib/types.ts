@@ -61,6 +61,25 @@ export interface Contact {
   created_at: string;
   full_name: string;
   notes: string | null;
+  // supabase/migrations/016_receivers_and_people.sql. Optional link to
+  // a `people` row — the UI's "Contacts" tab (not the same thing as
+  // this Contact — see AGENTS.md's UI-naming-vs-database-naming note:
+  // in the UI, this whole table/type is "Receivers").
+  contact_person_id: string | null;
+}
+
+// supabase/migrations/016_receivers_and_people.sql. The real, simple
+// person record behind the UI's "Contacts" tab — deliberately named
+// `people`/`Person`, never `contacts`/`Contact`, so it can't collide
+// with the existing (UI: Receivers) table of that name.
+export interface Person {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  phone: string | null;
+  email: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // One row per product a contact handles. Unique (contact_id,
@@ -115,6 +134,10 @@ export interface Project {
   // instead of ratio) — see lib/actions/contacts.ts's
   // getContactProductRatio(s).
   is_recovery: boolean;
+  // supabase/migrations/016_receivers_and_people.sql. Optional link to
+  // a `people` row — independent of matched_contact_id (a Receiver),
+  // which is a wholly separate relationship.
+  contact_person_id: string | null;
 }
 
 // A project's 1-3 product options (supabase/migrations/013_projects_
@@ -246,7 +269,8 @@ export type ActivityEntityType =
   | "app_settings"
   | "user"
   | "project_product"
-  | "note";
+  | "note"
+  | "person";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 

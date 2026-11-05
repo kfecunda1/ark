@@ -170,12 +170,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       parentName: note.project_id
         ? projectNameById.get(note.project_id) ?? "Project"
         : note.contact_id
-          ? contactNameById.get(note.contact_id) ?? "Contact"
+          ? contactNameById.get(note.contact_id) ?? "Receiver"
           : "—",
       href: note.project_id
         ? `/projects/${note.project_id}`
         : note.contact_id
-          ? `/contacts/${note.contact_id}`
+          ? `/receivers/${note.contact_id}`
           : `/notes/${note.id}/edit`,
     }));
 

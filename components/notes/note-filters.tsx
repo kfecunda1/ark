@@ -34,7 +34,7 @@ export function NoteFilters() {
           Projects
         </option>
         <option value="contact" className="bg-[#0a0e17]">
-          Contacts
+          Receivers
         </option>
       </select>
 

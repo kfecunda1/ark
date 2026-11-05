@@ -4,25 +4,30 @@ import { useActionState, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GlassCard } from "@/components/glass-card";
-import { ProductFields } from "@/components/contacts/product-fields";
-import { StagedDocumentPicker, type StagedDocument } from "@/components/contacts/staged-document-picker";
+import { ProductFields } from "@/components/receivers/product-fields";
+import { StagedDocumentPicker, type StagedDocument } from "@/components/receivers/staged-document-picker";
+import { EntityPicker, type EntityOption } from "@/components/entity-picker";
 import {
   addContactDocument,
   createContactWithId,
   updateContact,
   type ContactFormState,
 } from "@/lib/actions/contacts";
+import { quickCreatePerson } from "@/lib/actions/people";
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
 import type { Contact, ContactProduct, DocumentTypeRecord, Product } from "@/lib/types";
 
-interface ContactFormProps {
+interface ReceiverFormProps {
   mode: "create" | "edit";
   contact?: Contact;
   products?: ContactProduct[];
   allProducts: Product[];
   documentTypes: DocumentTypeRecord[];
+  // The "Contact person" field's options — the People ("Contacts" tab)
+  // list, wholly separate from this Receiver.
+  people: EntityOption[];
 }
 
 const initialState: ContactFormState = { error: null };
@@ -33,21 +38,23 @@ const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
 type CreateStatus = "idle" | "creating" | "uploading";
 
-export function ContactForm({ mode, contact, products = [], allProducts, documentTypes }: ContactFormProps) {
+// UI: Receiver. The underlying table/type stays `contacts`/`Contact` —
+// see AGENTS.md's UI-naming-vs-database-naming note.
+export function ReceiverForm({ mode, contact, products = [], allProducts, documentTypes, people }: ReceiverFormProps) {
   const router = useRouter();
 
   // Edit mode keeps the existing server-action/useActionState flow — it
-  // redirects to the contact on success, same as before.
+  // redirects to the receiver on success, same as before.
   const editAction = mode === "edit" && contact ? updateContact.bind(null, contact.id) : async () => ({ error: null });
   const [editState, editFormAction, isEditPending] = useActionState(editAction, initialState);
 
-  // Create mode needs to know the new contact's id before it can upload
-  // any staged documents, so it can't rely on a redirecting action —
-  // same pattern as components/projects/project-form.tsx: create the
-  // contact, upload documents client-side, then navigate itself. A
-  // document that fails to upload doesn't undo the contact — it's
-  // already created by that point — it's just listed so it can be
-  // retried from the contact page.
+  // Create mode needs to know the new receiver's id before it can
+  // upload any staged documents, so it can't rely on a redirecting
+  // action — same pattern as components/projects/project-form.tsx:
+  // create the receiver, upload documents client-side, then navigate
+  // itself. A document that fails to upload doesn't undo the receiver
+  // — it's already created by that point — it's just listed so it can
+  // be retried from the receiver page.
   const [stagedDocuments, setStagedDocuments] = useState<StagedDocument[]>([]);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createStatus, setCreateStatus] = useState<CreateStatus>("idle");
@@ -69,7 +76,7 @@ export function ContactForm({ mode, contact, products = [], allProducts, documen
     const result = await createContactWithId(formData);
 
     if (result.error || !result.id) {
-      setCreateError(result.error ?? "Failed to create contact.");
+      setCreateError(result.error ?? "Failed to create receiver.");
       setCreateStatus("idle");
       return;
     }
@@ -107,7 +114,7 @@ export function ContactForm({ mode, contact, products = [], allProducts, documen
     const params = new URLSearchParams();
     if (failedNames.length > 0) params.set("failedDocs", failedNames.join(","));
     const query = params.toString() ? `?${params.toString()}` : "";
-    router.push(`/contacts/${contactId}${query}`);
+    router.push(`/receivers/${contactId}${query}`);
   }
 
   const formProps =
@@ -146,6 +153,23 @@ export function ContactForm({ mode, contact, products = [], allProducts, documen
             className={fieldClass}
           />
         </div>
+
+        <EntityPicker
+          name="contact_person_id"
+          label="Contact Person"
+          options={people}
+          defaultId={contact?.contact_person_id}
+          entityNoun="contact"
+          onQuickCreate={async (name) => {
+            const result = await quickCreatePerson({ name });
+            return {
+              option: result.person
+                ? { id: result.person.id, label: [result.person.first_name, result.person.last_name].filter(Boolean).join(" ") }
+                : null,
+              error: result.error,
+            };
+          }}
+        />
       </GlassCard>
 
       <GlassCard interactive={false} className="p-6">
@@ -188,10 +212,10 @@ export function ContactForm({ mode, contact, products = [], allProducts, documen
                   : "Uploading documents…"
                 : createStatus === "creating"
                   ? "Creating…"
-                  : "Create contact"}
+                  : "Create receiver"}
           </button>
           <Link
-            href={mode === "edit" && contact ? `/contacts/${contact.id}` : "/contacts"}
+            href={mode === "edit" && contact ? `/receivers/${contact.id}` : "/receivers"}
             className="text-sm font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
           >
             Cancel

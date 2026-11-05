@@ -8,13 +8,13 @@ import type { Product } from "@/lib/types";
 const selectClass =
   "rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 
-interface ContactFiltersProps {
-  // Every product, active or not — a contact already tagged with a
+interface ReceiverFiltersProps {
+  // Every product, active or not — a receiver already tagged with a
   // since-hidden product must still be findable by filtering on it.
   products: Product[];
 }
 
-export function ContactFilters({ products }: ContactFiltersProps) {
+export function ReceiverFilters({ products }: ReceiverFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -53,7 +53,7 @@ export function ContactFilters({ products }: ContactFiltersProps) {
         <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/30" />
         <input
           type="text"
-          aria-label="Search contacts"
+          aria-label="Search receivers"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search name or notes…"

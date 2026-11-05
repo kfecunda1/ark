@@ -63,7 +63,7 @@ function revalidateForLinks(links: NoteLinks) {
     revalidatePath(`/projects/${links.project_id}`);
     revalidatePath("/dashboard");
   }
-  if (links.contact_id) revalidatePath(`/contacts/${links.contact_id}`);
+  if (links.contact_id) revalidatePath(`/receivers/${links.contact_id}`);
 }
 
 export async function createNote(_prevState: NoteFormState, formData: FormData): Promise<NoteFormState> {

@@ -8,7 +8,7 @@ const MAX_OPTIONS = 3;
 interface ProductOptionsPickerProps {
   // All products (not just active) — an option a project already has
   // must keep showing even if it's since been hidden; see the matching
-  // comment on components/contacts/product-fields.tsx.
+  // comment on components/receivers/product-fields.tsx.
   products: Product[];
   value: string[];
   onChange: (value: string[]) => void;

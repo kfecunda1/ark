@@ -141,7 +141,7 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
           heading={`"${pending.file.name}" matches a file already attached elsewhere:`}
           matches={pending.otherContactMatches.map((m) => ({
             id: m.contactId,
-            href: `/contacts/${m.contactId}`,
+            href: `/receivers/${m.contactId}`,
             label: m.contactLabel,
             meta: m.fileName,
           }))}
@@ -185,7 +185,7 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
       </div>
       {blockedMessage && <p className="text-xs text-rose-300">{blockedMessage}</p>}
       <p className="text-xs text-white/35">
-        Files are uploaded after the contact is created — pick as many as you need before saving.
+        Files are uploaded after the receiver is created — pick as many as you need before saving.
       </p>
     </div>
   );

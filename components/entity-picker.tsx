@@ -2,24 +2,29 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { Search, UserPlus, X } from "lucide-react";
-import { quickCreateContact } from "@/lib/actions/contacts";
-import { contactLabel } from "@/lib/contacts";
 
-export interface ContactOption {
+export interface EntityOption {
   id: string;
-  full_name: string;
+  label: string;
 }
 
-interface ContactPickerProps {
+interface EntityPickerProps {
   name: string;
   label: string;
-  contacts: ContactOption[];
-  defaultContactId?: string | null;
+  options: EntityOption[];
+  defaultId?: string | null;
   placeholder?: string;
-  // Fires whenever the selection changes — picking a contact, clearing
+  // Lowercase singular noun for this picker's rows — "receiver",
+  // "contact" — used to build "No matching <noun>s." / "New <noun>
+  // <name>" without hardcoding either entity's wording here.
+  entityNoun: string;
+  // Fires whenever the selection changes — picking an option, clearing
   // one, or quick-creating a new one. Not fired for the initial value
-  // from defaultContactId.
-  onSelect?: (contact: ContactOption | null) => void;
+  // from defaultId.
+  onSelect?: (option: EntityOption | null) => void;
+  // Omit to disable the inline "+ New <noun>" row entirely (not every
+  // picker wants quick-create).
+  onQuickCreate?: (name: string) => Promise<{ option: EntityOption | null; error: string | null }>;
 }
 
 const fieldClass =
@@ -28,10 +33,26 @@ const smallFieldClass =
   "w-full rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
-export function ContactPicker({ name, label, contacts, defaultContactId, placeholder, onSelect }: ContactPickerProps) {
-  const [allContacts, setAllContacts] = useState(contacts);
-  const [selected, setSelected] = useState<ContactOption | null>(
-    () => allContacts.find((c) => c.id === defaultContactId) ?? null
+// A form-mode search-select with inline quick-create — selection only
+// takes effect on form submit (a hidden `name` input), unlike the
+// per-entity inline quick-editors (StatusSelect, MatchedContactSelect,
+// ContactPersonSelect, …) that save immediately. Used by any form that
+// needs to pick one row from a flat list: the project form's "Matched
+// With" (Receivers) and "Contact person" (People) fields, the
+// Receiver form's own "Contact person" field.
+export function EntityPicker({
+  name,
+  label,
+  options,
+  defaultId,
+  placeholder,
+  entityNoun,
+  onSelect,
+  onQuickCreate,
+}: EntityPickerProps) {
+  const [allOptions, setAllOptions] = useState(options);
+  const [selected, setSelected] = useState<EntityOption | null>(
+    () => allOptions.find((o) => o.id === defaultId) ?? null
   );
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -42,15 +63,15 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const pool = q ? allContacts.filter((c) => c.full_name.toLowerCase().includes(q)) : allContacts;
+    const pool = q ? allOptions.filter((o) => o.label.toLowerCase().includes(q)) : allOptions;
     return pool.slice(0, 20);
-  }, [allContacts, query]);
+  }, [allOptions, query]);
 
-  function selectContact(contact: ContactOption) {
-    setSelected(contact);
+  function selectOption(option: EntityOption) {
+    setSelected(option);
     setQuery("");
     setOpen(false);
-    onSelect?.(contact);
+    onSelect?.(option);
   }
 
   function clearSelection() {
@@ -72,6 +93,7 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
   }
 
   function handleCreate() {
+    if (!onQuickCreate) return;
     if (!newName.trim()) {
       setError("Name is required.");
       return;
@@ -79,14 +101,14 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
     setError(null);
     startTransition(async () => {
       try {
-        const result = await quickCreateContact({ full_name: newName.trim() });
-        if (result.error || !result.contact) {
-          setError(result.error ?? "Could not create contact.");
+        const result = await onQuickCreate(newName.trim());
+        if (result.error || !result.option) {
+          setError(result.error ?? `Could not create ${entityNoun}.`);
           return;
         }
-        const created = result.contact;
-        setAllContacts((prev) => [...prev, created]);
-        selectContact(created);
+        const created = result.option;
+        setAllOptions((prev) => [...prev, created]);
+        selectOption(created);
         setCreating(false);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
@@ -103,7 +125,7 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/30" />
           <input
-            value={selected ? contactLabel(selected) : query}
+            value={selected ? selected.label : query}
             onChange={(e) => {
               setSelected(null);
               setQuery(e.target.value);
@@ -111,14 +133,14 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
             }}
             onFocus={() => setOpen(true)}
             onBlur={() => setTimeout(() => setOpen(false), 120)}
-            placeholder={placeholder ?? "Search contacts…"}
+            placeholder={placeholder ?? `Search ${entityNoun}s…`}
             className={`${fieldClass} pr-9 pl-9`}
           />
           {selected && (
             <button
               type="button"
               onClick={clearSelection}
-              aria-label="Clear contact"
+              aria-label={`Clear ${entityNoun}`}
               className="absolute top-1/2 right-2.5 -translate-y-1/2 text-white/30 transition-colors duration-150 ease-out hover:text-white/70"
             >
               <X className="h-4 w-4" />
@@ -128,30 +150,33 @@ export function ContactPicker({ name, label, contacts, defaultContactId, placeho
           {open && !selected && (
             <ul className="absolute z-10 mt-1.5 max-h-64 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0f1420] py-1 shadow-xl">
               {filtered.length === 0 && (
-                <li className="px-3 py-2 text-sm text-white/35">No matching contacts.</li>
+                <li className="px-3 py-2 text-sm text-white/35">No matching {entityNoun}s.</li>
               )}
-              {filtered.map((contact) => (
+              {filtered.map((option) => (
                 <li
-                  key={contact.id}
+                  key={option.id}
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    selectContact(contact);
+                    selectOption(option);
                   }}
                   className="cursor-pointer px-3 py-2 text-sm text-white/75 transition-colors duration-100 ease-out hover:bg-white/[0.06] hover:text-white"
                 >
-                  {contactLabel(contact)}
+                  {option.label}
                 </li>
               ))}
-              <li
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  startCreating();
-                }}
-                className="flex items-center gap-1.5 border-t border-white/[0.06] px-3 py-2 text-sm font-medium text-accent-soft transition-colors duration-100 ease-out hover:bg-white/[0.06]"
-              >
-                <UserPlus className="h-3.5 w-3.5" />
-                New contact{query.trim() ? ` "${query.trim()}"` : ""}
-              </li>
+              {onQuickCreate && (
+                <li
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    startCreating();
+                  }}
+                  className="flex items-center gap-1.5 border-t border-white/[0.06] px-3 py-2 text-sm font-medium text-accent-soft transition-colors duration-100 ease-out hover:bg-white/[0.06]"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  New {entityNoun}
+                  {query.trim() ? ` "${query.trim()}"` : ""}
+                </li>
+              )}
             </ul>
           )}
         </div>

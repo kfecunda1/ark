@@ -4,12 +4,12 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Search, X } from "lucide-react";
 import { updateProjectMatchedContact, updateProjectRatioReal } from "@/lib/actions/projects";
-import type { ContactOption } from "@/components/contacts/contact-picker";
+import type { EntityOption } from "@/components/entity-picker";
 
-interface MatchedContactSelectProps {
+interface MatchedReceiverSelectProps {
   projectId: string;
-  contacts: ContactOption[];
-  currentContact: ContactOption | null;
+  receivers: EntityOption[];
+  currentReceiver: EntityOption | null;
 }
 
 type Message =
@@ -17,13 +17,14 @@ type Message =
   | { tone: "differs"; contactName: string; productType: string; theirRatio: string; currentRatio: string }
   | { tone: "missing"; contactName: string; productType: string; isRecovery: boolean };
 
-// The detail page's quick-editor for matched_contact_id — picking a
-// contact here saves immediately (same pattern as StageSelect/
-// StatusSelect) and runs the ratio auto-fill against the project's
-// already-saved product_type. The create/edit form has its own client-
-// side version of the same check, since there the project may not be
-// saved yet.
-export function MatchedContactSelect({ projectId, contacts, currentContact }: MatchedContactSelectProps) {
+// The detail page's quick-editor for matched_contact_id (UI: "Matched
+// With", picking a Receiver — see AGENTS.md's UI-naming-vs-database-
+// naming note) — picking one here saves immediately (same pattern as
+// StageSelect/StatusSelect) and runs the ratio auto-fill against the
+// project's already-saved final product. The create/edit form has its
+// own client-side version of the same check, since there the project
+// may not be saved yet.
+export function MatchedReceiverSelect({ projectId, receivers, currentReceiver }: MatchedReceiverSelectProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
@@ -33,18 +34,18 @@ export function MatchedContactSelect({ projectId, contacts, currentContact }: Ma
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const pool = q ? contacts.filter((c) => c.full_name.toLowerCase().includes(q)) : contacts;
+    const pool = q ? receivers.filter((r) => r.label.toLowerCase().includes(q)) : receivers;
     return pool.slice(0, 20);
-  }, [contacts, query]);
+  }, [receivers, query]);
 
-  function apply(contactId: string | null) {
+  function apply(receiverId: string | null) {
     setError(null);
     setMessage(null);
     setOpen(false);
     setQuery("");
     startTransition(async () => {
       try {
-        const result = await updateProjectMatchedContact(projectId, contactId);
+        const result = await updateProjectMatchedContact(projectId, receiverId);
         if (result.error) {
           setError(result.error);
           return;
@@ -92,7 +93,7 @@ export function MatchedContactSelect({ projectId, contacts, currentContact }: Ma
       <div className="relative w-56">
         <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
         <input
-          value={currentContact && !open ? currentContact.full_name : query}
+          value={currentReceiver && !open ? currentReceiver.label : query}
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
@@ -103,12 +104,12 @@ export function MatchedContactSelect({ projectId, contacts, currentContact }: Ma
           placeholder="Matched with…"
           className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] py-1.5 pr-7 pl-7 text-xs font-medium text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
         />
-        {currentContact && !open && (
+        {currentReceiver && !open && (
           <button
             type="button"
             onClick={() => apply(null)}
             disabled={isPending}
-            aria-label="Clear matched contact"
+            aria-label="Clear matched receiver"
             className="absolute top-1/2 right-2 -translate-y-1/2 text-white/30 transition-colors duration-150 ease-out hover:text-white/70"
           >
             <X className="h-3.5 w-3.5" />
@@ -117,17 +118,17 @@ export function MatchedContactSelect({ projectId, contacts, currentContact }: Ma
 
         {open && (
           <ul className="absolute z-10 mt-1.5 max-h-56 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0f1420] py-1 shadow-xl">
-            {filtered.length === 0 && <li className="px-3 py-2 text-xs text-white/35">No matching contacts.</li>}
-            {filtered.map((contact) => (
+            {filtered.length === 0 && <li className="px-3 py-2 text-xs text-white/35">No matching receivers.</li>}
+            {filtered.map((receiver) => (
               <li
-                key={contact.id}
+                key={receiver.id}
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  apply(contact.id);
+                  apply(receiver.id);
                 }}
                 className="cursor-pointer px-3 py-1.5 text-xs text-white/75 transition-colors duration-100 ease-out hover:bg-white/[0.06] hover:text-white"
               >
-                {contact.full_name}
+                {receiver.label}
               </li>
             ))}
           </ul>

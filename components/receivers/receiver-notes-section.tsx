@@ -10,7 +10,7 @@ import { addContactNote } from "@/lib/actions/contacts";
 import { formatDateTime } from "@/lib/format";
 import type { Note } from "@/lib/types";
 
-interface ContactNotesSectionProps {
+interface ReceiverNotesSectionProps {
   contactId: string;
   notes: Note[];
 }
@@ -18,10 +18,11 @@ interface ContactNotesSectionProps {
 const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 
-// Adds a note directly from the contact page, unlike the standalone New
-// Note page — addContactNote doesn't redirect, so the form just clears
-// and the new note appears in the list below without leaving this page.
-export function ContactNotesSection({ contactId, notes }: ContactNotesSectionProps) {
+// Adds a note directly from the receiver page, unlike the standalone
+// New Note page — addContactNote doesn't redirect, so the form just
+// clears and the new note appears in the list below without leaving
+// this page.
+export function ReceiverNotesSection({ contactId, notes }: ReceiverNotesSectionProps) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");

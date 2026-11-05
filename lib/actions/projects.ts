@@ -52,6 +52,7 @@ function buildProjectPayload(formData: FormData) {
     stage,
     status,
     matched_contact_id: matchedContactId || null,
+    contact_person_id: formData.get("contact_person_id")?.toString().trim() || null,
     ratio_presented: formData.get("ratio_presented")?.toString().trim() || null,
     ratio_real: formData.get("ratio_real")?.toString().trim() || null,
     total_face_value: totalFaceValueRaw ? Number(totalFaceValueRaw) : null,
@@ -764,6 +765,29 @@ export async function updateProjectIsRecovery(
     return { error: null, autoFill };
   } catch (err) {
     return { error: unexpectedErrorMessage(err), autoFill: null };
+  }
+}
+
+// The detail page's inline Contact Person quick-editor (components/
+// contact-person-select.tsx) — a plain optional link, no ratio
+// auto-fill side effect (unlike matched_contact_id).
+export async function updateProjectContactPerson(
+  projectId: string,
+  personId: string | null
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("projects").update({ contact_person_id: personId }).eq("id", projectId);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
   }
 }
 

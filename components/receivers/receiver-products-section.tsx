@@ -6,13 +6,13 @@ import { Plus, Trash2 } from "lucide-react";
 import { upsertContactProduct, deleteContactProduct } from "@/lib/actions/contacts";
 import type { ContactProduct, Product, ProductType } from "@/lib/types";
 
-interface ContactProductsSectionProps {
+interface ReceiverProductsSectionProps {
   contactId: string;
   products: ContactProduct[];
   // Active products only — an existing row always shows its own
   // current value regardless (see ProductRow below), so there's no
   // need for the hidden-but-still-in-use override this component's
-  // sibling (components/contacts/product-fields.tsx) needs.
+  // sibling (components/receivers/product-fields.tsx) needs.
   availableProducts: Product[];
 }
 
@@ -110,7 +110,7 @@ function ProductRow({ product, productType, availableProductTypes, disabled, onS
   );
 }
 
-export function ContactProductsSection({ contactId, products, availableProducts }: ContactProductsSectionProps) {
+export function ReceiverProductsSection({ contactId, products, availableProducts }: ReceiverProductsSectionProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);

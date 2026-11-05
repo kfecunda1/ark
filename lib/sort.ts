@@ -1,4 +1,5 @@
-// Shared by the Projects and Contacts list pages' column sorting
+// Shared by the Projects, Receivers, and Contacts (People) list pages'
+// column sorting
 // (components/sort-controls.tsx drives the URL; each page calls this
 // with its own per-column value-extractor). One comparator handles
 // every column because "empty values always last, regardless of

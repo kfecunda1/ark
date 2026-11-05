@@ -3,15 +3,24 @@ import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { getAppSettings } from "@/lib/app-settings";
+import { personLabel } from "@/lib/people";
+import type { Person } from "@/lib/types";
 
 export default async function NewProjectPage() {
   const supabase = await createClient();
-  const [{ data: contacts }, products, documentTypes, appSettings] = await Promise.all([
+  const [{ data: receiversData }, { data: peopleData }, products, documentTypes, appSettings] = await Promise.all([
     supabase.from("contacts").select("id, full_name").order("full_name"),
+    supabase.from("people").select("id, first_name, last_name").order("first_name"),
     getAllProducts(),
     getActiveDocumentTypes(),
     getAppSettings(),
   ]);
+
+  const receivers = (receiversData ?? []).map((r) => ({ id: r.id, label: r.full_name }));
+  const people = ((peopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? []).map((p) => ({
+    id: p.id,
+    label: personLabel(p),
+  }));
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -21,7 +30,8 @@ export default async function NewProjectPage() {
       </div>
       <ProjectForm
         mode="create"
-        contacts={contacts ?? []}
+        receivers={receivers}
+        people={people}
         products={products}
         documentTypes={documentTypes}
         defaultCurrency={appSettings.default_currency}

@@ -18,7 +18,7 @@ interface ContactDocumentWithUrl extends ContactDocument {
   signedUrl: string | null;
 }
 
-interface ContactDocumentsProps {
+interface ReceiverDocumentsProps {
   contactId: string;
   documents: ContactDocumentWithUrl[];
   documentTypes: DocumentTypeRecord[];
@@ -31,7 +31,7 @@ interface PendingUpload {
   otherContactMatches: { contactId: string; contactLabel: string; fileName: string }[];
 }
 
-export function ContactDocuments({ contactId, documents, documentTypes }: ContactDocumentsProps) {
+export function ReceiverDocuments({ contactId, documents, documentTypes }: ReceiverDocumentsProps) {
   const router = useRouter();
   const [documentType, setDocumentType] = useState<ContactDocumentType>(documentTypes[0]?.name ?? "");
   const [isChecking, setIsChecking] = useState(false);
@@ -228,7 +228,7 @@ export function ContactDocuments({ contactId, documents, documentTypes }: Contac
             heading={`"${pending.file.name}" matches a file already attached elsewhere:`}
             matches={pending.otherContactMatches.map((m) => ({
               id: m.contactId,
-              href: `/contacts/${m.contactId}`,
+              href: `/receivers/${m.contactId}`,
               label: m.contactLabel,
               meta: m.fileName,
             }))}

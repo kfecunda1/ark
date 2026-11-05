@@ -53,14 +53,15 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
   const idsByTable: Record<ActivityTarget["table"], Set<string>> = {
     projects: new Set(),
     contacts: new Set(),
+    people: new Set(),
   };
   for (const row of rows) {
     const target = activityTarget(row);
     if (target) idsByTable[target.table].add(target.id);
   }
 
-  const [projectsRes, contactsRes] = await Promise.all(
-    (["projects", "contacts"] as const).map((table) => {
+  const [projectsRes, contactsRes, peopleRes] = await Promise.all(
+    (["projects", "contacts", "people"] as const).map((table) => {
       const ids = [...idsByTable[table]];
       return ids.length > 0
         ? supabase.from(table).select("id").in("id", ids)
@@ -72,6 +73,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
   for (const [table, res] of [
     ["projects", projectsRes],
     ["contacts", contactsRes],
+    ["people", peopleRes],
   ] as const) {
     for (const record of ((res.data as { id: string }[] | null) ?? [])) {
       existing.add(targetKey(table, record.id));
@@ -115,7 +117,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
           <p className="max-w-xs text-xs text-white/35">
             {filter
               ? `Nothing has happened to ${ACTIVITY_FILTER_LABELS[filter].toLowerCase()} yet.`
-              : "Changes to projects, contacts and documents will show up here."}
+              : "Changes to projects, receivers, contacts and documents will show up here."}
           </p>
         </GlassCard>
       )}

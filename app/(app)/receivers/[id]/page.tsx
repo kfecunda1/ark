@@ -2,21 +2,24 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
-import { ContactProductsSection } from "@/components/contacts/contact-products-section";
-import { ContactDocuments } from "@/components/contacts/contact-documents";
-import { ContactNotesSection } from "@/components/contacts/contact-notes-section";
+import { ReceiverProductsSection } from "@/components/receivers/receiver-products-section";
+import { ReceiverDocuments } from "@/components/receivers/receiver-documents";
+import { ReceiverNotesSection } from "@/components/receivers/receiver-notes-section";
+import { ContactPersonSelect } from "@/components/contact-person-select";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveProducts } from "@/lib/products";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { getProjectProductsByProjectIds, displayProduct } from "@/lib/project-products";
-import type { Contact, ContactDocument, ContactProduct, Note, Project } from "@/lib/types";
+import type { Contact, ContactDocument, ContactProduct, Note, Person, Project } from "@/lib/types";
 
-interface ContactDetailPageProps {
+interface ReceiverDetailPageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ failedDocs?: string }>;
 }
 
-export default async function ContactDetailPage({ params, searchParams }: ContactDetailPageProps) {
+// UI: Receiver. The underlying table/type stays `contacts`/`Contact`
+// — see AGENTS.md's UI-naming-vs-database-naming note.
+export default async function ReceiverDetailPage({ params, searchParams }: ReceiverDetailPageProps) {
   const { id } = await params;
   const { failedDocs } = await searchParams;
   const failedDocNames = failedDocs ? failedDocs.split(",").filter(Boolean) : [];
@@ -29,29 +32,41 @@ export default async function ContactDetailPage({ params, searchParams }: Contac
     notFound();
   }
 
-  const [{ data: projectsData }, { data: productsData }, { data: documentsData }, { data: notesData }, availableProducts, documentTypes] =
-    await Promise.all([
-      supabase
-        .from("projects")
-        .select("*")
-        .eq("matched_contact_id", id)
-        .order("created_at", { ascending: false }),
-      supabase.from("contact_products").select("*").eq("contact_id", id).order("created_at"),
-      supabase.from("contact_documents").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
-      supabase.from("notes").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
-      getActiveProducts(),
-      getActiveDocumentTypes(),
-    ]);
+  const [
+    { data: projectsData },
+    { data: productsData },
+    { data: documentsData },
+    { data: notesData },
+    { data: allPeopleData },
+    availableProducts,
+    documentTypes,
+  ] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("*")
+      .eq("matched_contact_id", id)
+      .order("created_at", { ascending: false }),
+    supabase.from("contact_products").select("*").eq("contact_id", id).order("created_at"),
+    supabase.from("contact_documents").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
+    supabase.from("notes").select("*").eq("contact_id", id).order("created_at", { ascending: false }),
+    supabase.from("people").select("id, first_name, last_name").order("first_name"),
+    getActiveProducts(),
+    getActiveDocumentTypes(),
+  ]);
 
   // The query above already scopes to matched_contact_id = this
-  // contact — "Matched with" is the only relation a project carries to
-  // a contact now (supabase/migrations/013_projects_restructure.sql
+  // receiver — "Matched with" is the only relation a project carries to
+  // a receiver now (supabase/migrations/013_projects_restructure.sql
   // dropped client_contact_id and assigned_contact_id).
   const matchedProjects = (projectsData as Project[] | null) ?? [];
   const matchedProjectProductsById = await getProjectProductsByProjectIds(matchedProjects.map((p) => p.id));
   const products = (productsData as ContactProduct[] | null) ?? [];
   const documents = (documentsData as ContactDocument[] | null) ?? [];
   const notes = (notesData as Note[] | null) ?? [];
+  const allPeople = (allPeopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? [];
+  const contactPerson = contact.contact_person_id
+    ? allPeople.find((p) => p.id === contact.contact_person_id) ?? null
+    : null;
 
   let documentsWithUrls = documents.map((doc) => ({ ...doc, signedUrl: null as string | null }));
   if (documents.length > 0) {
@@ -72,13 +87,13 @@ export default async function ContactDetailPage({ params, searchParams }: Contac
     <div className="mx-auto max-w-3xl">
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link href="/contacts" className="text-xs font-medium text-white/40 hover:text-white/70">
-            ← Back to contacts
+          <Link href="/receivers" className="text-xs font-medium text-white/40 hover:text-white/70">
+            ← Back to receivers
           </Link>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white">{contact.full_name}</h1>
         </div>
         <Link
-          href={`/contacts/${contact.id}/edit`}
+          href={`/receivers/${contact.id}/edit`}
           className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
         >
           <Pencil className="h-4 w-4" />
@@ -90,8 +105,8 @@ export default async function ContactDetailPage({ params, searchParams }: Contac
         <GlassCard interactive={false} className="mb-6 border-red-500/20 bg-red-500/10 p-4">
           <p className="text-sm font-medium text-red-300">
             {failedDocNames.length === 1
-              ? "1 document failed to attach during contact creation:"
-              : `${failedDocNames.length} documents failed to attach during contact creation:`}
+              ? "1 document failed to attach during receiver creation:"
+              : `${failedDocNames.length} documents failed to attach during receiver creation:`}
           </p>
           <ul className="mt-1.5 list-inside list-disc text-sm text-red-300/80">
             {failedDocNames.map((name) => (
@@ -110,14 +125,26 @@ export default async function ContactDetailPage({ params, searchParams }: Contac
       </GlassCard>
 
       <div className="mt-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Contact Person</h2>
+        <GlassCard interactive={false} className="p-6">
+          <ContactPersonSelect
+            entityType="receiver"
+            entityId={contact.id}
+            people={allPeople}
+            currentPerson={contactPerson}
+          />
+        </GlassCard>
+      </div>
+
+      <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Products & Ratios</h2>
-        <ContactProductsSection contactId={contact.id} products={products} availableProducts={availableProducts} />
+        <ReceiverProductsSection contactId={contact.id} products={products} availableProducts={availableProducts} />
       </div>
 
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Documents</h2>
         <GlassCard interactive={false} className="p-6">
-          <ContactDocuments contactId={contact.id} documents={documentsWithUrls} documentTypes={documentTypes} />
+          <ReceiverDocuments contactId={contact.id} documents={documentsWithUrls} documentTypes={documentTypes} />
         </GlassCard>
       </div>
 
@@ -146,7 +173,7 @@ export default async function ContactDetailPage({ params, searchParams }: Contac
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Notes</h2>
         <GlassCard interactive={false} className="p-6">
-          <ContactNotesSection contactId={contact.id} notes={notes} />
+          <ReceiverNotesSection contactId={contact.id} notes={notes} />
         </GlassCard>
       </div>
     </div>

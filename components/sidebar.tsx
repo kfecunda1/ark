@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Contact, FolderKanban, History, LayoutDashboard, StickyNote, Settings, X } from "lucide-react";
+import { Contact, FolderKanban, History, LayoutDashboard, StickyNote, Settings, User, X } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/contacts", label: "Contacts", icon: Contact },
+  { href: "/receivers", label: "Receivers", icon: Contact },
+  { href: "/people", label: "Contacts", icon: User },
   { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/activity", label: "Activity", icon: History },
   { href: "/settings", label: "Settings", icon: Settings },

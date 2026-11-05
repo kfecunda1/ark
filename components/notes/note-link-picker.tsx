@@ -73,7 +73,7 @@ export function NoteLinkPicker({
             Project
           </option>
           <option value="contact" className="bg-[#0a0e17]">
-            Contact
+            Receiver
           </option>
         </select>
 
@@ -89,7 +89,7 @@ export function NoteLinkPicker({
               }}
               onFocus={() => setOpen(true)}
               onBlur={() => setTimeout(() => setOpen(false), 120)}
-              placeholder={linkType === "project" ? "Search projects…" : "Search contacts…"}
+              placeholder={linkType === "project" ? "Search projects…" : "Search receivers…"}
               className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-2.5 pr-9 pl-9 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]"
             />
             {selected && (

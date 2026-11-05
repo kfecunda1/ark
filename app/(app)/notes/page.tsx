@@ -53,7 +53,7 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
     }
     if (note.contact_id) {
       const contact = contactsById.get(note.contact_id);
-      return { href: `/contacts/${note.contact_id}`, label: contact?.full_name ?? "Contact", icon: ContactIcon };
+      return { href: `/receivers/${note.contact_id}`, label: contact?.full_name ?? "Receiver", icon: ContactIcon };
     }
     return null;
   }
@@ -63,7 +63,7 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">Notes</h1>
-          <p className="mt-1 text-sm text-white/45">Free-form notes and reminders, optionally linked to a project or contact.</p>
+          <p className="mt-1 text-sm text-white/45">Free-form notes and reminders, optionally linked to a project or receiver.</p>
         </div>
         <Link
           href="/notes/new"

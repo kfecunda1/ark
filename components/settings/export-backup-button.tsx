@@ -16,6 +16,7 @@ const TABLES = [
   "project_steps",
   "contacts",
   "contact_products",
+  "people",
   "notes",
   "project_documents",
   "contact_documents",

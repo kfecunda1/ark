@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GlassCard } from "@/components/glass-card";
-import { ContactPicker, type ContactOption } from "@/components/contacts/contact-picker";
+import { EntityPicker, type EntityOption } from "@/components/entity-picker";
 import { ProductOptionsPicker } from "@/components/projects/product-options-picker";
 import { StagedDocumentPicker, type StagedDocument } from "@/components/projects/staged-document-picker";
 import { DuplicateWarningBanner } from "@/components/duplicate-warning-banner";
@@ -16,7 +16,8 @@ import {
   type DuplicateProjectMatch,
   type ProjectFormState,
 } from "@/lib/actions/projects";
-import { getContactProductRatio, getContactProductRatios } from "@/lib/actions/contacts";
+import { getContactProductRatio, getContactProductRatios, quickCreateContact } from "@/lib/actions/contacts";
+import { quickCreatePerson } from "@/lib/actions/people";
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
@@ -28,7 +29,12 @@ interface ProjectFormProps {
   project?: Project;
   // Edit mode only — the project's current product options.
   projectProducts?: ProjectProduct[];
-  contacts: ContactOption[];
+  // UI: Receivers (see AGENTS.md's UI-naming-vs-database-naming note)
+  // — the "Matched With" field's options.
+  receivers: EntityOption[];
+  // The "Contact person" field's options — the real, simple People
+  // ("Contacts" tab) list, wholly separate from receivers above.
+  people: EntityOption[];
   products: Product[];
   documentTypes: DocumentTypeRecord[];
   // Create mode only: the Settings → Defaults value, used as the
@@ -48,7 +54,8 @@ export function ProjectForm({
   mode,
   project,
   projectProducts = [],
-  contacts,
+  receivers,
+  people,
   products,
   documentTypes,
   defaultCurrency,
@@ -340,12 +347,39 @@ export function ProjectForm({
         )}
 
         <div>
-          <ContactPicker
+          <EntityPicker
             name="matched_contact_id"
             label="Matched With"
-            contacts={contacts}
-            defaultContactId={project?.matched_contact_id}
-            onSelect={(contact) => setMatchedContactId(contact?.id ?? null)}
+            options={receivers}
+            defaultId={project?.matched_contact_id}
+            entityNoun="receiver"
+            onSelect={(receiver) => setMatchedContactId(receiver?.id ?? null)}
+            onQuickCreate={async (name) => {
+              const result = await quickCreateContact({ full_name: name });
+              return {
+                option: result.contact ? { id: result.contact.id, label: result.contact.full_name } : null,
+                error: result.error,
+              };
+            }}
+          />
+        </div>
+
+        <div>
+          <EntityPicker
+            name="contact_person_id"
+            label="Contact Person"
+            options={people}
+            defaultId={project?.contact_person_id}
+            entityNoun="contact"
+            onQuickCreate={async (name) => {
+              const result = await quickCreatePerson({ name });
+              return {
+                option: result.person
+                  ? { id: result.person.id, label: [result.person.first_name, result.person.last_name].filter(Boolean).join(" ") }
+                  : null,
+                error: result.error,
+              };
+            }}
           />
         </div>
 
@@ -472,7 +506,7 @@ export function ProjectForm({
 
       {duplicateMatches && duplicateMatches.length > 0 && (
         <DuplicateWarningBanner
-          heading="A project with this same matched contact and an overlapping product already exists:"
+          heading="A project with this same matched receiver and an overlapping product already exists:"
           matches={duplicateMatches.map((m) => ({ id: m.id, href: `/projects/${m.id}`, label: m.label, meta: m.meta }))}
           onAddAnyway={handleAddAnyway}
         />

@@ -8,14 +8,15 @@ import { StatusSelect } from "@/components/projects/status-select";
 import { ArchiveProjectButton } from "@/components/projects/archive-project-button";
 import { ProjectDocuments } from "@/components/projects/project-documents";
 import { TranchesSection } from "@/components/projects/tranches-section";
-import { MatchedContactSelect } from "@/components/projects/matched-contact-select";
+import { MatchedReceiverSelect } from "@/components/projects/matched-receiver-select";
+import { ContactPersonSelect } from "@/components/contact-person-select";
 import { ProjectProductOptions } from "@/components/projects/project-product-options";
 import { RecoveryToggle } from "@/components/projects/recovery-toggle";
 import { ProjectTimeline } from "@/components/projects/project-timeline";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { formatDateTime } from "@/lib/format";
-import type { Contact, Note, Project, ProjectDocument, ProjectProduct, ProjectStep, ProjectTranche } from "@/lib/types";
+import type { Contact, Note, Person, Project, ProjectDocument, ProjectProduct, ProjectStep, ProjectTranche } from "@/lib/types";
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
@@ -41,10 +42,21 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       ).data as Contact | null
     : null;
 
-  // The matched-contact picker needs to search every contact, not just
-  // the matched one already loaded above.
-  const { data: allContactsData } = await supabase.from("contacts").select("id, full_name").order("full_name");
+  const contactPerson = project.contact_person_id
+    ? (
+        await supabase.from("people").select("id, first_name, last_name").eq("id", project.contact_person_id).maybeSingle()
+      ).data as Pick<Person, "id" | "first_name" | "last_name"> | null
+    : null;
+
+  // The matched-receiver and contact-person pickers each need to
+  // search every row of their own list, not just whichever one (if
+  // any) is already loaded above.
+  const [{ data: allContactsData }, { data: allPeopleData }] = await Promise.all([
+    supabase.from("contacts").select("id, full_name").order("full_name"),
+    supabase.from("people").select("id, first_name, last_name").order("first_name"),
+  ]);
   const allContacts = (allContactsData as { id: string; full_name: string }[] | null) ?? [];
+  const allPeople = (allPeopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? [];
 
   const [
     { data: projectDocumentsData },
@@ -103,7 +115,24 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const fields: { label: string; value: React.ReactNode }[] = [
     {
       label: "Matched With",
-      value: <MatchedContactSelect projectId={project.id} contacts={allContacts} currentContact={matchedContact} />,
+      value: (
+        <MatchedReceiverSelect
+          projectId={project.id}
+          receivers={allContacts.map((c) => ({ id: c.id, label: c.full_name }))}
+          currentReceiver={matchedContact ? { id: matchedContact.id, label: matchedContact.full_name } : null}
+        />
+      ),
+    },
+    {
+      label: "Contact Person",
+      value: (
+        <ContactPersonSelect
+          entityType="project"
+          entityId={project.id}
+          people={allPeople}
+          currentPerson={contactPerson}
+        />
+      ),
     },
     { label: "Ratio Presented", value: project.ratio_presented || "—" },
     { label: "Ratio Real", value: project.ratio_real || "—" },

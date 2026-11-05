@@ -14,7 +14,7 @@ export const ACTIVITY_FILTERS: ActivityFilter[] = ["project", "contact", "docume
 
 export const ACTIVITY_FILTER_LABELS: Record<ActivityFilter, string> = {
   project: "Projects",
-  contact: "Contacts",
+  contact: "Receivers",
   document: "Documents",
 };
 
@@ -30,10 +30,12 @@ export function parseActivityFilter(value: string | undefined): ActivityFilter |
 
 export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   project: "Project",
-  contact: "Contact",
+  // UI: Receiver (see AGENTS.md's UI-naming-vs-database-naming note)
+  // — entity_type stays "contact" in the database.
+  contact: "Receiver",
   project_document: "Project document",
-  contact_product: "Contact product",
-  contact_document: "Contact document",
+  contact_product: "Receiver product",
+  contact_document: "Receiver document",
   project_step: "Timeline entry",
   backup: "Backup",
   password_change: "Password change",
@@ -43,6 +45,7 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   user: "User",
   project_product: "Product option",
   note: "Note",
+  person: "Contact",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -71,7 +74,8 @@ const FIELD_LABELS: Record<string, string> = {
   product_type: "product type",
   client_contact_id: "client contact",
   assigned_contact_id: "assigned contact",
-  matched_contact_id: "matched contact",
+  matched_contact_id: "matched receiver",
+  contact_person_id: "contact person",
   ratio_presented: "ratio presented",
   ratio_real: "ratio real",
   total_face_value: "total face value",
@@ -111,6 +115,11 @@ const FIELD_LABELS: Record<string, string> = {
   content: "text",
   is_reminder: "reminder",
   reminder_done: "reminder done",
+  // people
+  first_name: "first name",
+  last_name: "last name",
+  phone: "phone",
+  email: "email",
 };
 
 export function fieldLabel(field: string): string {
@@ -266,9 +275,9 @@ export function activityDetailChips(row: ActivityLog): string[] {
   return chips;
 }
 
-/** The projects/contacts row an activity row points at. */
+/** The row an activity row points at. */
 export interface ActivityTarget {
-  table: "projects" | "contacts";
+  table: "projects" | "contacts" | "people";
   id: string;
 }
 
@@ -294,6 +303,8 @@ export function activityTarget(row: ActivityLog): ActivityTarget | null {
       return row.details.parent_type === "project"
         ? { table: "projects", id: row.details.parent_id }
         : { table: "contacts", id: row.details.parent_id };
+    case "person":
+      return { table: "people", id: row.entity_id };
     default:
       return null;
   }
@@ -301,7 +312,8 @@ export function activityTarget(row: ActivityLog): ActivityTarget | null {
 
 const TARGET_HREF_PREFIX: Record<ActivityTarget["table"], string> = {
   projects: "/projects",
-  contacts: "/contacts",
+  contacts: "/receivers",
+  people: "/people",
 };
 
 /**

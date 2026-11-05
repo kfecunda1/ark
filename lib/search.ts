@@ -1,6 +1,11 @@
 import { createClient } from "@/lib/supabase/client";
+import { personLabel } from "@/lib/people";
 
-export type SearchResultType = "project" | "contact" | "document" | "note";
+// UI: Receivers for "contact", Contacts for "person" — see AGENTS.md's
+// UI-naming-vs-database-naming note. The database's `contacts` table
+// backs "contact" results; the database's `people` table backs
+// "person" results.
+export type SearchResultType = "project" | "contact" | "document" | "note" | "person";
 
 export interface SearchResult {
   type: SearchResultType;
@@ -62,7 +67,7 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
   const likePattern = `%${escapeLike(query)}%`;
   const orSafePattern = `%${escapeLike(sanitizeForOrFilter(query))}%`;
 
-  const [contactsRes, projectDocsRes, notesRes] = await Promise.all([
+  const [contactsRes, projectDocsRes, notesRes, peopleRes] = await Promise.all([
     supabase.from("contacts").select("id, full_name").ilike("full_name", likePattern).limit(RESULT_LIMIT),
     supabase
       .from("project_documents")
@@ -74,6 +79,18 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
       .select("id, title, content, project_id, contact_id")
       .or(`title.ilike.${orSafePattern},content.ilike.${orSafePattern}`)
       .limit(RESULT_LIMIT),
+    supabase
+      .from("people")
+      .select("id, first_name, last_name, phone, email")
+      .or(
+        [
+          `first_name.ilike.${orSafePattern}`,
+          `last_name.ilike.${orSafePattern}`,
+          `phone.ilike.${orSafePattern}`,
+          `email.ilike.${orSafePattern}`,
+        ].join(",")
+      )
+      .limit(RESULT_LIMIT),
   ]);
 
   const contactMatches = (contactsRes.data as { id: string; full_name: string }[] | null) ?? [];
@@ -82,6 +99,10 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
   const noteMatches =
     (notesRes.data as
       | { id: string; title: string | null; content: string; project_id: string | null; contact_id: string | null }[]
+      | null) ?? [];
+  const personMatches =
+    (peopleRes.data as
+      | { id: string; first_name: string; last_name: string | null; phone: string | null; email: string | null }[]
       | null) ?? [];
   const contactIds = contactMatches.map((c) => c.id);
 
@@ -120,6 +141,13 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
     type: "contact",
     id: contact.id,
     title: contact.full_name,
+    subtitle: "Receiver",
+  }));
+
+  const personResults: SearchResult[] = personMatches.map((person) => ({
+    type: "person",
+    id: person.id,
+    title: personLabel(person),
     subtitle: "Contact",
   }));
 
@@ -159,7 +187,7 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
         type: "note",
         id: note.id,
         title,
-        subtitle: `Note on contact: ${contact?.full_name ?? "Unknown contact"}`,
+        subtitle: `Note on receiver: ${contact?.full_name ?? "Unknown receiver"}`,
         parentId: note.contact_id,
         parentType: "contact",
       };
@@ -167,7 +195,7 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
     return { type: "note", id: note.id, title, subtitle: "Note" };
   });
 
-  return [...projectResults, ...contactResults, ...documentResults, ...noteResults];
+  return [...projectResults, ...contactResults, ...documentResults, ...noteResults, ...personResults];
 }
 
 export function searchResultHref(result: SearchResult): string {
@@ -175,12 +203,14 @@ export function searchResultHref(result: SearchResult): string {
     case "project":
       return `/projects/${result.id}`;
     case "contact":
-      return `/contacts/${result.id}`;
+      return `/receivers/${result.id}`;
     case "document":
       return `/projects/${result.parentId}`;
     case "note":
       if (result.parentType === "project") return `/projects/${result.parentId}`;
-      if (result.parentType === "contact") return `/contacts/${result.parentId}`;
+      if (result.parentType === "contact") return `/receivers/${result.parentId}`;
       return `/notes/${result.id}/edit`;
+    case "person":
+      return `/people/${result.id}`;
   }
 }

@@ -179,7 +179,7 @@ export function ProjectProductOptions({
       {infoRatios && Object.keys(infoRatios).length > 0 && (
         <div className="rounded-lg border border-white/10 bg-white/[0.04] p-2.5">
           <p className="text-xs text-white/50">
-            Matched contact&apos;s {isRecovery ? "recovery ratio" : "ratio"} on record, per option (not filled yet):
+            Matched receiver&apos;s {isRecovery ? "recovery ratio" : "ratio"} on record, per option (not filled yet):
           </p>
           <ul className="mt-1 flex flex-col gap-0.5">
             {Object.entries(infoRatios).map(([product, ratio]) => (

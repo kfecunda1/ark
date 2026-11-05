@@ -15,7 +15,8 @@ import { getProjectProductsByProjectIds, countedProducts, displayProduct } from 
 import { compareNullsLast, parseSortDirection } from "@/lib/sort";
 import { formatDateTime } from "@/lib/format";
 import { STAGES, STATUSES } from "@/lib/projects";
-import type { Project, ProjectStatus, ProjectStep } from "@/lib/types";
+import { personLabel } from "@/lib/people";
+import type { Person, Project, ProjectStatus, ProjectStep } from "@/lib/types";
 
 const PROJECT_SORT_KEYS = [
   "name",
@@ -83,6 +84,20 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
 
   const products = await getAllProducts();
   const projectProductsByProjectId = await getProjectProductsByProjectIds(projects.map((p) => p.id));
+
+  // Optional "Contact Person" column — only fetched for the people
+  // actually linked to a project on this page.
+  const contactPersonIds = [...new Set(projects.map((p) => p.contact_person_id).filter((id): id is string => Boolean(id)))];
+  const { data: contactPeopleData } =
+    contactPersonIds.length > 0
+      ? await supabase.from("people").select("id, first_name, last_name").in("id", contactPersonIds)
+      : { data: [] };
+  const contactPersonNameById = new Map(
+    ((contactPeopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? []).map((p) => [
+      p.id,
+      personLabel(p),
+    ])
+  );
 
   // Counted under its final product once there is one, otherwise under
   // every option — same rule the Dashboard's breakdown uses.
@@ -194,13 +209,14 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
       {!error && projects.length > 0 && (
         <>
           <GlassCard interactive={false} className="hidden overflow-x-auto p-0 md:block">
-            <table className="w-full min-w-[920px] text-left text-sm">
+            <table className="w-full min-w-[1040px] text-left text-sm">
               <thead>
                 <tr className="border-b border-white/[0.06] text-xs tracking-wide text-white/40 uppercase">
                   <SortableHeader sortKey="name" label="Name" currentSort={sort} currentDir={dir} />
                   <SortableHeader sortKey="product" label="Product" currentSort={sort} currentDir={dir} />
                   <SortableHeader sortKey="stage" label="Stage" currentSort={sort} currentDir={dir} />
                   <SortableHeader sortKey="status" label="Status" currentSort={sort} currentDir={dir} />
+                  <th className="px-4 py-3 font-medium">Contact Person</th>
                   <SortableHeader
                     sortKey="total_face_value"
                     label="Total Face Value"
@@ -252,6 +268,9 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                       </td>
                       <td className="px-4 py-3">
                         <StatusSelect projectId={project.id} currentStatus={project.status} />
+                      </td>
+                      <td className="px-4 py-3 text-white/70">
+                        {project.contact_person_id ? contactPersonNameById.get(project.contact_person_id) ?? "—" : "—"}
                       </td>
                       <td className="px-4 py-3 text-white/70">
                         {project.total_face_value != null ? `${project.currency} ${project.total_face_value}` : "—"}
@@ -309,6 +328,16 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                         <StatusSelect projectId={project.id} currentStatus={project.status} />
                       </dd>
                     </div>
+                    {project.contact_person_id && (
+                      <div>
+                        <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
+                          Contact Person
+                        </dt>
+                        <dd className="mt-0.5 text-white/70">
+                          {contactPersonNameById.get(project.contact_person_id) ?? "—"}
+                        </dd>
+                      </div>
+                    )}
                     {project.total_face_value != null && (
                       <div>
                         <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">

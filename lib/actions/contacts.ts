@@ -28,6 +28,7 @@ function buildContactPayload(formData: FormData) {
   return {
     full_name: fullName,
     notes: formData.get("notes")?.toString().trim() || null,
+    contact_person_id: formData.get("contact_person_id")?.toString().trim() || null,
   };
 }
 
@@ -149,7 +150,7 @@ export async function createContactWithId(
     const { data, error } = await supabase.from("contacts").insert(payload).select("id").single();
 
     if (error || !data) {
-      return { id: null, error: error?.message ?? "Failed to create contact." };
+      return { id: null, error: error?.message ?? "Failed to create receiver." };
     }
     const newId: string = data.id;
 
@@ -169,7 +170,7 @@ export async function createContactWithId(
       }
     }
 
-    revalidatePath("/contacts");
+    revalidatePath("/receivers");
     return { id: newId, error: null };
   } catch (err) {
     return { id: null, error: unexpectedErrorMessage(err) };
@@ -201,12 +202,32 @@ export async function updateContact(
     return { error: unexpectedErrorMessage(err) };
   }
 
-  revalidatePath("/contacts");
-  revalidatePath(`/contacts/${id}`);
-  redirect(`/contacts/${id}`);
+  revalidatePath("/receivers");
+  revalidatePath(`/receivers/${id}`);
+  redirect(`/receivers/${id}`);
 }
 
-// Used by the Contact Picker's inline "+ New Contact" flow: creates a
+// The Receiver detail page's inline Contact Person quick-editor
+// (components/contact-person-select.tsx) — a plain optional link, no
+// side effect beyond itself.
+export async function updateContactPerson(contactId: string, personId: string | null): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("contacts").update({ contact_person_id: personId }).eq("id", contactId);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/receivers");
+    revalidatePath(`/receivers/${contactId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// Used by the Entity Picker's inline "+ New Receiver" flow: creates a
 // contact without redirecting so the caller can select it immediately.
 export async function quickCreateContact(input: { full_name: string }): Promise<{
   contact: Contact | null;
@@ -226,10 +247,10 @@ export async function quickCreateContact(input: { full_name: string }): Promise<
       .single();
 
     if (error || !data) {
-      return { contact: null, error: error?.message ?? "Failed to create contact." };
+      return { contact: null, error: error?.message ?? "Failed to create receiver." };
     }
 
-    revalidatePath("/contacts");
+    revalidatePath("/receivers");
     return { contact: data as Contact, error: null };
   } catch (err) {
     return { contact: null, error: unexpectedErrorMessage(err) };
@@ -263,7 +284,7 @@ export async function upsertContactProduct(
       return { error: error.message };
     }
 
-    revalidatePath(`/contacts/${contactId}`);
+    revalidatePath(`/receivers/${contactId}`);
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
@@ -279,7 +300,7 @@ export async function deleteContactProduct(contactId: string, productId: string)
       return { error: error.message };
     }
 
-    revalidatePath(`/contacts/${contactId}`);
+    revalidatePath(`/receivers/${contactId}`);
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
@@ -313,7 +334,7 @@ export async function addContactDocument(
       return { error: error.message };
     }
 
-    revalidatePath(`/contacts/${contactId}`);
+    revalidatePath(`/receivers/${contactId}`);
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
@@ -346,7 +367,7 @@ export async function deleteContactDocument(documentId: string): Promise<{ error
     }
 
     if (existing?.contact_id) {
-      revalidatePath(`/contacts/${existing.contact_id}`);
+      revalidatePath(`/receivers/${existing.contact_id}`);
     }
     return { error: null };
   } catch (err) {
@@ -388,7 +409,7 @@ export async function findContactDocumentsByHash(hash: string): Promise<ContactD
     return rows.map((row) => ({
       documentId: row.id,
       contactId: row.contact_id,
-      contactLabel: contactNameById.get(row.contact_id) ?? "Contact",
+      contactLabel: contactNameById.get(row.contact_id) ?? "Receiver",
       fileName: row.file_name,
     }));
   } catch (err) {
@@ -437,7 +458,7 @@ export async function addContactNote(
       return { error: error.message };
     }
 
-    revalidatePath(`/contacts/${contactId}`);
+    revalidatePath(`/receivers/${contactId}`);
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };

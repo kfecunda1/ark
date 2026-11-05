@@ -4,7 +4,7 @@ import { Plus, Users } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { ClickableRow } from "@/components/clickable-row";
 import { ClickableCard } from "@/components/clickable-card";
-import { ContactFilters } from "@/components/contacts/contact-filters";
+import { ReceiverFilters } from "@/components/receivers/receiver-filters";
 import { SortableHeader, MobileSortControl, type SortOption } from "@/components/sort-controls";
 import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
@@ -12,11 +12,11 @@ import { compareNullsLast, parseSortDirection } from "@/lib/sort";
 import { formatDateTime } from "@/lib/format";
 import type { Contact, ContactProduct, ProductType } from "@/lib/types";
 
-const CONTACT_SORT_KEYS = ["name", "products_count", "matched_count", "created_at"] as const;
-type ContactSortKey = (typeof CONTACT_SORT_KEYS)[number];
+const RECEIVER_SORT_KEYS = ["name", "products_count", "matched_count", "created_at"] as const;
+type ReceiverSortKey = (typeof RECEIVER_SORT_KEYS)[number];
 
-function isContactSortKey(value: string | undefined): value is ContactSortKey {
-  return (CONTACT_SORT_KEYS as readonly string[]).includes(value ?? "");
+function isReceiverSortKey(value: string | undefined): value is ReceiverSortKey {
+  return (RECEIVER_SORT_KEYS as readonly string[]).includes(value ?? "");
 }
 
 const SORT_OPTIONS: SortOption[] = [
@@ -26,13 +26,15 @@ const SORT_OPTIONS: SortOption[] = [
   { value: "created_at", label: "Created" },
 ];
 
-interface ContactsPageProps {
+interface ReceiversPageProps {
   searchParams: Promise<{ q?: string; product_type?: string; sort?: string; dir?: string }>;
 }
 
-export default async function ContactsPage({ searchParams }: ContactsPageProps) {
+// UI: Receivers. The underlying table/type stays `contacts`/`Contact`
+// — see AGENTS.md's UI-naming-vs-database-naming note.
+export default async function ReceiversPage({ searchParams }: ReceiversPageProps) {
   const params = await searchParams;
-  const sort: ContactSortKey = isContactSortKey(params.sort) ? params.sort : "name";
+  const sort: ReceiverSortKey = isReceiverSortKey(params.sort) ? params.sort : "name";
   const dir = parseSortDirection(params.dir);
 
   const supabase = await createClient();
@@ -73,7 +75,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
     return true;
   });
 
-  function sortValue(contact: Contact, key: ContactSortKey): number | string | null {
+  function sortValue(contact: Contact, key: ReceiverSortKey): number | string | null {
     switch (key) {
       case "name":
         return contact.full_name.toLowerCase();
@@ -92,28 +94,28 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
     <div className="mx-auto max-w-5xl">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Contacts</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">Receivers</h1>
           <p className="mt-1 text-sm text-white/45">People linked to projects.</p>
         </div>
         <Link
-          href="/contacts/new"
+          href="/receivers/new"
           className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover"
         >
           <Plus className="h-4 w-4" />
-          New Contact
+          New Receiver
         </Link>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Suspense>
-          <ContactFilters products={products} />
+          <ReceiverFilters products={products} />
           <MobileSortControl options={SORT_OPTIONS} currentSort={sort} currentDir={dir} />
         </Suspense>
       </div>
 
       {error && (
         <GlassCard interactive={false} className="p-6 text-sm text-rose-300">
-          Failed to load contacts: {error.message}
+          Failed to load receivers: {error.message}
         </GlassCard>
       )}
 
@@ -126,12 +128,12 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
             <Users className="h-5 w-5 text-white/40" />
           </div>
           <p className="text-sm font-medium text-white/70">
-            {searchTerm || productFilter ? "No matching contacts" : "No contacts yet"}
+            {searchTerm || productFilter ? "No matching receivers" : "No receivers yet"}
           </p>
           <p className="max-w-xs text-xs text-white/35">
             {searchTerm || productFilter
-              ? "No contacts match your filters."
-              : "Contacts you create here can be linked to projects."}
+              ? "No receivers match your filters."
+              : "Receivers you create here can be linked to projects."}
           </p>
         </GlassCard>
       )}
@@ -173,7 +175,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
                   return (
                     <ClickableRow
                       key={contact.id}
-                      href={`/contacts/${contact.id}`}
+                      href={`/receivers/${contact.id}`}
                       className="border-b border-white/[0.04] transition-colors duration-150 ease-out last:border-0 hover:bg-white/[0.03]"
                     >
                       <td className="px-4 py-3">
@@ -211,7 +213,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
             {contacts.map((contact) => {
               const contactProducts = productsByContactId.get(contact.id) ?? [];
               return (
-                <ClickableCard key={contact.id} href={`/contacts/${contact.id}`}>
+                <ClickableCard key={contact.id} href={`/receivers/${contact.id}`}>
                   <span className="font-medium text-white/85">{contact.full_name}</span>
                   {contactProducts.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
