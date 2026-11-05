@@ -4,10 +4,12 @@ import { DefaultsForm } from "@/components/settings/defaults-form";
 import { MyProfileForm } from "@/components/settings/my-profile-form";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { ExportBackupButton } from "@/components/settings/export-backup-button";
+import { UsersSection } from "@/components/settings/users-section";
 import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
 import { getAllDocumentTypes } from "@/lib/document-types";
 import { getAppSettings } from "@/lib/app-settings";
+import { listUsers } from "@/lib/actions/users";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -28,9 +30,9 @@ export default async function SettingsPage() {
     fullName = row?.full_name ?? null;
   }
 
-  const [products, documentTypes, appSettings] = isAdmin
-    ? await Promise.all([getAllProducts(), getAllDocumentTypes(), getAppSettings()])
-    : [[], [], null];
+  const [products, documentTypes, appSettings, usersResult] = isAdmin
+    ? await Promise.all([getAllProducts(), getAllDocumentTypes(), getAppSettings(), listUsers()])
+    : [[], [], null, { users: [], error: null }];
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -73,6 +75,17 @@ export default async function SettingsPage() {
             <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Defaults</h2>
             <GlassCard interactive={false} className="p-6">
               {appSettings && <DefaultsForm settings={appSettings} />}
+            </GlassCard>
+          </div>
+
+          <div className="mt-6">
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Users</h2>
+            <GlassCard interactive={false} className="p-6">
+              {usersResult.error ? (
+                <p className="text-sm text-red-300">Failed to load users: {usersResult.error}</p>
+              ) : (
+                user && <UsersSection users={usersResult.users} currentUserId={user.id} />
+              )}
             </GlassCard>
           </div>
 

@@ -16,7 +16,13 @@ const STAGE_BAR_COLORS: Record<ProjectStage, string> = {
   status: "bg-silver/70",
 };
 
-export default async function DashboardPage() {
+interface DashboardPageProps {
+  searchParams: Promise<{ passwordChanged?: string }>;
+}
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  const { passwordChanged } = await searchParams;
+
   const supabase = await createClient();
   const { data, error } = await supabase.from("projects").select("*").is("archived_at", null);
   const projects = (data as Project[] | null) ?? [];
@@ -162,6 +168,15 @@ export default async function DashboardPage() {
           </span>
         )}
       </div>
+
+      {passwordChanged === "1" && (
+        <GlassCard
+          interactive={false}
+          className="mb-6 border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-300"
+        >
+          Password changed — welcome to ARK.
+        </GlassCard>
+      )}
 
       {error && (
         <GlassCard interactive={false} className="mb-6 p-6 text-sm text-rose-300">

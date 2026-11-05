@@ -31,11 +31,29 @@ export type ProjectPriority = "low" | "medium" | "high" | "urgent";
 
 export type Currency = "USD" | "EUR";
 
+// Concrete role an admin assigns through Settings → Users
+// (lib/actions/users.ts) — unlike Profile.role below, never null.
+export type UserRole = "admin" | "member";
+
 export interface Profile {
   id: string;
   full_name: string | null;
   email: string | null;
-  role: string | null;
+  // Null until an admin assigns one (or for a profile auto-provisioned
+  // by a first login that predates Settings → Users — see
+  // app/login/page.tsx's ensureProfile).
+  role: UserRole | null;
+  // supabase/migrations/012_user_management.sql. Deactivating a user
+  // sets this false, which is enough on its own to cut off all their
+  // data access everywhere (is_registered_user() requires it) —
+  // nothing else needs to check it directly.
+  active: boolean;
+  // True right after an admin creates the account or resets its
+  // password; cleared automatically the moment the user successfully
+  // changes their own password (components/settings/change-password-
+  // form.tsx). While true, app/change-password/page.tsx is the only
+  // page they can reach (lib/supabase/proxy.ts enforces this).
+  must_change_password: boolean;
 }
 
 export interface Contact {
@@ -196,7 +214,8 @@ export type ActivityEntityType =
   | "password_change"
   | "product"
   | "document_type"
-  | "app_settings";
+  | "app_settings"
+  | "user";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
@@ -224,6 +243,11 @@ export interface ActivityDetails {
   // app_settings
   default_currency?: [Currency, Currency];
   stuck_after_days?: [number, number];
+  // users (active is reused from products/document_types above, with
+  // entity_type === "user" picking the "deactivated"/"reactivated"
+  // wording instead of "hidden"/"shown" — see lib/activity.ts)
+  role?: [UserRole | null, UserRole | null];
+  event?: "password_reset";
 }
 
 export interface ActivityLog {

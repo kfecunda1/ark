@@ -40,6 +40,7 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   product: "Product",
   document_type: "Document type",
   app_settings: "Settings",
+  user: "User",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -89,6 +90,9 @@ const FIELD_LABELS: Record<string, string> = {
   sort_order: "order",
   default_currency: "default currency",
   stuck_after_days: "stuck after (days)",
+  // users
+  role: "role",
+  event: "event",
 };
 
 export function fieldLabel(field: string): string {
@@ -108,6 +112,8 @@ const FIELDS_DESCRIBED_SEPARATELY = new Set([
   "active",
   "default_currency",
   "stuck_after_days",
+  "role",
+  "event",
 ]);
 
 function asPair<T>(value: T | [T, T] | undefined): [T, T] | null {
@@ -188,7 +194,8 @@ export function activityDetailChips(row: ActivityLog): string[] {
   }
 
   if (details.active) {
-    chips.push(details.active[1] ? "shown" : "hidden");
+    const isUser = row.entity_type === "user";
+    chips.push(details.active[1] ? (isUser ? "reactivated" : "shown") : isUser ? "deactivated" : "hidden");
   }
 
   if (details.default_currency) {
@@ -197,6 +204,14 @@ export function activityDetailChips(row: ActivityLog): string[] {
 
   if (details.stuck_after_days) {
     chips.push(`stuck after ${details.stuck_after_days[0]} -> ${details.stuck_after_days[1]} days`);
+  }
+
+  if (details.role) {
+    chips.push(`role ${details.role[0] ?? "—"} -> ${details.role[1] ?? "—"}`);
+  }
+
+  if (details.event === "password_reset") {
+    chips.push("password reset");
   }
 
   const rest = (details.fields ?? []).filter((f) => !FIELDS_DESCRIBED_SEPARATELY.has(f));

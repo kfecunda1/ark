@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { confirmPasswordChanged } from "@/lib/actions/profile";
 
 const MIN_LENGTH = 12;
 
@@ -9,7 +11,15 @@ const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
-export function ChangePasswordForm() {
+interface ChangePasswordFormProps {
+  // Set only by app/change-password/page.tsx's forced first-login
+  // screen: once the password is changed, send the user into the app
+  // instead of showing the inline success message in place.
+  redirectTo?: string;
+}
+
+export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {}) {
+  const router = useRouter();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -74,10 +84,30 @@ export function ChangePasswordForm() {
         console.error("[ChangePasswordForm] failed to log password change:", logError.message);
       }
 
+      // Whatever required this change (a forced first-login, or an
+      // admin-triggered reset) is only actually satisfied once the
+      // server itself confirms the new password works and clears the
+      // flag — see lib/actions/profile.ts's confirmPasswordChanged for
+      // why this can't be a plain client-side update. A failure here
+      // is a real, visible error: the password did change, but the
+      // flag didn't clear, so proceeding (redirecting, or claiming
+      // success) would be lying to the user about their account state.
+      const confirmResult = await confirmPasswordChanged(newPassword);
+      if (confirmResult.error) {
+        setError(confirmResult.error);
+        return;
+      }
+
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setSuccess(true);
+
+      if (redirectTo) {
+        router.push(`${redirectTo}?passwordChanged=1`);
+        router.refresh();
+      } else {
+        setSuccess(true);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
