@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Search } from "lucide-react";
 import { runGlobalSearch, searchResultHref, type SearchResult, type SearchResultType } from "@/lib/search";
+import { RecoveryBadge } from "@/components/projects/badges";
 
 const GROUP_LABELS: Record<SearchResultType, string> = {
   project: "Projects",
@@ -118,7 +119,10 @@ export function GlobalSearch() {
                     onClick={() => goTo(result)}
                     className="flex w-full flex-col items-start px-3 py-2 text-left transition-colors duration-100 ease-out hover:bg-white/[0.06]"
                   >
-                    <span className="truncate text-sm text-white/85">{result.title}</span>
+                    <span className="flex w-full items-center gap-1.5">
+                      <span className="truncate text-sm text-white/85">{result.title}</span>
+                      {result.isRecovery && <RecoveryBadge />}
+                    </span>
                     <span className="truncate text-xs text-white/40">{result.subtitle}</span>
                   </button>
                 ))}

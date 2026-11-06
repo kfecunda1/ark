@@ -6,7 +6,12 @@ import { getAppSettings } from "@/lib/app-settings";
 import { personLabel } from "@/lib/people";
 import type { Person } from "@/lib/types";
 
-export default async function NewProjectPage() {
+interface NewProjectPageProps {
+  searchParams: Promise<{ recovery?: string }>;
+}
+
+export default async function NewProjectPage({ searchParams }: NewProjectPageProps) {
+  const { recovery } = await searchParams;
   const supabase = await createClient();
   const [{ data: receiversData }, { data: peopleData }, products, documentTypes, appSettings] = await Promise.all([
     supabase.from("contacts").select("id, full_name").is("archived_at", null).order("full_name"),
@@ -22,11 +27,17 @@ export default async function NewProjectPage() {
     label: personLabel(p),
   }));
 
+  const defaultRecovery = recovery === "true";
+
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-white">New Project</h1>
-        <p className="mt-1 text-sm text-white/45">Add a new project to the pipeline.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">
+          {defaultRecovery ? "New Recovery Project" : "New Project"}
+        </h1>
+        <p className="mt-1 text-sm text-white/45">
+          {defaultRecovery ? "Add a new recovery project to the pipeline." : "Add a new project to the pipeline."}
+        </p>
       </div>
       <ProjectForm
         mode="create"
@@ -35,6 +46,7 @@ export default async function NewProjectPage() {
         products={products}
         documentTypes={documentTypes}
         defaultCurrency={appSettings.default_currency}
+        defaultRecovery={defaultRecovery}
       />
     </div>
   );

@@ -25,10 +25,15 @@ export function RecoveryToggle({ projectId, isRecovery }: RecoveryToggleProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
+  // Flipping this is also what moves the project between the Projects
+  // and Recovery Projects tabs (same `projects` table, just filtered by
+  // this column) — a short note so that move isn't silent.
+  const [movedNote, setMovedNote] = useState<string | null>(null);
 
   function apply(next: boolean) {
     setError(null);
     setMessage(null);
+    setMovedNote(null);
     startTransition(async () => {
       try {
         const result = await updateProjectIsRecovery(projectId, next);
@@ -36,6 +41,7 @@ export function RecoveryToggle({ projectId, isRecovery }: RecoveryToggleProps) {
           setError(result.error);
           return;
         }
+        setMovedNote(next ? "Moved to Recovery Projects" : "Moved to Projects");
         if (result.autoFill) {
           const { filled, differs, contactName, productType, theirRatio, currentRatio, isRecovery: forRecovery } =
             result.autoFill;
@@ -88,6 +94,7 @@ export function RecoveryToggle({ projectId, isRecovery }: RecoveryToggleProps) {
         Recovery
       </label>
 
+      {movedNote && <p className="text-xs text-emerald-300">{movedNote}</p>}
       {message?.tone === "filled" && <p className="text-xs text-emerald-300">{message.text}</p>}
       {message?.tone === "differs" && (
         <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5">

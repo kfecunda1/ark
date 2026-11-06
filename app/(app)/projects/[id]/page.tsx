@@ -12,6 +12,7 @@ import { MatchedReceiverSelect } from "@/components/projects/matched-receiver-se
 import { ContactPersonSelect } from "@/components/contact-person-select";
 import { ProjectProductOptions } from "@/components/projects/project-product-options";
 import { ProjectIntermediariesSection } from "@/components/projects/project-intermediaries-section";
+import { SetProjectSection } from "@/components/projects/set-project-section";
 import { RecoveryToggle } from "@/components/projects/recovery-toggle";
 import { ProjectTimeline } from "@/components/projects/project-timeline";
 import { createClient } from "@/lib/supabase/server";
@@ -163,10 +164,14 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
 
   return (
     <div className="mx-auto max-w-4xl">
+      <SetProjectSection isRecovery={project.is_recovery} />
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link href="/projects" className="text-xs font-medium text-white/40 hover:text-white/70">
-            ← Back to projects
+          <Link
+            href={project.is_recovery ? "/recovery" : "/projects"}
+            className="text-xs font-medium text-white/40 hover:text-white/70"
+          >
+            ← Back to {project.is_recovery ? "recovery projects" : "projects"}
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-tight text-white">{project.name}</h1>

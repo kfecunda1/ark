@@ -100,23 +100,6 @@ export function ProjectFilters({ products, intermediaries }: ProjectFiltersProps
         ))}
       </select>
 
-      <select
-        aria-label="Filter by recovery"
-        value={searchParams.get("recovery") ?? ""}
-        onChange={(e) => setParam("recovery", e.target.value)}
-        className={selectClass}
-      >
-        <option value="" className="bg-[#0a0e17]">
-          All projects
-        </option>
-        <option value="true" className="bg-[#0a0e17]">
-          Recovery only
-        </option>
-        <option value="false" className="bg-[#0a0e17]">
-          Exclude recovery
-        </option>
-      </select>
-
       <button
         type="button"
         onClick={() => setParam("archived", showArchived ? "" : "true")}

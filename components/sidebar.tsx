@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Contact, FolderKanban, History, LayoutDashboard, StickyNote, Settings, User, X } from "lucide-react";
+import { Contact, FolderKanban, History, LayoutDashboard, RotateCcw, StickyNote, Settings, User, X } from "lucide-react";
+import { useProjectSection } from "@/components/project-section-context";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/recovery", label: "Recovery Projects", icon: RotateCcw },
   { href: "/receivers", label: "Receivers", icon: Contact },
   { href: "/people", label: "Contacts", icon: User },
   { href: "/notes", label: "Notes", icon: StickyNote },
@@ -21,6 +23,28 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const { section } = useProjectSection();
+
+  // /projects/[id] (and its /edit) is the one URL for every project
+  // regardless of is_recovery, so a plain pathname match can't tell
+  // Projects and Recovery Projects apart there — both branches check
+  // the *same* "/projects/" prefix and let `section` (set by the
+  // detail page itself, see set-project-section.tsx) break the tie.
+  // The list pages (/projects, /recovery exactly) are unambiguous on
+  // pathname alone and never consult it.
+  function isActive(href: string): boolean {
+    if (href === "/projects") {
+      if (pathname === "/projects") return true;
+      if (pathname?.startsWith("/projects/")) return section !== "recovery";
+      return false;
+    }
+    if (href === "/recovery") {
+      if (pathname === "/recovery") return true;
+      if (pathname?.startsWith("/projects/")) return section === "recovery";
+      return false;
+    }
+    return pathname === href || Boolean(pathname?.startsWith(`${href}/`));
+  }
 
   return (
     <>
@@ -49,7 +73,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         <nav className="flex flex-1 flex-col gap-1">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || pathname?.startsWith(`${href}/`);
+            const active = isActive(href);
             return (
               <Link
                 key={href}

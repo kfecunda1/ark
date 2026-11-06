@@ -52,6 +52,10 @@ interface ProjectFormProps {
   // Create mode only: the Settings → Defaults value, used as the
   // Currency field's initial selection for a brand-new project.
   defaultCurrency?: Currency;
+  // Create mode only: pre-ticks Recovery when arriving from the
+  // Recovery Projects tab's "New Project" link (app/(app)/projects/
+  // new/page.tsx reads ?recovery=true) — unticked otherwise.
+  defaultRecovery?: boolean;
 }
 
 const initialState: ProjectFormState = { error: null };
@@ -72,6 +76,7 @@ export function ProjectForm({
   products,
   documentTypes,
   defaultCurrency,
+  defaultRecovery,
 }: ProjectFormProps) {
   const router = useRouter();
 
@@ -105,7 +110,7 @@ export function ProjectForm({
   );
   const [matchedContactId, setMatchedContactId] = useState<string | null>(project?.matched_contact_id ?? null);
   const [ratioReal, setRatioReal] = useState(project?.ratio_real ?? "");
-  const [isRecovery, setIsRecovery] = useState(project?.is_recovery ?? false);
+  const [isRecovery, setIsRecovery] = useState(project?.is_recovery ?? defaultRecovery ?? false);
   // Tracked only to drive the live spelled-out amount below the field —
   // the field itself still reads out of FormData on submit like every
   // other field on this form, same as before MoneyInput existed.

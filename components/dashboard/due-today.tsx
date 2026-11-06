@@ -6,6 +6,7 @@ import Link from "next/link";
 import { setProjectStepDone } from "@/lib/actions/project-steps";
 import { setNoteReminderDone } from "@/lib/actions/notes";
 import { DueDateBadge } from "@/components/projects/due-date-badge";
+import { RecoveryBadge } from "@/components/projects/badges";
 
 export interface DueItem {
   id: string;
@@ -19,6 +20,10 @@ export interface DueItem {
   // Only steps need this — setProjectStepDone takes the owning project
   // id as well as the step id; setNoteReminderDone only needs the note.
   projectId?: string;
+  // True only when this item is tied to a project (every step is; a
+  // note is only when project-linked) and that project is a recovery
+  // one — never set for a contact-linked or unlinked note reminder.
+  isRecovery?: boolean;
 }
 
 const KIND_LABEL: Record<DueItem["kind"], string> = {
@@ -80,6 +85,7 @@ export function DueTodayAndOverdue({ items }: { items: DueItem[] }) {
               <span className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
                 {KIND_LABEL[item.kind]}
               </span>
+              {item.isRecovery && <RecoveryBadge />}
             </div>
             <Link href={item.href} className="text-sm text-white/85 hover:text-white">
               {item.body}

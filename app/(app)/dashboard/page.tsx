@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Layers, RotateCcw } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
+import { RecoveryBadge } from "@/components/projects/badges";
 import { DueTodayAndOverdue, type DueItem } from "@/components/dashboard/due-today";
 import { createClient } from "@/lib/supabase/server";
 import { dateKeyInTimeZone, formatDateTime } from "@/lib/format";
@@ -105,6 +106,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   // included).
   const todayKey = dateKeyInTimeZone(new Date().toISOString());
   const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
+  const projectIsRecoveryById = new Map(projects.map((p) => [p.id, p.is_recovery]));
 
   let dueItems: DueItem[] = [];
   if (projects.length > 0) {
@@ -130,6 +132,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       body: step.body,
       dueDate: step.due_date,
       href: `/projects/${step.project_id}`,
+      isRecovery: projectIsRecoveryById.get(step.project_id),
     }));
   }
 
@@ -177,6 +180,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         : note.contact_id
           ? `/receivers/${note.contact_id}`
           : `/notes/${note.id}/edit`,
+      isRecovery: note.project_id ? projectIsRecoveryById.get(note.project_id) : undefined,
     }));
 
   dueItems = [...dueItems, ...noteDueItems].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
@@ -195,12 +199,17 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     danger: "border-red-500/25 bg-red-500/10 text-red-300",
   };
 
+  // Projects and Recovery Projects are now separate tabs over the same
+  // `projects` table (is_recovery) — these two cards partition "open"
+  // the same way, instead of one counting everyone and the other just
+  // a subset of it.
+  const openNonRecoveryCount = openProjects.filter((project) => !project.is_recovery).length;
   const openRecoveryCount = openProjects.filter((project) => project.is_recovery).length;
 
   const STATS = [
     {
-      label: "Total Open Projects",
-      value: openProjects.length,
+      label: "Open Projects",
+      value: openNonRecoveryCount,
       icon: Layers,
       tone: "text-white",
       href: "/projects",
@@ -217,7 +226,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       value: openRecoveryCount,
       icon: RotateCcw,
       tone: "text-amber-300",
-      href: "/projects?recovery=true",
+      href: "/recovery",
     },
   ];
 
@@ -364,6 +373,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
                 >
                   <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
+                  {project.is_recovery && <RecoveryBadge />}
                   <span className="shrink-0 text-xs text-white/40">{formatDateTime(project.last_activity_at)}</span>
                 </Link>
               ))}

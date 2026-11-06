@@ -18,6 +18,10 @@ export interface SearchResult {
   // parent it's linked to (or nowhere, if unlinked).
   parentId?: string;
   parentType?: "project" | "contact";
+  // project results only — shown as a Recovery badge; the detail page
+  // it links to (searchResultHref below) is the same /projects/[id]
+  // either way, Projects and Recovery Projects being the same table.
+  isRecovery?: boolean;
 }
 
 const RESULT_LIMIT = 5;
@@ -40,11 +44,12 @@ interface ProjectFields {
   id: string;
   name: string;
   final_product: string | null;
+  is_recovery: boolean;
 }
 
 async function fetchProjectsByIds(supabase: SupabaseBrowserClient, ids: string[]): Promise<ProjectFields[]> {
   if (ids.length === 0) return [];
-  const { data } = await supabase.from("projects").select("id, name, final_product").in("id", ids);
+  const { data } = await supabase.from("projects").select("id, name, final_product, is_recovery").in("id", ids);
   return (data as ProjectFields[] | null) ?? [];
 }
 
@@ -153,7 +158,11 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
   // own name either.
   const [{ data: projectRows }, docParentProjects, noteParentProjects, noteParentContacts, intermediaryProjects, intermediaryReceivers] =
     await Promise.all([
-      supabase.from("projects").select("id, name, final_product").or(projectFilters.join(",")).limit(RESULT_LIMIT),
+      supabase
+        .from("projects")
+        .select("id, name, final_product, is_recovery")
+        .or(projectFilters.join(","))
+        .limit(RESULT_LIMIT),
       fetchProjectsByIds(supabase, [...new Set(projectDocMatches.map((d) => d.project_id))]),
       fetchProjectsByIds(supabase, noteProjectIds),
       fetchContactsByIds(supabase, noteContactIds),
@@ -178,6 +187,7 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
     id: project.id,
     title: project.name,
     subtitle: project.final_product ?? "Product not decided",
+    isRecovery: project.is_recovery,
   }));
 
   const contactResults: SearchResult[] = [...contactMatches, ...intermediaryContactMatches].map((contact) => ({
