@@ -10,6 +10,11 @@ import { ProductOptionsPicker } from "@/components/projects/product-options-pick
 import { StagedDocumentPicker, type StagedDocument } from "@/components/projects/staged-document-picker";
 import { DuplicateWarningBanner } from "@/components/duplicate-warning-banner";
 import {
+  IntermediaryChainEditor,
+  type IntermediaryChainEntry,
+  type IntermediaryPickerOption,
+} from "@/components/projects/intermediary-chain-editor";
+import {
   addProjectDocument,
   createProjectWithId,
   findDuplicateProjects,
@@ -19,6 +24,7 @@ import {
 } from "@/lib/actions/projects";
 import { getContactProductRatio, getContactProductRatios, quickCreateContact } from "@/lib/actions/contacts";
 import { quickCreatePerson } from "@/lib/actions/people";
+import { getReceiverIntermediaryPersonIds } from "@/lib/actions/intermediaries";
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
@@ -31,6 +37,10 @@ interface ProjectFormProps {
   project?: Project;
   // Edit mode only — the project's current product options.
   projectProducts?: ProjectProduct[];
+  // Edit mode only — the project's current intermediary chain, in
+  // order, including archived people already in it (see AGENTS.md's
+  // Archived note) — lib/intermediaries.ts's getProjectIntermediaryChain.
+  projectIntermediaries?: IntermediaryChainEntry[];
   // UI: Receivers (see AGENTS.md's UI-naming-vs-database-naming note)
   // — the "Matched With" field's options.
   receivers: EntityOption[];
@@ -56,6 +66,7 @@ export function ProjectForm({
   mode,
   project,
   projectProducts = [],
+  projectIntermediaries = [],
   receivers,
   people,
   products,
@@ -105,6 +116,52 @@ export function ProjectForm({
   const totalFaceValueWords = totalFaceValueText.trim()
     ? amountInWords(Number(totalFaceValueText), selectedCurrency)
     : "";
+
+  // ---- Intermediary chain (staged locally, submitted on save) -------
+  const [intermediaries, setIntermediaries] = useState<IntermediaryChainEntry[]>(projectIntermediaries);
+  // The matched receiver's own intermediaries, refetched live as
+  // matchedContactId changes — reordered to the front of the "add"
+  // picker below, same idea as the ratio auto-fill effect above.
+  const [receiverIntermediaryIds, setReceiverIntermediaryIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      if (!matchedContactId) {
+        if (!cancelled) setReceiverIntermediaryIds(new Set());
+        return;
+      }
+      const ids = await getReceiverIntermediaryPersonIds(matchedContactId);
+      if (!cancelled) setReceiverIntermediaryIds(new Set(ids));
+    }
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [matchedContactId]);
+
+  const intermediaryPickerOptions: IntermediaryPickerOption[] = [
+    ...people.filter((p) => receiverIntermediaryIds.has(p.id)),
+    ...people.filter((p) => !receiverIntermediaryIds.has(p.id)),
+  ];
+  const matchedReceiverLabel = receivers.find((r) => r.id === matchedContactId)?.label ?? null;
+
+  function addIntermediary(option: IntermediaryPickerOption) {
+    setIntermediaries((prev) => [...prev, { key: option.id, personId: option.id, label: option.label }]);
+  }
+  function removeIntermediary(personId: string) {
+    setIntermediaries((prev) => prev.filter((e) => e.personId !== personId));
+  }
+  function moveIntermediary(personId: string, direction: "up" | "down") {
+    setIntermediaries((prev) => {
+      const index = prev.findIndex((e) => e.personId === personId);
+      const swapWith = direction === "up" ? index - 1 : index + 1;
+      if (index === -1 || swapWith < 0 || swapWith >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[swapWith]] = [next[swapWith], next[index]];
+      return next;
+    });
+  }
+
   type AutoFillMessage =
     | { tone: "filled"; text: string }
     | { tone: "differs"; contactName: string; productType: string; theirRatio: string; currentRatio: string }
@@ -376,10 +433,33 @@ export function ProjectForm({
           />
         </div>
 
+        <div className="sm:col-span-2">
+          <label className={labelClass}>Intermediary Chain</label>
+          <IntermediaryChainEditor
+            entries={intermediaries}
+            receiverLabel={matchedReceiverLabel}
+            pickerOptions={intermediaryPickerOptions}
+            onAdd={addIntermediary}
+            onRemove={removeIntermediary}
+            onMoveUp={(personId) => moveIntermediary(personId, "up")}
+            onMoveDown={(personId) => moveIntermediary(personId, "down")}
+            submitAsHiddenFields
+            onQuickCreate={async (name) => {
+              const result = await quickCreatePerson({ name });
+              return {
+                option: result.person
+                  ? { id: result.person.id, label: [result.person.first_name, result.person.last_name].filter(Boolean).join(" ") }
+                  : null,
+                error: result.error,
+              };
+            }}
+          />
+        </div>
+
         <div>
           <EntityPicker
             name="contact_person_id"
-            label="Contact Person"
+            label="Contact Person Project"
             options={people}
             defaultId={project?.contact_person_id}
             entityNoun="contact"

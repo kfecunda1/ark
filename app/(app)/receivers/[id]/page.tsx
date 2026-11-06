@@ -7,6 +7,7 @@ import { ArchiveToggleButton } from "@/components/archive-toggle-button";
 import { ReceiverProductsSection } from "@/components/receivers/receiver-products-section";
 import { ReceiverDocuments } from "@/components/receivers/receiver-documents";
 import { ReceiverNotesSection } from "@/components/receivers/receiver-notes-section";
+import { ReceiverIntermediariesSection } from "@/components/receivers/receiver-intermediaries-section";
 import { DeleteReceiverButton } from "@/components/receivers/delete-receiver-button";
 import { ContactPersonSelect } from "@/components/contact-person-select";
 import { createClient } from "@/lib/supabase/server";
@@ -14,6 +15,8 @@ import { isCurrentUserAdmin } from "@/lib/auth";
 import { getActiveProducts } from "@/lib/products";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { getProjectProductsByProjectIds, displayProduct } from "@/lib/project-products";
+import { getReceiverIntermediaries } from "@/lib/intermediaries";
+import { personLabel } from "@/lib/people";
 import type { Contact, ContactDocument, ContactProduct, Note, Person, Project } from "@/lib/types";
 
 interface ReceiverDetailPageProps {
@@ -45,6 +48,7 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
     availableProducts,
     documentTypes,
     isAdmin,
+    intermediaries,
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -62,6 +66,7 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
     getActiveProducts(),
     getActiveDocumentTypes(),
     isCurrentUserAdmin(),
+    getReceiverIntermediaries(id),
   ]);
 
   // The query above already scopes to matched_contact_id = this
@@ -74,6 +79,7 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
   const documents = (documentsData as ContactDocument[] | null) ?? [];
   const notes = (notesData as Note[] | null) ?? [];
   const allPeople = (allPeopleData as Pick<Person, "id" | "first_name" | "last_name" | "archived_at">[] | null) ?? [];
+  const intermediaryPickerOptions = allPeople.map((p) => ({ id: p.id, label: personLabel(p) }));
   const contactPerson = contact.contact_person_id
     ? ((
         await supabase
@@ -170,6 +176,17 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Products & Ratios</h2>
         <ReceiverProductsSection contactId={contact.id} products={products} availableProducts={availableProducts} />
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Intermediaries</h2>
+        <GlassCard interactive={false} className="p-6">
+          <ReceiverIntermediariesSection
+            receiverId={contact.id}
+            intermediaries={intermediaries}
+            pickerOptions={intermediaryPickerOptions}
+          />
+        </GlassCard>
       </div>
 
       <div className="mt-6">

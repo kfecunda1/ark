@@ -19,8 +19,8 @@ export const ACTIVITY_FILTER_LABELS: Record<ActivityFilter, string> = {
 };
 
 export const ACTIVITY_FILTER_ENTITY_TYPES: Record<ActivityFilter, ActivityEntityType[]> = {
-  project: ["project", "project_step", "project_product"],
-  contact: ["contact", "contact_product"],
+  project: ["project", "project_step", "project_product", "project_intermediary"],
+  contact: ["contact", "contact_product", "receiver_intermediary"],
   document: ["project_document", "contact_document"],
 };
 
@@ -46,6 +46,8 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   project_product: "Product option",
   note: "Note",
   person: "Contact",
+  receiver_intermediary: "Receiver intermediary",
+  project_intermediary: "Project intermediary",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -63,7 +65,9 @@ export function isDocumentEntity(entityType: ActivityEntityType): boolean {
     entityType === "contact_document" ||
     entityType === "project_step" ||
     entityType === "project_product" ||
-    entityType === "note"
+    entityType === "note" ||
+    entityType === "receiver_intermediary" ||
+    entityType === "project_intermediary"
   );
 }
 
@@ -122,7 +126,13 @@ const FIELD_LABELS: Record<string, string> = {
   email: "email",
 };
 
-export function fieldLabel(field: string): string {
+// contact_person_id is shared by both contacts and projects (same
+// column name, same generic "fields changed" chip), but the label
+// differs: the Project side is "Contact Person Project" everywhere
+// else in the UI, while the Receiver's own stays plain "Contact
+// person" — entityType picks which one a given activity row means.
+export function fieldLabel(field: string, entityType?: ActivityEntityType): string {
+  if (field === "contact_person_id" && entityType === "project") return "contact person project";
   return FIELD_LABELS[field] ?? field.replace(/_/g, " ");
 }
 
@@ -267,9 +277,16 @@ export function activityDetailChips(row: ActivityLog): string[] {
     chips.push(details.reminder_done[1] ? "reminder done" : "reminder reopened");
   }
 
+  // project_intermediary's only UPDATE is a reorder (position moving);
+  // receiver_intermediary never updates (only created/deleted), so
+  // details.position is always a scalar there, never reached here.
+  if (Array.isArray(details.position)) {
+    chips.push(`moved position ${details.position[0]} -> ${details.position[1]}`);
+  }
+
   const rest = (details.fields ?? []).filter((f) => !FIELDS_DESCRIBED_SEPARATELY.has(f));
   if (rest.length > 0) {
-    chips.push(`${rest.map(fieldLabel).join(", ")} changed`);
+    chips.push(`${rest.map((f) => fieldLabel(f, row.entity_type)).join(", ")} changed`);
   }
 
   return chips;
@@ -292,9 +309,11 @@ export function activityTarget(row: ActivityLog): ActivityTarget | null {
     case "project_document":
     case "project_step":
     case "project_product":
+    case "project_intermediary":
       return row.details?.parent_id ? { table: "projects", id: row.details.parent_id } : null;
     case "contact_product":
     case "contact_document":
+    case "receiver_intermediary":
       return row.details?.parent_id ? { table: "contacts", id: row.details.parent_id } : null;
     // A note's parent is either a project or a contact (or neither),
     // chosen dynamically per row instead of being fixed by entity_type.

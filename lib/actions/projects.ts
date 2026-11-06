@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getContactProductRatio } from "@/lib/actions/contacts";
 import { STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
 import { parseMoneyFormValue } from "@/lib/money";
+import { syncProjectIntermediaries } from "@/lib/intermediaries";
 import type { Currency, ProjectDocumentType, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
 
 export interface ProjectFormState {
@@ -81,6 +82,19 @@ function parseProductOptions(formData: FormData): string[] {
   return unique;
 }
 
+// The create/edit form's "Intermediary chain" picker (components/
+// projects/intermediary-chain-editor.tsx) stages its order purely
+// locally and submits it as repeated, already-ordered hidden fields —
+// unlike product_options, duplicates can't occur (the picker excludes
+// anyone already in the chain) and there's no 1-3 cap, so no extra
+// validation is needed beyond trimming/filtering blanks.
+function parseIntermediaryPersonIds(formData: FormData): string[] {
+  return formData
+    .getAll("intermediary_person_ids")
+    .map((v) => v.toString().trim())
+    .filter(Boolean);
+}
+
 // Returns the new project's id instead of redirecting, so the caller can
 // upload staged documents (which needs the project's id) before
 // navigating.
@@ -89,9 +103,11 @@ export async function createProjectWithId(
 ): Promise<{ id: string | null; error: string | null }> {
   let payload: ReturnType<typeof buildProjectPayload>;
   let products: string[];
+  let intermediaryPersonIds: string[];
   try {
     payload = buildProjectPayload(formData);
     products = parseProductOptions(formData);
+    intermediaryPersonIds = parseIntermediaryPersonIds(formData);
   } catch (err) {
     return { id: null, error: err instanceof Error ? err.message : "Invalid form data." };
   }
@@ -136,6 +152,21 @@ export async function createProjectWithId(
         .eq("id", projectId);
       if (finalError) {
         return { id: null, error: finalError.message };
+      }
+    }
+
+    if (intermediaryPersonIds.length > 0) {
+      const intermediariesResult = await syncProjectIntermediaries(
+        supabase,
+        projectId,
+        payload.matched_contact_id,
+        intermediaryPersonIds
+      );
+      if (intermediariesResult.error) {
+        // Same "don't leave an invalid/half-finished project behind"
+        // reasoning as the product-options failure above.
+        await supabase.from("projects").delete().eq("id", projectId);
+        return { id: null, error: intermediariesResult.error };
       }
     }
 
@@ -218,9 +249,11 @@ export async function updateProject(
 ): Promise<ProjectFormState> {
   let payload: ReturnType<typeof buildProjectPayload>;
   let products: string[];
+  let intermediaryPersonIds: string[];
   try {
     payload = buildProjectPayload(formData);
     products = parseProductOptions(formData);
+    intermediaryPersonIds = parseIntermediaryPersonIds(formData);
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Invalid form data." };
   }
@@ -240,6 +273,16 @@ export async function updateProject(
     const syncResult = await syncProjectProducts(supabase, id, products);
     if (syncResult.error) {
       return { error: syncResult.error };
+    }
+
+    const intermediariesResult = await syncProjectIntermediaries(
+      supabase,
+      id,
+      payload.matched_contact_id,
+      intermediaryPersonIds
+    );
+    if (intermediariesResult.error) {
+      return { error: intermediariesResult.error };
     }
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };

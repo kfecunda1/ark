@@ -52,6 +52,7 @@ interface ProjectsPageProps {
     stage?: string;
     status?: string;
     recovery?: string;
+    intermediary?: string;
     sort?: string;
     dir?: string;
     archived?: string;
@@ -86,8 +87,8 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
   const products = await getAllProducts();
   const projectProductsByProjectId = await getProjectProductsByProjectIds(projects.map((p) => p.id));
 
-  // Optional "Contact Person" column — only fetched for the people
-  // actually linked to a project on this page.
+  // Optional "Contact Person Project" column — only fetched for the
+  // people actually linked to a project on this page.
   const contactPersonIds = [...new Set(projects.map((p) => p.contact_person_id).filter((id): id is string => Boolean(id)))];
   const { data: contactPeopleData } =
     contactPersonIds.length > 0
@@ -106,6 +107,35 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
     projects = projects.filter((p) =>
       countedProducts(p.final_product, projectProductsByProjectId.get(p.id) ?? []).includes(params.product_type!)
     );
+  }
+
+  // "Intermediary" filter — every person who appears in at least one
+  // project's intermediary chain, system-wide (not just among the
+  // projects already on this page, same "every product, not just the
+  // ones in use here" reasoning the product filter's own options
+  // list follows), plus which projects each one maps to for filtering.
+  const { data: allIntermediariesData } = await supabase.from("project_intermediaries").select("project_id, person_id");
+  const allIntermediaries = (allIntermediariesData as { project_id: string; person_id: string }[] | null) ?? [];
+  const projectIdsByIntermediaryPerson = new Map<string, Set<string>>();
+  for (const row of allIntermediaries) {
+    const set = projectIdsByIntermediaryPerson.get(row.person_id) ?? new Set<string>();
+    set.add(row.project_id);
+    projectIdsByIntermediaryPerson.set(row.person_id, set);
+  }
+  const intermediaryPersonIds = [...projectIdsByIntermediaryPerson.keys()];
+  const { data: intermediaryPeopleData } =
+    intermediaryPersonIds.length > 0
+      ? await supabase.from("people").select("id, first_name, last_name, archived_at").in("id", intermediaryPersonIds)
+      : { data: [] };
+  const intermediaryFilterOptions = (
+    (intermediaryPeopleData as Pick<Person, "id" | "first_name" | "last_name" | "archived_at">[] | null) ?? []
+  )
+    .map((p) => ({ id: p.id, label: personLabel(p) + (p.archived_at ? " (Archived)" : "") }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  if (params.intermediary) {
+    const allowedProjectIds = projectIdsByIntermediaryPerson.get(params.intermediary) ?? new Set<string>();
+    projects = projects.filter((p) => allowedProjectIds.has(p.id));
   }
 
   // Earliest open next step per project — "open" meaning not yet done.
@@ -157,7 +187,9 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
   const title = showArchived ? "Archived Projects" : "Projects";
   const subtitle = showArchived ? "Projects that have been archived." : "Track and manage incoming projects.";
   const emptyTitle = showArchived ? "No archived projects" : "No projects yet";
-  const filtered = Boolean(params.product_type || params.stage || params.status || params.recovery);
+  const filtered = Boolean(
+    params.product_type || params.stage || params.status || params.recovery || params.intermediary
+  );
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -177,7 +209,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Suspense>
-          <ProjectFilters products={products} />
+          <ProjectFilters products={products} intermediaries={intermediaryFilterOptions} />
           <MobileSortControl options={SORT_OPTIONS} currentSort={sort} currentDir={dir} />
         </Suspense>
       </div>
@@ -217,7 +249,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                   <SortableHeader sortKey="product" label="Product" currentSort={sort} currentDir={dir} />
                   <SortableHeader sortKey="stage" label="Stage" currentSort={sort} currentDir={dir} />
                   <SortableHeader sortKey="status" label="Status" currentSort={sort} currentDir={dir} />
-                  <th className="px-4 py-3 font-medium">Contact Person</th>
+                  <th className="px-4 py-3 font-medium">Contact Person Project</th>
                   <SortableHeader
                     sortKey="total_face_value"
                     label="Total Face Value"
@@ -332,7 +364,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                     {project.contact_person_id && (
                       <div>
                         <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
-                          Contact Person
+                          Contact Person Project
                         </dt>
                         <dd className="mt-0.5 text-white/70">
                           {contactPersonNameById.get(project.contact_person_id) ?? "—"}

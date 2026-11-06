@@ -168,11 +168,17 @@ export async function togglePersonArchived(id: string, archived: boolean): Promi
 // Admin-only (also enforced by the people_delete_admin RLS policy,
 // supabase/migrations/017_archive_receivers_people.sql). Blocked
 // outright while any project or receiver still links to this person as
-// its Contact Person — same "archive or unlink first" rule as
-// deleteContact in lib/actions/contacts.ts. A person has no products,
-// documents, or notes of its own to cascade-clean (both FKs into
-// `people` are ON DELETE SET NULL, never CASCADE), so this is a plain
-// delete once the link check clears.
+// its Contact Person, *or* while they're still an intermediary on any
+// receiver or project (supabase/migrations/018_intermediaries.sql) —
+// same "archive or unlink first" rule as deleteContact in lib/actions/
+// contacts.ts, now covering both kinds of link. Counts are deduped by
+// id (a person can be both the Contact Person *and* an intermediary
+// for the same receiver/project) rather than just summed, so the
+// message doesn't overstate how many are actually affected. A person
+// has no products, documents, or notes of its own to cascade-clean
+// (every FK into `people` is ON DELETE SET NULL or, for intermediaries,
+// ON DELETE RESTRICT — never CASCADE), so this is a plain delete once
+// every link check clears.
 export async function deletePerson(id: string): Promise<{ error: string | null }> {
   try {
     if (!(await isCurrentUserAdmin())) {
@@ -181,12 +187,28 @@ export async function deletePerson(id: string): Promise<{ error: string | null }
 
     const supabase = await createClient();
 
-    const [{ count: projectCount }, { count: receiverCount }] = await Promise.all([
-      supabase.from("projects").select("id", { count: "exact", head: true }).eq("contact_person_id", id),
-      supabase.from("contacts").select("id", { count: "exact", head: true }).eq("contact_person_id", id),
+    const [
+      { data: contactPersonProjects },
+      { data: contactPersonReceivers },
+      { data: intermediaryProjects },
+      { data: intermediaryReceivers },
+    ] = await Promise.all([
+      supabase.from("projects").select("id").eq("contact_person_id", id),
+      supabase.from("contacts").select("id").eq("contact_person_id", id),
+      supabase.from("project_intermediaries").select("project_id").eq("person_id", id),
+      supabase.from("receiver_intermediaries").select("receiver_id").eq("person_id", id),
     ]);
 
-    if ((projectCount ?? 0) > 0 || (receiverCount ?? 0) > 0) {
+    const projectCount = new Set([
+      ...((contactPersonProjects as { id: string }[] | null) ?? []).map((p) => p.id),
+      ...((intermediaryProjects as { project_id: string }[] | null) ?? []).map((p) => p.project_id),
+    ]).size;
+    const receiverCount = new Set([
+      ...((contactPersonReceivers as { id: string }[] | null) ?? []).map((r) => r.id),
+      ...((intermediaryReceivers as { receiver_id: string }[] | null) ?? []).map((r) => r.receiver_id),
+    ]).size;
+
+    if (projectCount > 0 || receiverCount > 0) {
       const parts: string[] = [];
       if (projectCount) parts.push(`${projectCount} project${projectCount === 1 ? "" : "s"}`);
       if (receiverCount) parts.push(`${receiverCount} receiver${receiverCount === 1 ? "" : "s"}`);

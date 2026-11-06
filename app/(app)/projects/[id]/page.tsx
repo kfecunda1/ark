@@ -11,12 +11,15 @@ import { TranchesSection } from "@/components/projects/tranches-section";
 import { MatchedReceiverSelect } from "@/components/projects/matched-receiver-select";
 import { ContactPersonSelect } from "@/components/contact-person-select";
 import { ProjectProductOptions } from "@/components/projects/project-product-options";
+import { ProjectIntermediariesSection } from "@/components/projects/project-intermediaries-section";
 import { RecoveryToggle } from "@/components/projects/recovery-toggle";
 import { ProjectTimeline } from "@/components/projects/project-timeline";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { formatDateTime } from "@/lib/format";
 import { amountInWords, formatMoney } from "@/lib/money";
+import { buildIntermediaryPickerOptions, getProjectIntermediaryChain } from "@/lib/intermediaries";
+import { getReceiverIntermediaryPersonIds } from "@/lib/actions/intermediaries";
 import type { Contact, Note, Person, Project, ProjectDocument, ProjectProduct, ProjectStep, ProjectTranche } from "@/lib/types";
 
 interface ProjectDetailPageProps {
@@ -65,6 +68,15 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   ]);
   const allContacts = (allContactsData as { id: string; full_name: string }[] | null) ?? [];
   const allPeople = (allPeopleData as Pick<Person, "id" | "first_name" | "last_name" | "archived_at">[] | null) ?? [];
+
+  const [intermediaryChain, receiverIntermediaryIds] = await Promise.all([
+    getProjectIntermediaryChain(project.id),
+    project.matched_contact_id ? getReceiverIntermediaryPersonIds(project.matched_contact_id) : Promise.resolve([]),
+  ]);
+  const intermediaryPickerOptions = buildIntermediaryPickerOptions(allPeople, new Set(receiverIntermediaryIds));
+  const matchedReceiverLabel = matchedContact
+    ? matchedContact.full_name + (matchedContact.archived_at ? " (Archived)" : "")
+    : null;
 
   const [
     { data: projectDocumentsData },
@@ -122,21 +134,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
 
   const fields: { label: string; value: React.ReactNode }[] = [
     {
-      label: "Matched With",
-      value: (
-        <MatchedReceiverSelect
-          projectId={project.id}
-          receivers={allContacts.map((c) => ({ id: c.id, label: c.full_name }))}
-          currentReceiver={
-            matchedContact
-              ? { id: matchedContact.id, label: matchedContact.full_name + (matchedContact.archived_at ? " (Archived)" : "") }
-              : null
-          }
-        />
-      ),
-    },
-    {
-      label: "Contact Person",
+      label: "Contact Person Project",
       value: (
         <ContactPersonSelect
           entityType="project"
@@ -234,6 +232,29 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             finalProduct={project.final_product}
             matchedContactId={project.matched_contact_id}
             isRecovery={project.is_recovery}
+          />
+        </GlassCard>
+      </div>
+
+      <div className="mb-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Matched With</h2>
+        <GlassCard interactive={false} className="p-6">
+          <MatchedReceiverSelect
+            projectId={project.id}
+            receivers={allContacts.map((c) => ({ id: c.id, label: c.full_name }))}
+            currentReceiver={matchedContact ? { id: matchedContact.id, label: matchedReceiverLabel! } : null}
+          />
+        </GlassCard>
+      </div>
+
+      <div className="mb-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Intermediary Chain</h2>
+        <GlassCard interactive={false} className="p-6">
+          <ProjectIntermediariesSection
+            projectId={project.id}
+            entries={intermediaryChain}
+            receiverLabel={matchedReceiverLabel}
+            pickerOptions={intermediaryPickerOptions}
           />
         </GlassCard>
       </div>

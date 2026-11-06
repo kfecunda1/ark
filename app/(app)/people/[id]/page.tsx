@@ -12,6 +12,18 @@ import { personLabel } from "@/lib/people";
 import { displayProduct, getProjectProductsByProjectIds } from "@/lib/project-products";
 import type { Contact, Person, Project } from "@/lib/types";
 
+interface IntermediaryReceiverRow {
+  id: string;
+  full_name: string;
+  archived_at: string | null;
+}
+
+interface IntermediaryProjectRow {
+  id: string;
+  name: string;
+  final_product: string | null;
+}
+
 interface PersonDetailPageProps {
   params: Promise<{ id: string }>;
 }
@@ -27,15 +39,46 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
     notFound();
   }
 
-  const [{ data: receiversData }, { data: projectsData }, isAdmin] = await Promise.all([
+  const [
+    { data: receiversData },
+    { data: projectsData },
+    isAdmin,
+    { data: receiverIntermediariesData },
+    { data: projectIntermediariesData },
+  ] = await Promise.all([
     supabase.from("contacts").select("id, full_name, archived_at").eq("contact_person_id", id).order("full_name"),
     supabase.from("projects").select("*").eq("contact_person_id", id).order("created_at", { ascending: false }),
     isCurrentUserAdmin(),
+    supabase.from("receiver_intermediaries").select("receiver_id").eq("person_id", id),
+    supabase.from("project_intermediaries").select("project_id").eq("person_id", id),
   ]);
 
   const linkedReceivers = (receiversData as Pick<Contact, "id" | "full_name" | "archived_at">[] | null) ?? [];
   const linkedProjects = (projectsData as Project[] | null) ?? [];
   const linkedProjectProductsById = await getProjectProductsByProjectIds(linkedProjects.map((p) => p.id));
+
+  const intermediaryReceiverIds = ((receiverIntermediariesData as { receiver_id: string }[] | null) ?? []).map(
+    (r) => r.receiver_id
+  );
+  const intermediaryProjectIds = ((projectIntermediariesData as { project_id: string }[] | null) ?? []).map(
+    (r) => r.project_id
+  );
+  const [{ data: intermediaryReceiversData }, { data: intermediaryProjectsData }] = await Promise.all([
+    intermediaryReceiverIds.length > 0
+      ? supabase.from("contacts").select("id, full_name, archived_at").in("id", intermediaryReceiverIds).order("full_name")
+      : Promise.resolve({ data: [] as IntermediaryReceiverRow[] }),
+    intermediaryProjectIds.length > 0
+      ? supabase.from("projects").select("id, name, final_product").in("id", intermediaryProjectIds).order("name")
+      : Promise.resolve({ data: [] as IntermediaryProjectRow[] }),
+  ]);
+  const intermediaryReceivers = (intermediaryReceiversData as IntermediaryReceiverRow[] | null) ?? [];
+  const intermediaryProjects = (intermediaryProjectsData as IntermediaryProjectRow[] | null) ?? [];
+
+  // Combined, deduped counts for the Delete button's pre-check below —
+  // a person can be both the Contact Person *and* an intermediary for
+  // the same receiver/project, which should still only count once.
+  const blockedReceiverCount = new Set([...linkedReceivers.map((r) => r.id), ...intermediaryReceiverIds]).size;
+  const blockedProjectCount = new Set([...linkedProjects.map((p) => p.id), ...intermediaryProjectIds]).size;
 
   const fields: { label: string; value: string }[] = [
     { label: "Phone", value: person.phone || "—" },
@@ -68,8 +111,8 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
             <DeletePersonButton
               personId={person.id}
               redirectTo="/people"
-              linkedProjectCount={linkedProjects.length}
-              linkedReceiverCount={linkedReceivers.length}
+              linkedProjectCount={blockedProjectCount}
+              linkedReceiverCount={blockedReceiverCount}
             />
           )}
         </div>
@@ -122,6 +165,46 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
                 <span className="shrink-0 text-xs text-white/35">
                   {displayProduct(project.final_product, linkedProjectProductsById.get(project.id) ?? []) ?? "—"}
                 </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Intermediary for Receivers</h2>
+        {intermediaryReceivers.length === 0 ? (
+          <p className="text-sm text-white/35">Not an intermediary for any Receiver.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {intermediaryReceivers.map((receiver) => (
+              <Link
+                key={receiver.id}
+                href={`/receivers/${receiver.id}`}
+                className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm text-white/80">{receiver.full_name}</span>
+                {receiver.archived_at && <ArchivedBadge />}
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Intermediary in Projects</h2>
+        {intermediaryProjects.length === 0 ? (
+          <p className="text-sm text-white/35">Not an intermediary in any Project.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {intermediaryProjects.map((project) => (
+              <Link
+                key={project.id}
+                href={`/projects/${project.id}`}
+                className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
+                <span className="shrink-0 text-xs text-white/35">{project.final_product ?? "Product not decided"}</span>
               </Link>
             ))}
           </div>

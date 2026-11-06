@@ -51,11 +51,12 @@ async function fetchProjectsByIds(supabase: SupabaseBrowserClient, ids: string[]
 interface ContactFields {
   id: string;
   full_name: string;
+  archived_at?: string | null;
 }
 
 async function fetchContactsByIds(supabase: SupabaseBrowserClient, ids: string[]): Promise<ContactFields[]> {
   if (ids.length === 0) return [];
-  const { data } = await supabase.from("contacts").select("id, full_name").in("id", ids);
+  const { data } = await supabase.from("contacts").select("id, full_name, archived_at").in("id", ids);
   return (data as ContactFields[] | null) ?? [];
 }
 
@@ -111,6 +112,26 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
       | { id: string; first_name: string; last_name: string | null; phone: string | null; email: string | null }[]
       | null) ?? [];
   const contactIds = contactMatches.map((c) => c.id);
+  const personIds = personMatches.map((p) => p.id);
+
+  // A person-name match also surfaces every receiver/project they're an
+  // intermediary on (supabase/migrations/018_intermediaries.sql) — same
+  // "a name match surfaces what it's linked to" idea as contactIds
+  // surfacing matched projects below.
+  const [intermediaryProjectIdsRes, intermediaryReceiverIdsRes] = await Promise.all([
+    personIds.length > 0
+      ? supabase.from("project_intermediaries").select("project_id").in("person_id", personIds)
+      : Promise.resolve({ data: [] as { project_id: string }[] }),
+    personIds.length > 0
+      ? supabase.from("receiver_intermediaries").select("receiver_id").in("person_id", personIds)
+      : Promise.resolve({ data: [] as { receiver_id: string }[] }),
+  ]);
+  const intermediaryProjectIds = [
+    ...new Set(((intermediaryProjectIdsRes.data as { project_id: string }[] | null) ?? []).map((r) => r.project_id)),
+  ];
+  const intermediaryReceiverIds = [
+    ...new Set(((intermediaryReceiverIdsRes.data as { receiver_id: string }[] | null) ?? []).map((r) => r.receiver_id)),
+  ];
 
   // "Matched with" is the only contact a project carries now
   // (supabase/migrations/013_projects_restructure.sql dropped
@@ -126,15 +147,31 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
 
   // Parent lookup for the Documents and Notes groups: a matched row's
   // project/contact may not itself match the text search above (only
-  // its own text did), so its display name needs its own fetch.
-  const [{ data: projectRows }, docParentProjects, noteParentProjects, noteParentContacts] = await Promise.all([
-    supabase.from("projects").select("id, name, final_product").or(projectFilters.join(",")).limit(RESULT_LIMIT),
-    fetchProjectsByIds(supabase, [...new Set(projectDocMatches.map((d) => d.project_id))]),
-    fetchProjectsByIds(supabase, noteProjectIds),
-    fetchContactsByIds(supabase, noteContactIds),
-  ]);
+  // its own text did), so its display name needs its own fetch. The
+  // same fetch-by-id helpers also pick up this person's intermediary
+  // projects/receivers, which never matched the text search on their
+  // own name either.
+  const [{ data: projectRows }, docParentProjects, noteParentProjects, noteParentContacts, intermediaryProjects, intermediaryReceivers] =
+    await Promise.all([
+      supabase.from("projects").select("id, name, final_product").or(projectFilters.join(",")).limit(RESULT_LIMIT),
+      fetchProjectsByIds(supabase, [...new Set(projectDocMatches.map((d) => d.project_id))]),
+      fetchProjectsByIds(supabase, noteProjectIds),
+      fetchContactsByIds(supabase, noteContactIds),
+      fetchProjectsByIds(supabase, intermediaryProjectIds),
+      fetchContactsByIds(supabase, intermediaryReceiverIds),
+    ]);
 
-  const projectMatches = (projectRows as ProjectFields[] | null) ?? [];
+  const textMatchedProjects = (projectRows as ProjectFields[] | null) ?? [];
+  const projectMatches = [
+    ...textMatchedProjects,
+    ...intermediaryProjects.filter((p) => !textMatchedProjects.some((r) => r.id === p.id)),
+  ];
+  // Same active-only rule as the text-search contactsRes query above —
+  // an archived receiver only reachable through this intermediary path
+  // shouldn't become a search result either.
+  const intermediaryContactMatches = intermediaryReceivers.filter(
+    (r) => !r.archived_at && !contactMatches.some((c) => c.id === r.id)
+  );
 
   const projectResults: SearchResult[] = projectMatches.map((project) => ({
     type: "project",
@@ -143,7 +180,7 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
     subtitle: project.final_product ?? "Product not decided",
   }));
 
-  const contactResults: SearchResult[] = contactMatches.map((contact) => ({
+  const contactResults: SearchResult[] = [...contactMatches, ...intermediaryContactMatches].map((contact) => ({
     type: "contact",
     id: contact.id,
     title: contact.full_name,

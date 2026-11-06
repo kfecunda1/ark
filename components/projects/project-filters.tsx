@@ -12,9 +12,13 @@ interface ProjectFiltersProps {
   // Every product, active or not — a project already set to a
   // since-hidden product must still be findable by filtering on it.
   products: Product[];
+  // Every person who is an intermediary on at least one project —
+  // archived people included (same "a since-hidden/archived value must
+  // still be findable by filtering on it" reasoning as products above).
+  intermediaries: { id: string; label: string }[];
 }
 
-export function ProjectFilters({ products }: ProjectFiltersProps) {
+export function ProjectFilters({ products, intermediaries }: ProjectFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -76,6 +80,22 @@ export function ProjectFilters({ products }: ProjectFiltersProps) {
         {STATUSES.map((status) => (
           <option key={status} value={status} className="bg-[#0a0e17]">
             {STATUS_LABELS[status]}
+          </option>
+        ))}
+      </select>
+
+      <select
+        aria-label="Filter by intermediary"
+        value={searchParams.get("intermediary") ?? ""}
+        onChange={(e) => setParam("intermediary", e.target.value)}
+        className={selectClass}
+      >
+        <option value="" className="bg-[#0a0e17]">
+          All intermediaries
+        </option>
+        {intermediaries.map((person) => (
+          <option key={person.id} value={person.id} className="bg-[#0a0e17]">
+            {person.label}
           </option>
         ))}
       </select>

@@ -87,6 +87,28 @@ export interface Person {
   archived_at: string | null;
 }
 
+// supabase/migrations/018_intermediaries.sql. Which `people` are an
+// intermediary for a given Receiver — an unordered set (shown on the
+// Receiver page with how many of its projects each one appears in),
+// unlike ProjectIntermediary below.
+export interface ReceiverIntermediary {
+  id: string;
+  receiver_id: string;
+  person_id: string;
+  created_at: string;
+}
+
+// supabase/migrations/018_intermediaries.sql. A project's own ordered
+// intermediary chain ("Name -> Name -> <Receiver>"), 1-based `position`
+// per project.
+export interface ProjectIntermediary {
+  id: string;
+  project_id: string;
+  person_id: string;
+  position: number;
+  created_at: string;
+}
+
 // One row per product a contact handles. Unique (contact_id,
 // product_type) — a contact has at most one ratio on record per
 // product.
@@ -275,7 +297,9 @@ export type ActivityEntityType =
   | "user"
   | "project_product"
   | "note"
-  | "person";
+  | "person"
+  | "receiver_intermediary"
+  | "project_intermediary";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
@@ -318,6 +342,11 @@ export interface ActivityDetails {
   // updated, matching the done convention above)
   is_reminder?: boolean;
   reminder_done?: [boolean, boolean];
+  // receiver_intermediary (scalar on created/deleted) and
+  // project_intermediary (scalar on created/deleted, a pair on
+  // updated — the only UPDATE either table gets is a reorder)
+  person_id?: string;
+  position?: number | [number, number];
 }
 
 export interface ActivityLog {

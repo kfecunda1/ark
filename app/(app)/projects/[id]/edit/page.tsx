@@ -3,6 +3,7 @@ import { ProjectForm } from "@/components/projects/project-form";
 import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
 import { getActiveDocumentTypes } from "@/lib/document-types";
+import { getProjectIntermediaryChain } from "@/lib/intermediaries";
 import { personLabel } from "@/lib/people";
 import type { Contact, Person, ProjectProduct } from "@/lib/types";
 
@@ -14,15 +15,23 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: project }, { data: receiversData }, { data: peopleData }, { data: projectProductsData }, products, documentTypes] =
-    await Promise.all([
-      supabase.from("projects").select("*").eq("id", id).maybeSingle(),
-      supabase.from("contacts").select("id, full_name, archived_at").order("full_name"),
-      supabase.from("people").select("id, first_name, last_name, archived_at").order("first_name"),
-      supabase.from("project_products").select("*").eq("project_id", id).order("sort_order"),
-      getAllProducts(),
-      getActiveDocumentTypes(),
-    ]);
+  const [
+    { data: project },
+    { data: receiversData },
+    { data: peopleData },
+    { data: projectProductsData },
+    products,
+    documentTypes,
+    projectIntermediaries,
+  ] = await Promise.all([
+    supabase.from("projects").select("*").eq("id", id).maybeSingle(),
+    supabase.from("contacts").select("id, full_name, archived_at").order("full_name"),
+    supabase.from("people").select("id, first_name, last_name, archived_at").order("first_name"),
+    supabase.from("project_products").select("*").eq("project_id", id).order("sort_order"),
+    getAllProducts(),
+    getActiveDocumentTypes(),
+    getProjectIntermediaryChain(id),
+  ]);
 
   if (!project) {
     notFound();
@@ -53,6 +62,7 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
         mode="edit"
         project={project}
         projectProducts={projectProducts}
+        projectIntermediaries={projectIntermediaries}
         receivers={receivers}
         people={people}
         products={products}
