@@ -5,8 +5,9 @@ import { RecoveryBadge } from "@/components/projects/badges";
 import { DueTodayAndOverdue, type DueItem } from "@/components/dashboard/due-today";
 import { createClient } from "@/lib/supabase/server";
 import { dateKeyInTimeZone, formatDateTime } from "@/lib/format";
-import { STAGES, STAGE_LABELS, isClosedStatus } from "@/lib/projects";
+import { STAGES, STAGE_LABELS } from "@/lib/projects";
 import { getAllProducts } from "@/lib/products";
+import { getAllStatuses, isClosedStatus } from "@/lib/statuses";
 import { countedProducts, getProjectProductsByProjectIds } from "@/lib/project-products";
 import { getAppSettings } from "@/lib/app-settings";
 import type { Project, ProjectStage } from "@/lib/types";
@@ -29,9 +30,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const { data, error } = await supabase.from("projects").select("*").is("archived_at", null);
   const projects = (data as Project[] | null) ?? [];
 
-  const openProjects = projects.filter((project) => !isClosedStatus(project.status));
-
-  const [products, appSettings] = await Promise.all([getAllProducts(), getAppSettings()]);
+  const [products, statuses, appSettings] = await Promise.all([
+    getAllProducts(),
+    getAllStatuses(),
+    getAppSettings(),
+  ]);
+  const statusByName = new Map(statuses.map((s) => [s.name, s]));
+  const openProjects = projects.filter((project) => !isClosedStatus(project.status, statuses));
   const STUCK_AFTER_MS = appSettings.stuck_after_days * 24 * 60 * 60 * 1000;
 
   const now = new Date();
@@ -63,7 +68,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       : null;
   }
   const completedThisMonth = projects.filter((project) => {
-    if (!isClosedStatus(project.status) || project.status !== "completed") return false;
+    if (!project.status || statusByName.get(project.status)?.kind !== "completed") return false;
     const changed = new Date(project.last_activity_at);
     return changed.getFullYear() === now.getFullYear() && changed.getMonth() === now.getMonth();
   }).length;
@@ -206,6 +211,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const openNonRecoveryCount = openProjects.filter((project) => !project.is_recovery).length;
   const openRecoveryCount = openProjects.filter((project) => project.is_recovery).length;
 
+  // Statuses are admin-managed now (no fixed "completed" slug to link
+  // to) — this points at whichever completed-kind status sorts first,
+  // same best-effort single-status link the old hard-coded href was.
+  const completedStatusName = statuses.find((s) => s.active && s.kind === "completed")?.name;
+
   const STATS = [
     {
       label: "Open Projects",
@@ -219,7 +229,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       value: completedThisMonth,
       icon: CheckCircle2,
       tone: "text-emerald-300",
-      href: "/projects?status=completed",
+      href: completedStatusName ? `/projects?status=${encodeURIComponent(completedStatusName)}` : "/projects",
     },
     {
       label: "Open Recovery Projects",

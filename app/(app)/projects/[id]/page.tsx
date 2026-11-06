@@ -16,6 +16,7 @@ import { SetProjectSection } from "@/components/projects/set-project-section";
 import { RecoveryToggle } from "@/components/projects/recovery-toggle";
 import { ProjectTimeline } from "@/components/projects/project-timeline";
 import { createClient } from "@/lib/supabase/server";
+import { getAllStatuses } from "@/lib/statuses";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { formatDateTime } from "@/lib/format";
 import { amountInWords, formatMoney } from "@/lib/money";
@@ -86,6 +87,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     { data: notesData },
     { data: projectProductsData },
     documentTypes,
+    statuses,
   ] = await Promise.all([
     supabase.from("project_documents").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
     supabase.from("project_tranches").select("*").eq("project_id", project.id).order("tranche_number"),
@@ -93,6 +95,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     supabase.from("notes").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
     supabase.from("project_products").select("*").eq("project_id", project.id).order("sort_order"),
     getActiveDocumentTypes(),
+    getAllStatuses(),
   ]);
   const projectDocuments = (projectDocumentsData as ProjectDocument[] | null) ?? [];
   const tranches = (tranchesData as ProjectTranche[] | null) ?? [];
@@ -224,7 +227,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <PriorityBadge priority={project.priority} />
         <StageSelect projectId={project.id} currentStage={project.stage} />
-        <StatusSelect projectId={project.id} currentStatus={project.status} />
+        <StatusSelect projectId={project.id} currentStatus={project.status} statuses={statuses} />
         <RecoveryToggle projectId={project.id} isRecovery={project.is_recovery} />
       </div>
 

@@ -18,14 +18,35 @@ export interface Product {
 
 export type ProjectStage = "new" | "documents_received" | "match" | "status";
 
-export type ProjectStatus =
-  | "open"
-  | "with_receiver"
-  | "with_sender"
-  | "waiting"
-  | "in_process"
-  | "completed"
-  | "lost";
+// Was a fixed literal union; now admin-managed data (supabase/
+// migrations/019_statuses.sql's `statuses` table, see lib/statuses.ts)
+// — any current status name is valid, so this is just `string` now.
+export type ProjectStatus = string;
+
+// The fixed ~8-value badge-color palette a status can be assigned —
+// see components/projects/badges.tsx's STATUS_COLOR_STYLES for what
+// each one actually looks like.
+export type StatusColor = "accent" | "cyan" | "teal" | "silver" | "sky" | "emerald" | "amber" | "rose";
+
+// One row of the `statuses` table (Settings → Statuses, admin only).
+// Same hide-don't-delete behavior as Product: hiding a status sets
+// active = false rather than deleting it, so existing projects that
+// reference it keep displaying and filtering correctly — only *new*
+// entries stop offering it. `kind` is what every "is this project
+// open/completed/lost?" check (the dashboard's open/stuck/completed
+// counts, isClosedStatus) now reads, instead of comparing against a
+// hard-coded status name — a status can be renamed freely without
+// breaking that logic.
+export interface StatusRecord {
+  id: string;
+  name: string;
+  kind: "open" | "completed" | "lost";
+  color: StatusColor;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export type ProjectPriority = "low" | "medium" | "high" | "urgent";
 
@@ -299,7 +320,8 @@ export type ActivityEntityType =
   | "note"
   | "person"
   | "receiver_intermediary"
-  | "project_intermediary";
+  | "project_intermediary"
+  | "status";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 

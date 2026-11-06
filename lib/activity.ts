@@ -1,5 +1,5 @@
 import { LOCALE, TIME_ZONE, dateKeyInTimeZone } from "@/lib/format";
-import { PRIORITY_LABELS, STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
+import { PRIORITY_LABELS, STAGE_LABELS } from "@/lib/projects";
 import type { ActivityAction, ActivityDetails, ActivityEntityType, ActivityLog } from "@/lib/types";
 
 // The three buckets the Activity page filters by. "document" covers
@@ -48,6 +48,7 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   person: "Contact",
   receiver_intermediary: "Receiver intermediary",
   project_intermediary: "Project intermediary",
+  status: "Status",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -103,9 +104,10 @@ const FIELD_LABELS: Record<string, string> = {
   body: "text",
   due_date: "due date",
   done: "done",
-  // products / document_types / app_settings
+  // products / document_types / statuses / app_settings
   active: "active",
   sort_order: "order",
+  color: "color",
   default_currency: "default currency",
   stuck_after_days: "stuck after (days)",
   // users
@@ -175,11 +177,12 @@ function transition<T extends string>(pair: [T, T], labels: Record<T, string>): 
 
 // status's pair can have a null side (a project's very first status, or
 // one cleared by moving back out of the Status stage), unlike stage/
-// priority which are never null — so this can't reuse the generic
-// transition() above without widening labels to accept a null key too.
+// priority which are never null. Unlike those two, there's no label
+// lookup here either: a project's status column now holds the admin-
+// configured status's own display name directly (supabase/migrations/
+// 019_statuses.sql), not a slug that needs translating.
 function statusTransition(pair: [string | null, string | null]): string {
-  const label = (value: string | null) => (value ? (STATUS_LABELS as Record<string, string>)[value] ?? value : "—");
-  return `${label(pair[0])} -> ${label(pair[1])}`;
+  return `${pair[0] ?? "—"} -> ${pair[1] ?? "—"}`;
 }
 
 /**

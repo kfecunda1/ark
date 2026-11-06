@@ -1,6 +1,7 @@
 import { ProjectForm } from "@/components/projects/project-form";
 import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
+import { getAllStatuses } from "@/lib/statuses";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { getAppSettings } from "@/lib/app-settings";
 import { personLabel } from "@/lib/people";
@@ -13,13 +14,15 @@ interface NewProjectPageProps {
 export default async function NewProjectPage({ searchParams }: NewProjectPageProps) {
   const { recovery } = await searchParams;
   const supabase = await createClient();
-  const [{ data: receiversData }, { data: peopleData }, products, documentTypes, appSettings] = await Promise.all([
-    supabase.from("contacts").select("id, full_name").is("archived_at", null).order("full_name"),
-    supabase.from("people").select("id, first_name, last_name").is("archived_at", null).order("first_name"),
-    getAllProducts(),
-    getActiveDocumentTypes(),
-    getAppSettings(),
-  ]);
+  const [{ data: receiversData }, { data: peopleData }, products, statuses, documentTypes, appSettings] =
+    await Promise.all([
+      supabase.from("contacts").select("id, full_name").is("archived_at", null).order("full_name"),
+      supabase.from("people").select("id, first_name, last_name").is("archived_at", null).order("first_name"),
+      getAllProducts(),
+      getAllStatuses(),
+      getActiveDocumentTypes(),
+      getAppSettings(),
+    ]);
 
   const receivers = (receiversData ?? []).map((r) => ({ id: r.id, label: r.full_name }));
   const people = ((peopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? []).map((p) => ({
@@ -44,6 +47,7 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
         receivers={receivers}
         people={people}
         products={products}
+        statuses={statuses}
         documentTypes={documentTypes}
         defaultCurrency={appSettings.default_currency}
         defaultRecovery={defaultRecovery}

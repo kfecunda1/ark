@@ -11,13 +11,14 @@ import { DueDateBadge } from "@/components/projects/due-date-badge";
 import { SortableHeader, MobileSortControl, type SortOption } from "@/components/sort-controls";
 import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
+import { getAllStatuses } from "@/lib/statuses";
 import { getProjectProductsByProjectIds, countedProducts, displayProduct } from "@/lib/project-products";
 import { compareNullsLast, parseSortDirection } from "@/lib/sort";
 import { formatDateTime } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
-import { STAGES, STATUSES } from "@/lib/projects";
+import { STAGES } from "@/lib/projects";
 import { personLabel } from "@/lib/people";
-import type { Person, Project, ProjectStatus, ProjectStep } from "@/lib/types";
+import type { Person, Project, ProjectStep } from "@/lib/types";
 
 const PROJECT_SORT_KEYS = [
   "name",
@@ -91,7 +92,8 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
   const { data: projectsData, error } = await query.order("created_at", { ascending: false });
   let projects = (projectsData as Project[] | null) ?? [];
 
-  const products = await getAllProducts();
+  const [products, statuses] = await Promise.all([getAllProducts(), getAllStatuses()]);
+  const statusByName = new Map(statuses.map((s) => [s.name, s]));
   const projectProductsByProjectId = await getProjectProductsByProjectIds(projects.map((p) => p.id));
 
   // Optional "Contact Person Project" column — only fetched for the
@@ -177,7 +179,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
       case "stage":
         return STAGES.indexOf(project.stage);
       case "status":
-        return project.status ? STATUSES.indexOf(project.status as ProjectStatus) : null;
+        return project.status ? statusByName.get(project.status)?.sort_order ?? null : null;
       case "total_face_value":
         return project.total_face_value;
       case "next_step_due":
@@ -226,7 +228,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Suspense>
-          <ProjectFilters products={products} intermediaries={intermediaryFilterOptions} />
+          <ProjectFilters products={products} statuses={statuses} intermediaries={intermediaryFilterOptions} />
           <MobileSortControl options={SORT_OPTIONS} currentSort={sort} currentDir={dir} />
         </Suspense>
       </div>
@@ -319,7 +321,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                         <StageBadge stage={project.stage} />
                       </td>
                       <td className="px-4 py-3">
-                        <StatusSelect projectId={project.id} currentStatus={project.status} />
+                        <StatusSelect projectId={project.id} currentStatus={project.status} statuses={statuses} />
                       </td>
                       <td className="px-4 py-3 text-white/70">
                         {project.contact_person_id ? contactPersonNameById.get(project.contact_person_id) ?? "—" : "—"}
@@ -377,7 +379,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                     <div>
                       <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Status</dt>
                       <dd className="mt-0.5">
-                        <StatusSelect projectId={project.id} currentStatus={project.status} />
+                        <StatusSelect projectId={project.id} currentStatus={project.status} statuses={statuses} />
                       </dd>
                     </div>
                     {project.contact_person_id && (

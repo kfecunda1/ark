@@ -3,8 +3,19 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateProjectStatus } from "@/lib/actions/projects";
-import { STATUSES, STATUS_LABELS } from "@/lib/projects";
-import type { ProjectStatus } from "@/lib/types";
+import { STATUS_DOT_COLORS } from "@/components/projects/badges";
+import type { ProjectStatus, StatusRecord } from "@/lib/types";
+
+interface StatusSelectProps {
+  projectId: string;
+  currentStatus: ProjectStatus | null;
+  // The full roster (admin and hidden statuses included) — this project's
+  // own current value keeps showing even if it's since been hidden (same
+  // "existing entries keep displaying/filtering correctly" rule every
+  // other admin-managed picker in this app follows), while the option
+  // list itself only offers active ones to pick something *new*.
+  statuses: StatusRecord[];
+}
 
 // Always visible and always usable, regardless of the project's current
 // stage — picking any real status here moves the project into the
@@ -13,13 +24,7 @@ import type { ProjectStatus } from "@/lib/types";
 // Status stage), the select shows a disabled placeholder instead of
 // defaulting to a real option, so it can't look like a status is
 // already set when none has actually been chosen.
-export function StatusSelect({
-  projectId,
-  currentStatus,
-}: {
-  projectId: string;
-  currentStatus: ProjectStatus | null;
-}) {
+export function StatusSelect({ projectId, currentStatus, statuses }: StatusSelectProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -40,13 +45,19 @@ export function StatusSelect({
     });
   }
 
+  const options = statuses
+    .filter((s) => s.active || s.name === currentStatus)
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const currentColor = statuses.find((s) => s.name === currentStatus)?.color;
+
   return (
     <div className="flex items-center gap-2">
+      {currentColor && <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT_COLORS[currentColor]}`} />}
       <select
         aria-label="Change status"
         value={currentStatus ?? ""}
         disabled={isPending}
-        onChange={(e) => handleChange(e.target.value as ProjectStatus)}
+        onChange={(e) => handleChange(e.target.value)}
         className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
       >
         {currentStatus === null && (
@@ -54,9 +65,9 @@ export function StatusSelect({
             Set status…
           </option>
         )}
-        {STATUSES.map((status) => (
-          <option key={status} value={status} className="bg-[#0a0e17]">
-            {STATUS_LABELS[status]}
+        {options.map((s) => (
+          <option key={s.name} value={s.name} className="bg-[#0a0e17]">
+            {s.name}
           </option>
         ))}
       </select>

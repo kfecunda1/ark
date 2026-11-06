@@ -4,8 +4,9 @@
 // with its own per-column value-extractor). One comparator handles
 // every column because "empty values always last, regardless of
 // direction" is the one rule every column follows the same way —
-// including Stage/Status, whose getValue returns the column's index
-// in its fixed pipeline order (STAGES/STATUSES) rather than alphabetic
+// including Stage/Status, whose getValue returns the column's position
+// in its own pipeline order — Stage's fixed STAGES index, Status's
+// admin-managed sort_order (lib/statuses.ts) — rather than alphabetic
 // text, so numeric comparison is all this ever needs.
 export type SortDirection = "asc" | "desc";
 

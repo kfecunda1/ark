@@ -1,20 +1,11 @@
 import { LOCALE } from "@/lib/format";
-import type { Currency, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
+import type { Currency, ProjectPriority, ProjectStage } from "@/lib/types";
 
 // Kept in sync by hand with the CHECK constraint added by
 // supabase/migrations/002_currency_check.sql.
 export const CURRENCIES: Currency[] = ["USD", "EUR"];
 
 export const STAGES: ProjectStage[] = ["new", "documents_received", "match", "status"];
-export const STATUSES: ProjectStatus[] = [
-  "open",
-  "with_receiver",
-  "with_sender",
-  "waiting",
-  "in_process",
-  "completed",
-  "lost",
-];
 export const PRIORITIES: ProjectPriority[] = ["low", "medium", "high", "urgent"];
 
 export const STAGE_LABELS: Record<ProjectStage, string> = {
@@ -24,15 +15,10 @@ export const STAGE_LABELS: Record<ProjectStage, string> = {
   status: "Status",
 };
 
-export const STATUS_LABELS: Record<ProjectStatus, string> = {
-  open: "Open",
-  with_receiver: "With Receiver",
-  with_sender: "With Sender",
-  waiting: "Waiting",
-  in_process: "In Process",
-  completed: "Completed",
-  lost: "Lost",
-};
+// Statuses are admin-managed data now (supabase/migrations/019_
+// statuses.sql's `statuses` table) — see lib/statuses.ts for the
+// fetch helpers and isClosedStatus, which replace this file's old
+// fixed STATUSES/STATUS_LABELS/isClosedStatus.
 
 export const PRIORITY_LABELS: Record<ProjectPriority, string> = {
   low: "Low",
@@ -40,13 +26,6 @@ export const PRIORITY_LABELS: Record<ProjectPriority, string> = {
   high: "High",
   urgent: "Urgent",
 };
-
-// A project only really counts as "closed" once it's reached the Status
-// stage and landed on a terminal status. Used by the dashboard and list
-// page instead of a plain boolean, since the schema has no such column.
-export function isClosedStatus(status: ProjectStatus | null): boolean {
-  return status === "completed" || status === "lost";
-}
 
 // Date-only Postgres columns (e.g. "2026-09-10") must not be parsed with
 // `new Date(str)`, which treats them as UTC midnight and can shift a day

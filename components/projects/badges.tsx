@@ -1,5 +1,5 @@
-import { PRIORITY_LABELS, STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
-import type { ProjectDocumentType, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
+import { PRIORITY_LABELS, STAGE_LABELS } from "@/lib/projects";
+import type { ProjectDocumentType, ProjectPriority, ProjectStage, StatusColor } from "@/lib/types";
 
 // A coherent cool palette — steel blue, cyan, teal, silver-grey — so
 // each stage reads distinctly without reaching for a warm color.
@@ -20,26 +20,45 @@ export function StageBadge({ stage }: { stage: ProjectStage }) {
   );
 }
 
-// Same cool family as STAGE_STYLES for everything in progress, with the
-// two deliberate exceptions: Completed stays green, Lost stays red —
-// those two are outcomes, not just another step, and warrant reading
-// differently from the rest at a glance.
-const STATUS_STYLES: Record<ProjectStatus, string> = {
-  open: "bg-accent/15 text-accent-soft border-accent/25",
-  with_receiver: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25",
-  with_sender: "bg-teal-500/15 text-teal-300 border-teal-500/25",
-  waiting: "bg-white/[0.06] text-white/50 border-white/10",
-  in_process: "bg-sky-500/15 text-sky-300 border-sky-500/25",
-  completed: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
-  lost: "bg-rose-500/15 text-rose-300 border-rose-500/25",
+// The fixed ~8-color palette a status can be assigned (Settings →
+// Statuses, admin only — supabase/migrations/019_statuses.sql's
+// `statuses.color` check constraint lists these same 8 values). Same
+// cool-leaning family as STAGE_STYLES, plus amber/rose for the kinds of
+// status that warrant reading as an outcome rather than just another
+// step — which specific color a given status gets is now the admin's
+// choice, not fixed per status name.
+export const STATUS_COLOR_STYLES: Record<StatusColor, string> = {
+  accent: "bg-accent/15 text-accent-soft border-accent/25",
+  cyan: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25",
+  teal: "bg-teal-500/15 text-teal-300 border-teal-500/25",
+  silver: "bg-white/[0.06] text-white/50 border-white/10",
+  sky: "bg-sky-500/15 text-sky-300 border-sky-500/25",
+  emerald: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
+  amber: "bg-amber-500/15 text-amber-300 border-amber-500/25",
+  rose: "bg-rose-500/15 text-rose-300 border-rose-500/25",
 };
 
-export function StatusBadge({ status }: { status: ProjectStatus }) {
+// A plain solid-fill dot version of the same palette — components/
+// projects/status-select.tsx's inline color swatch next to the native
+// <select>, which a translucent badge-shaped background would be too
+// subtle to read at that size.
+export const STATUS_DOT_COLORS: Record<StatusColor, string> = {
+  accent: "bg-accent",
+  cyan: "bg-cyan-400",
+  teal: "bg-teal-400",
+  silver: "bg-white/40",
+  sky: "bg-sky-400",
+  emerald: "bg-emerald-400",
+  amber: "bg-amber-400",
+  rose: "bg-rose-400",
+};
+
+export function StatusBadge({ label, color }: { label: string; color: StatusColor }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${STATUS_STYLES[status]}`}
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${STATUS_COLOR_STYLES[color]}`}
     >
-      {STATUS_LABELS[status]}
+      {label}
     </span>
   );
 }

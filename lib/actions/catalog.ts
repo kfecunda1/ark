@@ -3,15 +3,24 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
-// Products and document_types (supabase/migrations/011_settings_tables.
-// sql) are identically shaped admin-managed lists — one name, one
-// active flag, one sort_order — so one set of actions serves the
-// Settings page's Products and Document Types sections instead of
-// duplicating the same five functions twice. RLS itself (both tables'
-// insert/update policies require is_admin()) is the real gate; these
-// actions don't re-check admin-ness themselves, same as every other
-// action in this app that relies on RLS rather than an app-level check.
+// Products and document_types (011_settings_tables.sql) are identically
+// shaped admin-managed lists — one name, one active flag, one
+// sort_order — so one set of add/rename actions serves the Settings
+// page's Products and Document Types sections instead of duplicating
+// the same two functions twice. RLS itself (both tables' insert/update
+// policies require is_admin()) is the real gate; these actions don't
+// re-check admin-ness themselves, same as every other action in this
+// app that relies on RLS rather than an app-level check.
 export type CatalogTable = "products" | "document_types";
+
+// statuses (019_statuses.sql) shares that same active/sort_order shape
+// for hide-show and reorder purposes — but not for add/rename: it also
+// has two required columns (kind, color) that addCatalogItem/
+// renameCatalogItem below don't set, so it only ever appears here, on
+// setCatalogItemActive/moveCatalogItem, never on those two. Its own
+// add/rename actions (which do set kind/color) live in lib/actions/
+// statuses.ts instead.
+export type SortableCatalogTable = CatalogTable | "statuses";
 
 function unexpectedErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong. Please try again.";
@@ -70,7 +79,7 @@ export async function renameCatalogItem(
 }
 
 export async function setCatalogItemActive(
-  table: CatalogTable,
+  table: SortableCatalogTable,
   id: string,
   active: boolean
 ): Promise<{ error: string | null }> {
@@ -98,7 +107,7 @@ export interface CatalogSortRef {
 // current list in hand (it's rendering it), so it passes that along
 // rather than this action re-fetching it.
 export async function moveCatalogItem(
-  table: CatalogTable,
+  table: SortableCatalogTable,
   items: CatalogSortRef[],
   id: string,
   direction: "up" | "down"

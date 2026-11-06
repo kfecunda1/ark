@@ -1,5 +1,6 @@
 import { GlassCard } from "@/components/glass-card";
 import { ManageableList } from "@/components/settings/manageable-list";
+import { ManageableStatusList } from "@/components/settings/manageable-status-list";
 import { DefaultsForm } from "@/components/settings/defaults-form";
 import { MyProfileForm } from "@/components/settings/my-profile-form";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
@@ -7,6 +8,7 @@ import { ExportBackupButton } from "@/components/settings/export-backup-button";
 import { UsersSection } from "@/components/settings/users-section";
 import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
+import { getAllStatuses } from "@/lib/statuses";
 import { getAllDocumentTypes } from "@/lib/document-types";
 import { getAppSettings } from "@/lib/app-settings";
 import { listUsers } from "@/lib/actions/users";
@@ -30,9 +32,9 @@ export default async function SettingsPage() {
     fullName = row?.full_name ?? null;
   }
 
-  const [products, documentTypes, appSettings, usersResult] = isAdmin
-    ? await Promise.all([getAllProducts(), getAllDocumentTypes(), getAppSettings(), listUsers()])
-    : [[], [], null, { users: [], error: null }];
+  const [products, statuses, documentTypes, appSettings, usersResult] = isAdmin
+    ? await Promise.all([getAllProducts(), getAllStatuses(), getAllDocumentTypes(), getAppSettings(), listUsers()])
+    : [[], [], [], null, { users: [], error: null }];
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -68,6 +70,13 @@ export default async function SettingsPage() {
             <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Document Types</h2>
             <GlassCard interactive={false} className="p-6">
               <ManageableList table="document_types" items={documentTypes} itemLabel="document type" />
+            </GlassCard>
+          </div>
+
+          <div className="mt-6">
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Statuses</h2>
+            <GlassCard interactive={false} className="p-6">
+              <ManageableStatusList statuses={statuses} />
             </GlassCard>
           </div>
 

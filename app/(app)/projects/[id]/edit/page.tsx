@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { ProjectForm } from "@/components/projects/project-form";
 import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
+import { getAllStatuses } from "@/lib/statuses";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { getProjectIntermediaryChain } from "@/lib/intermediaries";
 import { personLabel } from "@/lib/people";
@@ -21,6 +22,7 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
     { data: peopleData },
     { data: projectProductsData },
     products,
+    statuses,
     documentTypes,
     projectIntermediaries,
   ] = await Promise.all([
@@ -29,6 +31,7 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
     supabase.from("people").select("id, first_name, last_name, archived_at").order("first_name"),
     supabase.from("project_products").select("*").eq("project_id", id).order("sort_order"),
     getAllProducts(),
+    getAllStatuses(),
     getActiveDocumentTypes(),
     getProjectIntermediaryChain(id),
   ]);
@@ -66,6 +69,7 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
         receivers={receivers}
         people={people}
         products={products}
+        statuses={statuses}
         documentTypes={documentTypes}
       />
     </div>

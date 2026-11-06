@@ -2,8 +2,8 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Archive } from "lucide-react";
-import { STAGES, STAGE_LABELS, STATUSES, STATUS_LABELS } from "@/lib/projects";
-import type { Product } from "@/lib/types";
+import { STAGES, STAGE_LABELS } from "@/lib/projects";
+import type { Product, StatusRecord } from "@/lib/types";
 
 const selectClass =
   "rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
@@ -12,13 +12,15 @@ interface ProjectFiltersProps {
   // Every product, active or not — a project already set to a
   // since-hidden product must still be findable by filtering on it.
   products: Product[];
+  // Every status, active or not — same reasoning as products above.
+  statuses: StatusRecord[];
   // Every person who is an intermediary on at least one project —
   // archived people included (same "a since-hidden/archived value must
   // still be findable by filtering on it" reasoning as products above).
   intermediaries: { id: string; label: string }[];
 }
 
-export function ProjectFilters({ products, intermediaries }: ProjectFiltersProps) {
+export function ProjectFilters({ products, statuses, intermediaries }: ProjectFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -77,11 +79,13 @@ export function ProjectFilters({ products, intermediaries }: ProjectFiltersProps
         <option value="" className="bg-[#0a0e17]">
           All statuses
         </option>
-        {STATUSES.map((status) => (
-          <option key={status} value={status} className="bg-[#0a0e17]">
-            {STATUS_LABELS[status]}
-          </option>
-        ))}
+        {[...statuses]
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((status) => (
+            <option key={status.id} value={status.name} className="bg-[#0a0e17]">
+              {status.name}
+            </option>
+          ))}
       </select>
 
       <select

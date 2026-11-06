@@ -28,9 +28,9 @@ import { getReceiverIntermediaryPersonIds } from "@/lib/actions/intermediaries";
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
-import { CURRENCIES, STAGES, STAGE_LABELS, STATUSES, STATUS_LABELS, PRIORITIES, PRIORITY_LABELS } from "@/lib/projects";
+import { CURRENCIES, STAGES, STAGE_LABELS, PRIORITIES, PRIORITY_LABELS } from "@/lib/projects";
 import { amountInWords } from "@/lib/money";
-import type { Currency, DocumentTypeRecord, Product, Project, ProjectProduct, ProjectStage } from "@/lib/types";
+import type { Currency, DocumentTypeRecord, Product, Project, ProjectProduct, ProjectStage, StatusRecord } from "@/lib/types";
 
 interface ProjectFormProps {
   mode: "create" | "edit";
@@ -48,6 +48,11 @@ interface ProjectFormProps {
   // ("Contacts" tab) list, wholly separate from receivers above.
   people: EntityOption[];
   products: Product[];
+  // The full roster (admin and hidden statuses included) — the Status
+  // field only shows once Stage is Status, offering active statuses
+  // (plus the project's own current one, even if it's since been
+  // hidden).
+  statuses: StatusRecord[];
   documentTypes: DocumentTypeRecord[];
   // Create mode only: the Settings → Defaults value, used as the
   // Currency field's initial selection for a brand-new project.
@@ -74,6 +79,7 @@ export function ProjectForm({
   receivers,
   people,
   products,
+  statuses,
   documentTypes,
   defaultCurrency,
   defaultRecovery,
@@ -408,14 +414,22 @@ export function ProjectForm({
               id="status"
               name="status"
               required
-              defaultValue={project?.status ?? "open"}
+              defaultValue={
+                project?.status ??
+                statuses.find((s) => s.active && s.kind === "open")?.name ??
+                statuses.find((s) => s.active)?.name ??
+                ""
+              }
               className={fieldClass}
             >
-              {STATUSES.map((s) => (
-                <option key={s} value={s} className="bg-[#0a0e17]">
-                  {STATUS_LABELS[s]}
-                </option>
-              ))}
+              {statuses
+                .filter((s) => s.active || s.name === project?.status)
+                .sort((a, b) => a.sort_order - b.sort_order)
+                .map((s) => (
+                  <option key={s.id} value={s.name} className="bg-[#0a0e17]">
+                    {s.name}
+                  </option>
+                ))}
             </select>
           </div>
         )}

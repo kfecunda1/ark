@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getContactProductRatio } from "@/lib/actions/contacts";
-import { STAGE_LABELS, STATUS_LABELS } from "@/lib/projects";
+import { STAGE_LABELS } from "@/lib/projects";
 import { parseMoneyFormValue } from "@/lib/money";
 import { syncProjectIntermediaries } from "@/lib/intermediaries";
 import type { Currency, ProjectDocumentType, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
@@ -294,12 +294,17 @@ export async function updateProject(
 }
 
 // A quick stage change (the detail page's inline StageSelect). Moving
-// into Status with no status on record yet defaults it to "open" rather
-// than failing the switch outright — the DB requires a non-null status
-// once stage = status. Moving *out* of Status clears status back to
-// null, so a project isn't left showing a stale status from a visit to
-// that stage it's no longer in; both directions keep the row valid
-// against that same check constraint.
+// into Status with no status on record yet defaults it to the first
+// active, open-kind status (by sort_order) rather than failing the
+// switch outright — the DB requires a non-null status once stage =
+// status. Statuses are admin-managed now (supabase/migrations/019_
+// statuses.sql), so there's no fixed "open" name to fall back to;
+// falling back further to the first active status at all covers the
+// pathological case where an admin hides every open-kind status.
+// Moving *out* of Status clears status back to null, so a project
+// isn't left showing a stale status from a visit to that stage it's no
+// longer in; both directions keep the row valid against that same
+// check constraint.
 export async function updateProjectStage(
   id: string,
   stage: ProjectStage
@@ -310,7 +315,30 @@ export async function updateProjectStage(
 
     if (stage === "status") {
       const { data: current } = await supabase.from("projects").select("status").eq("id", id).maybeSingle();
-      payload.status = current?.status ?? "open";
+      if (current?.status) {
+        payload.status = current.status;
+      } else {
+        const { data: openStatus } = await supabase
+          .from("statuses")
+          .select("name")
+          .eq("active", true)
+          .eq("kind", "open")
+          .order("sort_order")
+          .limit(1)
+          .maybeSingle();
+        if (openStatus) {
+          payload.status = (openStatus as { name: string }).name;
+        } else {
+          const { data: anyStatus } = await supabase
+            .from("statuses")
+            .select("name")
+            .eq("active", true)
+            .order("sort_order")
+            .limit(1)
+            .maybeSingle();
+          payload.status = (anyStatus as { name: string } | null)?.name ?? null;
+        }
+      }
     }
 
     const { error } = await supabase.from("projects").update(payload).eq("id", id);
@@ -633,7 +661,10 @@ export async function findDuplicateProjects(input: {
     if (matches.length === 0) return [];
 
     return matches.map((row) => {
-      const stageLabel = row.status ? STATUS_LABELS[row.status] : STAGE_LABELS[row.stage];
+      // row.status already holds the status's own display name directly
+      // (supabase/migrations/019_statuses.sql) — no lookup needed, unlike
+      // row.stage, which is still a fixed enum.
+      const stageLabel = row.status ?? STAGE_LABELS[row.stage];
       return {
         id: row.id,
         label: row.name,
