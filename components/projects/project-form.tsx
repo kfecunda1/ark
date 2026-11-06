@@ -415,7 +415,7 @@ export function ProjectForm({
           </div>
         )}
 
-        <div>
+        <div className="sm:col-span-2">
           <EntityPicker
             name="matched_contact_id"
             label="Matched With"
@@ -431,29 +431,27 @@ export function ProjectForm({
               };
             }}
           />
-        </div>
-
-        <div className="sm:col-span-2">
-          <label className={labelClass}>Intermediary Chain</label>
-          <IntermediaryChainEditor
-            entries={intermediaries}
-            receiverLabel={matchedReceiverLabel}
-            pickerOptions={intermediaryPickerOptions}
-            onAdd={addIntermediary}
-            onRemove={removeIntermediary}
-            onMoveUp={(personId) => moveIntermediary(personId, "up")}
-            onMoveDown={(personId) => moveIntermediary(personId, "down")}
-            submitAsHiddenFields
-            onQuickCreate={async (name) => {
-              const result = await quickCreatePerson({ name });
-              return {
-                option: result.person
-                  ? { id: result.person.id, label: [result.person.first_name, result.person.last_name].filter(Boolean).join(" ") }
-                  : null,
-                error: result.error,
-              };
-            }}
-          />
+          <div className="mt-3">
+            <IntermediaryChainEditor
+              entries={intermediaries}
+              receiverLabel={matchedReceiverLabel}
+              pickerOptions={intermediaryPickerOptions}
+              onAdd={addIntermediary}
+              onRemove={removeIntermediary}
+              onMoveUp={(personId) => moveIntermediary(personId, "up")}
+              onMoveDown={(personId) => moveIntermediary(personId, "down")}
+              submitAsHiddenFields
+              onQuickCreate={async (name) => {
+                const result = await quickCreatePerson({ name });
+                return {
+                  option: result.person
+                    ? { id: result.person.id, label: [result.person.first_name, result.person.last_name].filter(Boolean).join(" ") }
+                    : null,
+                  error: result.error,
+                };
+              }}
+            />
+          </div>
         </div>
 
         <div>

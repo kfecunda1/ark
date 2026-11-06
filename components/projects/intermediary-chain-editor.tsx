@@ -121,56 +121,52 @@ export function IntermediaryChainEditor({
           <input key={entry.key} type="hidden" name="intermediary_person_ids" value={entry.personId} />
         ))}
 
-      {entries.length === 0 ? (
-        <p className="text-sm text-white/35">No intermediaries yet.</p>
-      ) : (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {entries.map((entry, index) => (
-            <span key={entry.key} className="flex items-center gap-1.5">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-sm text-white/80">
-                <span>
-                  {entry.label}
-                  {entry.archived && <span className="ml-1 text-[11px] text-white/40">(Archived)</span>}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onMoveUp(entry.personId)}
-                  disabled={disabled || index === 0}
-                  aria-label={`Move ${entry.label} up`}
-                  className="text-white/30 transition-colors duration-150 ease-out hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  <ArrowUp className="h-3 w-3" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onMoveDown(entry.personId)}
-                  disabled={disabled || index === entries.length - 1}
-                  aria-label={`Move ${entry.label} down`}
-                  className="text-white/30 transition-colors duration-150 ease-out hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  <ArrowDown className="h-3 w-3" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onRemove(entry.personId)}
-                  disabled={disabled}
-                  aria-label={`Remove ${entry.label}`}
-                  className="text-white/30 transition-colors duration-150 ease-out hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  <X className="h-3 w-3" />
-                </button>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {entries.map((entry, index) => (
+          <span key={entry.key} className="flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-sm text-white/80">
+              <span>
+                {entry.label}
+                {entry.archived && <span className="ml-1 text-[11px] text-white/40">(Archived)</span>}
               </span>
-              <span className="text-white/30">→</span>
+              <button
+                type="button"
+                onClick={() => onMoveUp(entry.personId)}
+                disabled={disabled || index === 0}
+                aria-label={`Move ${entry.label} up`}
+                className="text-white/30 transition-colors duration-150 ease-out hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <ArrowUp className="h-3 w-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onMoveDown(entry.personId)}
+                disabled={disabled || index === entries.length - 1}
+                aria-label={`Move ${entry.label} down`}
+                className="text-white/30 transition-colors duration-150 ease-out hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <ArrowDown className="h-3 w-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onRemove(entry.personId)}
+                disabled={disabled}
+                aria-label={`Remove ${entry.label}`}
+                className="text-white/30 transition-colors duration-150 ease-out hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <X className="h-3 w-3" />
+              </button>
             </span>
-          ))}
-          <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-sm font-medium text-accent-soft">
-            {receiverLabel ?? "No receiver matched yet"}
+            <span className="shrink-0 text-white/30">→</span>
           </span>
-        </div>
-      )}
+        ))}
+        <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-sm font-medium text-accent-soft">
+          {receiverLabel ?? "(no receiver yet)"}
+        </span>
+      </div>
 
       {!creating ? (
-        <div className="relative w-64">
+        <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
           <input
             value={query}
@@ -215,7 +211,7 @@ export function IntermediaryChainEditor({
           )}
         </div>
       ) : (
-        <div className="w-64 rounded-lg border border-white/[0.08] bg-white/[0.03] p-2.5">
+        <div className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] p-2.5 sm:w-64">
           <input
             autoFocus
             placeholder="Name *"
