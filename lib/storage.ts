@@ -20,6 +20,76 @@ export function displayFileName(path: string): string {
   return path.replace(UUID_PREFIX_PATTERN, "") || path;
 }
 
+// ----------------------------------------------------------------------------
+// Allowed file types (supabase/migrations/020_media_uploads.sql sets the
+// matching allowed_mime_types/file_size_limit on both storage buckets —
+// these constants are the client-side mirror, so a bad file is rejected
+// before an upload even starts).
+// ----------------------------------------------------------------------------
+
+export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+export const MAX_FILE_SIZE_MB = 50;
+
+// Extension -> canonical MIME type. Used both to validate a picked file
+// and to set an explicit Content-Type on upload, instead of trusting
+// File.type — browsers/OSes report HEIC and MOV inconsistently (or not at
+// all), and the storage bucket's allowed_mime_types check is only as good
+// as the header we send it.
+const EXTENSION_MIME: Record<string, string> = {
+  pdf: "application/pdf",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  heic: "image/heic",
+  heif: "image/heif",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
+// Broad enough (image/*, video/*) that iOS/Android show the camera roll
+// and camera as picker options, plus explicit extensions for desktop file
+// dialogs. isAllowedDocumentFile() is the real gate — this is only a UI
+// hint.
+export const DOCUMENT_FILE_ACCEPT =
+  ".pdf,application/pdf,image/*,video/*,.heic,.heif,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+function fileExtension(fileName: string): string {
+  return fileName.slice(fileName.lastIndexOf(".") + 1).toLowerCase();
+}
+
+export type DocumentKind = "pdf" | "image" | "heic" | "video" | "doc" | "other";
+
+// Drives preview rendering (components/projects/project-documents.tsx,
+// components/receivers/receiver-documents.tsx): "image" gets a thumbnail,
+// "video" gets a built-in player, "heic" can't reliably be shown inline by
+// a browser so it falls back to a plain file icon + Download.
+export function getDocumentKind(fileName: string): DocumentKind {
+  const ext = fileExtension(fileName);
+  if (ext === "pdf") return "pdf";
+  if (ext === "jpg" || ext === "jpeg" || ext === "png") return "image";
+  if (ext === "heic" || ext === "heif") return "heic";
+  if (ext === "mp4" || ext === "mov") return "video";
+  if (ext === "doc" || ext === "docx") return "doc";
+  return "other";
+}
+
+export function isAllowedDocumentFile(file: File): boolean {
+  return fileExtension(file.name) in EXTENSION_MIME;
+}
+
+// The Content-Type to send on upload — always derived from the file's
+// extension (see EXTENSION_MIME above), falling back to whatever the
+// browser reported only for an extension we don't recognize.
+export function contentTypeForFile(file: File): string {
+  return EXTENSION_MIME[fileExtension(file.name)] ?? file.type ?? "application/octet-stream";
+}
+
+export function formatFileSizeMB(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 // SHA-256 of a file's bytes, as lowercase hex — used to detect the exact
 // same file being attached twice (see 001_ark_schema.sql's file_hash
 // column and unique partial index). Takes a Blob/File directly (a
@@ -49,7 +119,7 @@ export function uploadFileWithProgress(
     xhr.open("POST", url);
     xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
     xhr.setRequestHeader("apikey", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.setRequestHeader("Content-Type", contentTypeForFile(file));
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {

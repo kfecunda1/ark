@@ -5,11 +5,15 @@ import { FileText, Loader2, X } from "lucide-react";
 import { ProjectDocumentTypeBadge } from "@/components/projects/badges";
 import { DuplicateWarningBanner } from "@/components/duplicate-warning-banner";
 import { findContactDocumentsByHash } from "@/lib/actions/contacts";
-import { computeFileHash } from "@/lib/storage";
+import {
+  DOCUMENT_FILE_ACCEPT,
+  MAX_FILE_SIZE_BYTES,
+  MAX_FILE_SIZE_MB,
+  computeFileHash,
+  formatFileSizeMB,
+  isAllowedDocumentFile,
+} from "@/lib/storage";
 import type { ContactDocumentType, DocumentTypeRecord } from "@/lib/types";
-
-const ACCEPTED_TYPES =
-  ".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png";
 
 export interface StagedDocument {
   id: string;
@@ -52,6 +56,19 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
 
     setBlockedMessage(null);
     setPending(null);
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setBlockedMessage(
+        `${file.name} is ${formatFileSizeMB(file.size)} — maximum is ${MAX_FILE_SIZE_MB} MB. Compress it, or save a link instead.`
+      );
+      return;
+    }
+
+    if (!isAllowedDocumentFile(file)) {
+      setBlockedMessage(`${file.name} isn't a supported file type. Allowed: PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX.`);
+      return;
+    }
+
     setChecking(true);
 
     try {
@@ -176,7 +193,7 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
         <input
           ref={fileInputRef}
           type="file"
-          accept={ACCEPTED_TYPES}
+          accept={DOCUMENT_FILE_ACCEPT}
           disabled={checking}
           onChange={handleFileChange}
           className="block flex-1 text-xs text-white/70 file:mr-3 file:rounded-md file:border-0 file:bg-white/[0.08] file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-white hover:file:bg-white/[0.12] disabled:opacity-50"
@@ -185,7 +202,8 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
       </div>
       {blockedMessage && <p className="text-xs text-rose-300">{blockedMessage}</p>}
       <p className="text-xs text-white/35">
-        Files are uploaded after the receiver is created — pick as many as you need before saving.
+        PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX — up to {MAX_FILE_SIZE_MB} MB. Files are uploaded after the receiver
+        is created — pick as many as you need before saving.
       </p>
     </div>
   );

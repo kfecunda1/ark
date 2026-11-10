@@ -122,13 +122,11 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   }
 
   let documentsWithUrls = projectDocuments.map((doc) => ({ ...doc, signedUrl: null as string | null }));
-  if (projectDocuments.length > 0) {
+  const projectDocFilePaths = projectDocuments.map((doc) => doc.file_path).filter((p): p is string => Boolean(p));
+  if (projectDocFilePaths.length > 0) {
     const { data: signedUrls } = await supabase.storage
       .from("project-documents")
-      .createSignedUrls(
-        projectDocuments.map((doc) => doc.file_path),
-        3600
-      );
+      .createSignedUrls(projectDocFilePaths, 3600);
     const urlByPath = new Map((signedUrls ?? []).map((s) => [s.path, s.signedUrl]));
     documentsWithUrls = projectDocuments.map((doc) => ({
       ...doc,

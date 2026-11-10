@@ -286,7 +286,9 @@ export async function deleteContact(id: string): Promise<{ error: string | null 
     }
 
     const { data: documents } = await supabase.from("contact_documents").select("file_path").eq("contact_id", id);
-    const filePaths = ((documents as { file_path: string }[] | null) ?? []).map((d) => d.file_path);
+    const filePaths = ((documents as { file_path: string | null }[] | null) ?? [])
+      .map((d) => d.file_path)
+      .filter((p): p is string => Boolean(p));
 
     const { error } = await supabase.from("contacts").delete().eq("id", id);
     if (error) {
@@ -408,6 +410,34 @@ export async function addContactDocument(
       file_path: filePath,
       file_name: fileName,
       file_hash: fileHash,
+    });
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath(`/receivers/${contactId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// A link to a file kept elsewhere, instead of an upload — see
+// addProjectDocumentLink in lib/actions/projects.ts for the same shape.
+export async function addContactDocumentLink(
+  contactId: string,
+  documentType: ContactDocumentType,
+  name: string,
+  url: string
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("contact_documents").insert({
+      contact_id: contactId,
+      document_type: documentType,
+      file_name: name,
+      url,
     });
 
     if (error) {

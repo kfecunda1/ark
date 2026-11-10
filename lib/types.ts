@@ -229,13 +229,19 @@ export interface DocumentTypeRecord {
   updated_at: string;
 }
 
+// file_path/url are mutually exclusive (supabase/migrations/020_media_
+// uploads.sql's check constraint): an uploaded file has file_path set and
+// url null; a link to a file kept elsewhere (e.g. Google Drive) has url
+// set and file_path null, with file_name holding the name the user gave
+// it.
 export interface ProjectDocument {
   id: string;
   project_id: string;
   document_type: ProjectDocumentType;
-  file_path: string;
+  file_path: string | null;
   file_name: string;
   file_hash: string | null;
+  url: string | null;
   created_at: string;
 }
 
@@ -251,9 +257,10 @@ export interface ContactDocument {
   id: string;
   contact_id: string;
   document_type: ContactDocumentType;
-  file_path: string;
+  file_path: string | null;
   file_name: string;
   file_hash: string | null;
+  url: string | null;
   created_at: string;
 }
 

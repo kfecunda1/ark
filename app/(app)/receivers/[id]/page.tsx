@@ -91,13 +91,11 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
     : null;
 
   let documentsWithUrls = documents.map((doc) => ({ ...doc, signedUrl: null as string | null }));
-  if (documents.length > 0) {
+  const contactDocFilePaths = documents.map((doc) => doc.file_path).filter((p): p is string => Boolean(p));
+  if (contactDocFilePaths.length > 0) {
     const { data: signedUrls } = await supabase.storage
       .from("contact-documents")
-      .createSignedUrls(
-        documents.map((doc) => doc.file_path),
-        3600
-      );
+      .createSignedUrls(contactDocFilePaths, 3600);
     const urlByPath = new Map((signedUrls ?? []).map((s) => [s.path, s.signedUrl]));
     documentsWithUrls = documents.map((doc) => ({
       ...doc,

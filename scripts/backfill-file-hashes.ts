@@ -118,6 +118,7 @@ async function run() {
       .from(config.table)
       .select(`id, file_path, file_name, created_at, ${config.recordIdColumn}`)
       .is("file_hash", null)
+      .not("file_path", "is", null) // skip link documents — nothing to hash
       .order("created_at", { ascending: true });
 
     if (error) {

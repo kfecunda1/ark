@@ -506,6 +506,36 @@ export async function addProjectDocument(
   }
 }
 
+// A link to a file kept elsewhere (e.g. Google Drive) instead of an
+// upload — same row shape as addProjectDocument, just file_path/url
+// swapped (supabase/migrations/020_media_uploads.sql's check constraint
+// enforces exactly one of the two).
+export async function addProjectDocumentLink(
+  projectId: string,
+  documentType: ProjectDocumentType,
+  name: string,
+  url: string
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("project_documents").insert({
+      project_id: projectId,
+      document_type: documentType,
+      file_name: name,
+      url,
+    });
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
 export async function deleteProjectDocument(documentId: string): Promise<{ error: string | null }> {
   try {
     const supabase = await createClient();

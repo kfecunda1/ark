@@ -79,17 +79,24 @@ export function ExportBackupButton() {
       const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
       const contactNameById = new Map(contacts.map((c) => [c.id, c.full_name]));
 
+      // Link documents (file_path null, url set) have nothing to download —
+      // they're already captured in project_documents.csv/contact_documents.csv
+      // via the url column.
       const jobs: FileJob[] = [
-        ...projectDocs.map((doc): FileJob => ({
-          bucket: "project-documents",
-          path: doc.file_path,
-          zipPath: `project-documents/${folderName(projectNameById.get(doc.project_id) ?? "Unknown project", doc.project_id)}/${doc.file_name}`,
-        })),
-        ...contactDocs.map((doc): FileJob => ({
-          bucket: "contact-documents",
-          path: doc.file_path,
-          zipPath: `contact-documents/${folderName(contactNameById.get(doc.contact_id) ?? "Unknown contact", doc.contact_id)}/${doc.file_name}`,
-        })),
+        ...projectDocs
+          .filter((doc) => doc.file_path)
+          .map((doc): FileJob => ({
+            bucket: "project-documents",
+            path: doc.file_path as string,
+            zipPath: `project-documents/${folderName(projectNameById.get(doc.project_id) ?? "Unknown project", doc.project_id)}/${doc.file_name}`,
+          })),
+        ...contactDocs
+          .filter((doc) => doc.file_path)
+          .map((doc): FileJob => ({
+            bucket: "contact-documents",
+            path: doc.file_path as string,
+            zipPath: `contact-documents/${folderName(contactNameById.get(doc.contact_id) ?? "Unknown contact", doc.contact_id)}/${doc.file_name}`,
+          })),
       ];
 
       const signedUrlByBucketAndPath = new Map<string, string>();

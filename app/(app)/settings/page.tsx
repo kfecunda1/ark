@@ -6,11 +6,13 @@ import { MyProfileForm } from "@/components/settings/my-profile-form";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { ExportBackupButton } from "@/components/settings/export-backup-button";
 import { UsersSection } from "@/components/settings/users-section";
+import { StorageMeter } from "@/components/settings/storage-meter";
 import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
 import { getAllStatuses } from "@/lib/statuses";
 import { getAllDocumentTypes } from "@/lib/document-types";
 import { getAppSettings } from "@/lib/app-settings";
+import { getStorageUsedBytes } from "@/lib/storage-usage";
 import { listUsers } from "@/lib/actions/users";
 
 export default async function SettingsPage() {
@@ -32,9 +34,16 @@ export default async function SettingsPage() {
     fullName = row?.full_name ?? null;
   }
 
-  const [products, statuses, documentTypes, appSettings, usersResult] = isAdmin
-    ? await Promise.all([getAllProducts(), getAllStatuses(), getAllDocumentTypes(), getAppSettings(), listUsers()])
-    : [[], [], [], null, { users: [], error: null }];
+  const [products, statuses, documentTypes, appSettings, usersResult, storageUsedBytes] = isAdmin
+    ? await Promise.all([
+        getAllProducts(),
+        getAllStatuses(),
+        getAllDocumentTypes(),
+        getAppSettings(),
+        listUsers(),
+        getStorageUsedBytes(),
+      ])
+    : [[], [], [], null, { users: [], error: null }, 0];
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -95,6 +104,13 @@ export default async function SettingsPage() {
               ) : (
                 user && <UsersSection users={usersResult.users} currentUserId={user.id} />
               )}
+            </GlassCard>
+          </div>
+
+          <div className="mt-6">
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Storage</h2>
+            <GlassCard interactive={false} className="p-6">
+              <StorageMeter usedBytes={storageUsedBytes} />
             </GlassCard>
           </div>
 
