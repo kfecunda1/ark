@@ -10,7 +10,8 @@ function unexpectedErrorMessage(err: unknown): string {
 
 export async function updateAppSettings(
   defaultCurrency: Currency,
-  stuckAfterDays: number
+  stuckAfterDays: number,
+  showRecovery: boolean
 ): Promise<{ error: string | null }> {
   if (!Number.isInteger(stuckAfterDays) || stuckAfterDays <= 0) {
     return { error: '"Stuck after" must be a whole number of days greater than 0.' };
@@ -20,7 +21,7 @@ export async function updateAppSettings(
     const supabase = await createClient();
     const { error } = await supabase
       .from("app_settings")
-      .update({ default_currency: defaultCurrency, stuck_after_days: stuckAfterDays })
+      .update({ default_currency: defaultCurrency, stuck_after_days: stuckAfterDays, show_recovery: showRecovery })
       .eq("id", true);
 
     if (error) {
@@ -30,6 +31,8 @@ export async function updateAppSettings(
     revalidatePath("/settings");
     revalidatePath("/dashboard");
     revalidatePath("/projects/new");
+    revalidatePath("/projects");
+    revalidatePath("/recovery");
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };

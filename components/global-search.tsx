@@ -16,7 +16,7 @@ const GROUP_LABELS: Record<SearchResultType, string> = {
 
 const GROUP_ORDER: SearchResultType[] = ["project", "contact", "document", "note", "person"];
 
-export function GlobalSearch() {
+export function GlobalSearch({ showRecovery }: { showRecovery: boolean }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
@@ -121,7 +121,7 @@ export function GlobalSearch() {
                   >
                     <span className="flex w-full items-center gap-1.5">
                       <span className="truncate text-sm text-white/85">{result.title}</span>
-                      {result.isRecovery && <RecoveryBadge />}
+                      {showRecovery && result.isRecovery && <RecoveryBadge />}
                     </span>
                     <span className="truncate text-xs text-white/40">{result.subtitle}</span>
                   </button>

@@ -1,16 +1,17 @@
 import Link from "next/link";
-import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Inbox, Layers, RotateCcw } from "lucide-react";
+import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Inbox, Landmark, Layers, RotateCcw } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { RecoveryBadge } from "@/components/projects/badges";
 import { DueTodayAndOverdue, type DueItem } from "@/components/dashboard/due-today";
 import { createClient } from "@/lib/supabase/server";
 import { dateKeyInTimeZone, formatDateTime } from "@/lib/format";
-import { STAGES, STAGE_LABELS } from "@/lib/projects";
+import { formatMoney } from "@/lib/money";
+import { CURRENCIES, STAGES, STAGE_LABELS, daysSince, formatDateOnly } from "@/lib/projects";
 import { getAllProducts } from "@/lib/products";
 import { getAllStatuses, isClosedStatus } from "@/lib/statuses";
 import { countedProducts, getProjectProductsByProjectIds } from "@/lib/project-products";
 import { getAppSettings } from "@/lib/app-settings";
-import type { Project, ProjectStage } from "@/lib/types";
+import type { Project, ProjectStage, ProjectTranche } from "@/lib/types";
 
 const STAGE_BAR_COLORS: Record<ProjectStage, string> = {
   new: "bg-accent/70",
@@ -28,14 +29,26 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const supabase = await createClient();
   const { data, error } = await supabase.from("projects").select("*").is("archived_at", null);
-  const projects = (data as Project[] | null) ?? [];
+  const allProjects = (data as Project[] | null) ?? [];
 
-  const [products, statuses, appSettings, { count: inboxNewCount }] = await Promise.all([
+  const [products, statuses, appSettings, { count: inboxNewCount }, { data: activeTranchesData }] = await Promise.all([
     getAllProducts(),
     getAllStatuses(),
     getAppSettings(),
     supabase.from("inbox_items").select("*", { count: "exact", head: true }).eq("status", "new"),
+    supabase.from("project_tranches").select("*").not("sent_on", "is", null).is("confirmed_on", null),
   ]);
+
+  // Settings → Defaults' "Show Recovery" toggle (supabase/migrations/
+  // 024_show_recovery.sql): off means every count/list on this page
+  // treats recovery projects as if they don't exist — their own data
+  // is untouched, this just filters them out of everything derived
+  // below. The "Open Recovery Projects" card and the Active Tranches
+  // stage-chart row account for this separately further down (the
+  // former is omitted outright rather than shown as 0; the latter
+  // reads from `projects` like everything else here).
+  const projects = appSettings.show_recovery ? allProjects : allProjects.filter((project) => !project.is_recovery);
+
   const statusByName = new Map(statuses.map((s) => [s.name, s]));
   const openProjects = projects.filter((project) => !isClosedStatus(project.status, statuses));
   const STUCK_AFTER_MS = appSettings.stuck_after_days * 24 * 60 * 60 * 1000;
@@ -113,6 +126,32 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const todayKey = dateKeyInTimeZone(new Date().toISOString());
   const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
   const projectIsRecoveryById = new Map(projects.map((p) => [p.id, p.is_recovery]));
+  const projectCurrencyById = new Map(projects.map((p) => [p.id, p.currency]));
+
+  // Active Tranches: sent but not yet confirmed, on a non-archived
+  // project (the `not sent_on is null` / `is confirmed_on null` filter
+  // already ran in the query above — this just scopes it to projects
+  // still in the `projects` list, same as every other card/section on
+  // this page). Oldest sent date first.
+  const activeTranches = ((activeTranchesData as ProjectTranche[] | null) ?? [])
+    .filter((t) => projectNameById.has(t.project_id))
+    .sort((a, b) => (a.sent_on as string).localeCompare(b.sent_on as string));
+
+  const activeTrancheTotalsByCurrency = new Map<string, number>();
+  for (const tranche of activeTranches) {
+    if (tranche.amount == null) continue;
+    const currency = projectCurrencyById.get(tranche.project_id);
+    if (!currency) continue;
+    activeTrancheTotalsByCurrency.set(currency, (activeTrancheTotalsByCurrency.get(currency) ?? 0) + tranche.amount);
+  }
+  const activeTrancheTotalsLabel = CURRENCIES.filter((c) => activeTrancheTotalsByCurrency.has(c))
+    .map((c) => formatMoney(activeTrancheTotalsByCurrency.get(c)!, c))
+    .join(" · ");
+
+  // Projects by Stage's own extra row below: a project can have more
+  // than one active tranche, but only counts once here — this is a
+  // project count, not a tranche count (unlike the STATS card above).
+  const activeTrancheProjectCount = new Set(activeTranches.map((t) => t.project_id)).size;
 
   let dueItems: DueItem[] = [];
   if (projects.length > 0) {
@@ -224,6 +263,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     tone: string;
     href: string;
     suffix: string | null;
+    extra: string | null;
   }[] = [
     {
       label: "Open Projects",
@@ -232,23 +272,30 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       tone: "text-white",
       href: "/projects",
       suffix: null,
+      extra: null,
     },
     {
-      label: "Completed This Month",
+      label: "Completed (month)",
       value: completedThisMonth,
       icon: CheckCircle2,
       tone: "text-emerald-300",
       href: completedStatusName ? `/projects?status=${encodeURIComponent(completedStatusName)}` : "/projects",
       suffix: null,
+      extra: null,
     },
-    {
-      label: "Open Recovery Projects",
-      value: openRecoveryCount,
-      icon: RotateCcw,
-      tone: "text-amber-300",
-      href: "/recovery",
-      suffix: null,
-    },
+    ...(appSettings.show_recovery
+      ? [
+          {
+            label: "Recovery Projects",
+            value: openRecoveryCount,
+            icon: RotateCcw,
+            tone: "text-amber-300",
+            href: "/recovery",
+            suffix: null,
+            extra: null,
+          },
+        ]
+      : []),
     {
       label: "Inbox",
       value: inboxNewCount ?? 0,
@@ -256,6 +303,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       tone: "text-cyan-300",
       href: "/inbox",
       suffix: " to file",
+      extra: null,
+    },
+    {
+      label: "Active Tranches",
+      value: activeTranches.length,
+      icon: Landmark,
+      tone: "text-teal-300",
+      href: "#active-tranches",
+      suffix: null,
+      extra: activeTrancheTotalsLabel || null,
     },
   ];
 
@@ -291,21 +348,61 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </GlassCard>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
         {STATS.map((stat) => (
-          <Link key={stat.label} href={stat.href} className="block">
-            <GlassCard className="p-6">
-              <div className="flex items-start justify-between">
-                <p className="text-sm font-medium text-white/45">{stat.label}</p>
-                <stat.icon className={`h-4 w-4 ${stat.tone}`} />
+          <Link key={stat.label} href={stat.href} className="block h-full">
+            <GlassCard className="flex h-full flex-col p-6">
+              <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 truncate text-sm font-medium text-white/45">{stat.label}</p>
+                <stat.icon className={`h-4 w-4 shrink-0 ${stat.tone}`} />
               </div>
               <p className={`mt-3 text-3xl font-semibold tracking-tight ${stat.tone}`}>
                 {error ? "—" : stat.value}
                 {!error && stat.suffix && <span className="text-sm font-medium text-white/40">{stat.suffix}</span>}
               </p>
+              <p className="mt-1 text-xs text-white/40">{!error && stat.extra ? stat.extra : " "}</p>
             </GlassCard>
           </Link>
         ))}
+      </div>
+
+      <div id="active-tranches" className="mt-6">
+        <GlassCard interactive={false} className="p-6">
+          <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
+            <Landmark className="h-4 w-4 text-white/40" />
+            Active tranches
+          </h2>
+          {activeTranches.length === 0 ? (
+            <p className="text-sm text-white/35">No active tranches.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {activeTranches.map((tranche) => {
+                const days = daysSince(tranche.sent_on as string);
+                const dayTone = days >= 14 ? "text-red-300" : days >= 7 ? "text-amber-300" : "text-white/50";
+                return (
+                  <Link
+                    key={tranche.id}
+                    href={`/projects/${tranche.project_id}`}
+                    className="flex flex-wrap items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-sm text-white/80">
+                      {projectNameById.get(tranche.project_id) ?? "Project"}
+                    </span>
+                    {projectIsRecoveryById.get(tranche.project_id) && <RecoveryBadge />}
+                    <span className="shrink-0 text-xs text-white/50">Tranche {tranche.tranche_number}</span>
+                    <span className="shrink-0 text-xs font-medium text-white/80">
+                      {formatMoney(tranche.amount, projectCurrencyById.get(tranche.project_id))}
+                    </span>
+                    <span className="shrink-0 text-xs text-white/40">Sent {formatDateOnly(tranche.sent_on as string)}</span>
+                    <span className={`shrink-0 text-xs font-medium ${dayTone}`}>
+                      {days} day{days === 1 ? "" : "s"} since sent
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </GlassCard>
       </div>
 
       <div className="mt-6">
@@ -339,6 +436,35 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   </Link>
                 );
               })}
+
+              <div className="my-1 border-t border-white/[0.06]" />
+
+              <div className="flex flex-col gap-1">
+                <Link
+                  href="/projects?active_tranches=true"
+                  className="group flex items-center gap-4 rounded-lg px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-white/[0.04]"
+                >
+                  <span className="w-36 shrink-0 text-sm text-white/60 group-hover:text-white/90">
+                    Active Tranches
+                  </span>
+                  <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+                    <span
+                      className="block h-full rounded-full bg-amber-500/70 transition-all duration-300 ease-out"
+                      style={{
+                        width: `${
+                          activeTrancheProjectCount === 0
+                            ? 0
+                            : Math.max(4, (activeTrancheProjectCount / maxStageCount) * 100)
+                        }%`,
+                      }}
+                    />
+                  </span>
+                  <span className="w-8 shrink-0 text-right text-sm font-medium text-white/80">
+                    {activeTrancheProjectCount}
+                  </span>
+                </Link>
+                <p className="px-2 text-[11px] text-white/30">Also counted in its stage — not an additional stage.</p>
+              </div>
             </div>
           )}
         </GlassCard>

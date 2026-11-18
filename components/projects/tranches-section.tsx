@@ -27,7 +27,7 @@ interface RowProps {
   currency: Currency;
   removable: boolean;
   disabled: boolean;
-  onSave: (amount: string, sentOn: string, notes: string) => void;
+  onSave: (amount: string, sentOn: string, notes: string, confirmedOn: string) => void;
   onDelete?: () => void;
   onCancel?: () => void;
   projectId: string;
@@ -43,7 +43,29 @@ interface RowProps {
 // in-progress, not-yet-saved edit in some *other* row every time any
 // refresh happens anywhere on the page.
 function trancheKey(tranche: ProjectTranche | null): string {
-  return `${tranche?.amount ?? ""}|${tranche?.sent_on ?? ""}|${tranche?.notes ?? ""}`;
+  return `${tranche?.amount ?? ""}|${tranche?.sent_on ?? ""}|${tranche?.notes ?? ""}|${tranche?.confirmed_on ?? ""}`;
+}
+
+function statusBadge(sentOn: string, confirmedOn: string) {
+  if (confirmedOn) {
+    return (
+      <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
+        Confirmed on {formatDateOnly(confirmedOn)}
+      </span>
+    );
+  }
+  if (sentOn) {
+    return (
+      <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+        Sent on {formatDateOnly(sentOn)} — awaiting confirmation
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-white/45">
+      Not sent
+    </span>
+  );
 }
 
 function TrancheRow({
@@ -63,7 +85,9 @@ function TrancheRow({
   const [amount, setAmount] = useState(tranche?.amount != null ? String(tranche.amount) : "");
   const [sentOn, setSentOn] = useState(tranche?.sent_on ?? "");
   const [notes, setNotes] = useState(tranche?.notes ?? "");
+  const [confirmedOn, setConfirmedOn] = useState(tranche?.confirmed_on ?? "");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
 
   const docCount = tranche ? documents.filter((d) => d.tranche_id === tranche.id).length : 0;
   const [docsOpen, setDocsOpen] = useState(docCount > 0);
@@ -88,25 +112,41 @@ function TrancheRow({
     setAmount(tranche?.amount != null ? String(tranche.amount) : "");
     setSentOn(tranche?.sent_on ?? "");
     setNotes(tranche?.notes ?? "");
+    setConfirmedOn(tranche?.confirmed_on ?? "");
   }
 
   function markSentToday() {
     setSentOn(dateKeyInTimeZone(new Date().toISOString()));
   }
 
+  function markConfirmedToday() {
+    setBlockedMessage(null);
+    setConfirmedOn(dateKeyInTimeZone(new Date().toISOString()));
+  }
+
+  // The DB's own check constraint (023_tranche_confirmed.sql) would
+  // reject this exact case anyway, but blocking it here means it never
+  // even reaches a save — the field itself refuses to go blank while a
+  // confirmed date is still sitting on it.
+  function handleSentOnChange(value: string) {
+    if (!value && confirmedOn) {
+      setBlockedMessage("Clear the confirmed date first — a sent date can't be removed while one exists.");
+      return;
+    }
+    setBlockedMessage(null);
+    setSentOn(value);
+  }
+
+  function handleConfirmedOnChange(value: string) {
+    setBlockedMessage(null);
+    setConfirmedOn(value);
+  }
+
   return (
     <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3">
       <div className="mb-2 flex items-center justify-between">
         <p className="text-xs font-medium text-white/55">Tranche {number}</p>
-        {!sentOn ? (
-          <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-white/45">
-            Not sent
-          </span>
-        ) : (
-          <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
-            Sent on {formatDateOnly(sentOn)}
-          </span>
-        )}
+        {statusBadge(sentOn, confirmedOn)}
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <div className="relative">
@@ -127,7 +167,7 @@ function TrancheRow({
           type="date"
           aria-label="Sent on"
           value={sentOn}
-          onChange={(e) => setSentOn(e.target.value)}
+          onChange={(e) => handleSentOnChange(e.target.value)}
           disabled={disabled}
           className={fieldClass}
         />
@@ -140,10 +180,30 @@ function TrancheRow({
           className={fieldClass}
         />
       </div>
+
+      {sentOn && (
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-white/40">Confirmed on</label>
+            <input
+              type="date"
+              aria-label="Confirmed on"
+              value={confirmedOn}
+              min={sentOn}
+              onChange={(e) => handleConfirmedOnChange(e.target.value)}
+              disabled={disabled}
+              className={fieldClass}
+            />
+          </div>
+        </div>
+      )}
+
+      {blockedMessage && <p className="mt-2 text-xs text-amber-300">{blockedMessage}</p>}
+
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => onSave(amount, sentOn, notes)}
+          onClick={() => onSave(amount, sentOn, notes, confirmedOn)}
           disabled={disabled}
           className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -157,6 +217,16 @@ function TrancheRow({
             className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/80 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Mark sent today
+          </button>
+        )}
+        {sentOn && !confirmedOn && (
+          <button
+            type="button"
+            onClick={markConfirmedToday}
+            disabled={disabled}
+            className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/80 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Mark confirmed today
           </button>
         )}
         {onCancel && (
@@ -254,12 +324,12 @@ export function TranchesSection({ projectId, tranches, currency, documents, docu
   const extraNumbers = virtualTrancheNumbers(tranches).filter((n) => n > 2);
   const nextNumber = Math.max(2, ...extraNumbers) + 1;
 
-  function handleSave(trancheNumber: number, amount: string, sentOn: string, notes: string) {
+  function handleSave(trancheNumber: number, amount: string, sentOn: string, notes: string, confirmedOn: string) {
     setError(null);
     setSavedNumber(null);
     startTransition(async () => {
       try {
-        const result = await upsertProjectTranche(projectId, trancheNumber, amount, sentOn, notes);
+        const result = await upsertProjectTranche(projectId, trancheNumber, amount, sentOn, notes, confirmedOn);
         if (result.error) {
           setError(result.error);
           return;
@@ -299,7 +369,7 @@ export function TranchesSection({ projectId, tranches, currency, documents, docu
             currency={currency}
             removable={number > 2}
             disabled={isPending}
-            onSave={(amount, sentOn, notes) => handleSave(number, amount, sentOn, notes)}
+            onSave={(amount, sentOn, notes, confirmedOn) => handleSave(number, amount, sentOn, notes, confirmedOn)}
             onDelete={number > 2 ? () => handleDelete(number) : undefined}
             projectId={projectId}
             tranches={tranches}
@@ -319,7 +389,7 @@ export function TranchesSection({ projectId, tranches, currency, documents, docu
           currency={currency}
           removable={false}
           disabled={isPending}
-          onSave={(amount, sentOn, notes) => handleSave(nextNumber, amount, sentOn, notes)}
+          onSave={(amount, sentOn, notes, confirmedOn) => handleSave(nextNumber, amount, sentOn, notes, confirmedOn)}
           onCancel={() => setAddingNext(false)}
           projectId={projectId}
           tranches={tranches}

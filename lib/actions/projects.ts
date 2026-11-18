@@ -415,13 +415,31 @@ export async function toggleProjectArchived(
 // 1 and 2 are cleared (amount/date set back to empty) instead.
 // ----------------------------------------------------------------------------
 
+// confirmedOnRaw mirrors sentOnRaw/notesRaw's "" means empty convention.
+// Both checks here match the DB's own project_tranches_confirmed_
+// requires_sent constraint (023_tranche_confirmed.sql) exactly — this
+// just turns the same rule into a friendly message instead of a raw
+// constraint-violation error, for both "setting a confirmed date with
+// no sent date" and "clearing the sent date while a confirmed date is
+// still set" (the same payload shape either way).
 export async function upsertProjectTranche(
   projectId: string,
   trancheNumber: number,
   amountRaw: string,
   sentOnRaw: string,
-  notesRaw: string
+  notesRaw: string,
+  confirmedOnRaw: string
 ): Promise<{ error: string | null }> {
+  const sentOn = sentOnRaw.trim() || null;
+  const confirmedOn = confirmedOnRaw.trim() || null;
+
+  if (confirmedOn && !sentOn) {
+    return { error: "A confirmed date requires a sent date — clear the confirmed date first." };
+  }
+  if (confirmedOn && sentOn && confirmedOn < sentOn) {
+    return { error: "Confirmed date can't be before the sent date." };
+  }
+
   try {
     const supabase = await createClient();
 
@@ -430,8 +448,9 @@ export async function upsertProjectTranche(
         project_id: projectId,
         tranche_number: trancheNumber,
         amount: parseMoneyFormValue(amountRaw),
-        sent_on: sentOnRaw.trim() || null,
+        sent_on: sentOn,
         notes: notesRaw.trim() || null,
+        confirmed_on: confirmedOn,
       },
       { onConflict: "project_id,tranche_number" }
     );
@@ -441,6 +460,7 @@ export async function upsertProjectTranche(
     }
 
     revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/dashboard");
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };

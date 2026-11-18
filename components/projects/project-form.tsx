@@ -61,6 +61,12 @@ interface ProjectFormProps {
   // Recovery Projects tab's "New Project" link (app/(app)/projects/
   // new/page.tsx reads ?recovery=true) — unticked otherwise.
   defaultRecovery?: boolean;
+  // Settings → Defaults' "Show Recovery" toggle (supabase/migrations/
+  // 024_show_recovery.sql) — off hides the Recovery checkbox entirely.
+  // An already-recovery project being edited keeps its is_recovery
+  // value untouched either way; there's just no control to change it
+  // while this is off.
+  showRecovery: boolean;
 }
 
 const initialState: ProjectFormState = { error: null };
@@ -83,6 +89,7 @@ export function ProjectForm({
   documentTypes,
   defaultCurrency,
   defaultRecovery,
+  showRecovery,
 }: ProjectFormProps) {
   const router = useRouter();
 
@@ -360,18 +367,28 @@ export function ProjectForm({
           <ProductOptionsPicker products={products} value={productOptions} onChange={setProductOptions} />
         </div>
 
-        <div className="sm:col-span-2">
-          <label className="flex items-center gap-2.5 text-sm text-white/80">
-            <input
-              type="checkbox"
-              name="is_recovery"
-              checked={isRecovery}
-              onChange={(e) => setIsRecovery(e.target.checked)}
-              className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
-            />
-            Recovery
-          </label>
-        </div>
+        {showRecovery ? (
+          <div className="sm:col-span-2">
+            <label className="flex items-center gap-2.5 text-sm text-white/80">
+              <input
+                type="checkbox"
+                name="is_recovery"
+                checked={isRecovery}
+                onChange={(e) => setIsRecovery(e.target.checked)}
+                className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
+              />
+              Recovery
+            </label>
+          </div>
+        ) : (
+          // No visible control while recovery is hidden, but an
+          // already-recovery project's value must still round-trip on
+          // save — a plain checkbox input is simply missing from
+          // FormData when unmounted, which would silently flip an
+          // existing recovery project to non-recovery on its next
+          // save otherwise.
+          isRecovery && <input type="hidden" name="is_recovery" value="on" />
+        )}
 
         <div>
           <label className={labelClass} htmlFor="priority">

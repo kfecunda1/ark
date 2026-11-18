@@ -51,6 +51,7 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
         documentTypes={documentTypes}
         defaultCurrency={appSettings.default_currency}
         defaultRecovery={defaultRecovery}
+        showRecovery={appSettings.show_recovery}
       />
     </div>
   );

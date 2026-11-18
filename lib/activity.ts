@@ -19,7 +19,7 @@ export const ACTIVITY_FILTER_LABELS: Record<ActivityFilter, string> = {
 };
 
 export const ACTIVITY_FILTER_ENTITY_TYPES: Record<ActivityFilter, ActivityEntityType[]> = {
-  project: ["project", "project_step", "project_product", "project_intermediary"],
+  project: ["project", "project_step", "project_product", "project_intermediary", "project_tranche"],
   contact: ["contact", "contact_product", "receiver_intermediary"],
   document: ["project_document", "contact_document"],
 };
@@ -49,6 +49,7 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   receiver_intermediary: "Receiver intermediary",
   project_intermediary: "Project intermediary",
   status: "Status",
+  project_tranche: "Tranche",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -68,7 +69,8 @@ export function isDocumentEntity(entityType: ActivityEntityType): boolean {
     entityType === "project_product" ||
     entityType === "note" ||
     entityType === "receiver_intermediary" ||
-    entityType === "project_intermediary"
+    entityType === "project_intermediary" ||
+    entityType === "project_tranche"
   );
 }
 
@@ -104,6 +106,8 @@ const FIELD_LABELS: Record<string, string> = {
   kind: "type",
   body: "text",
   due_date: "due date",
+  // project_tranche
+  confirmed_on: "confirmed on",
   done: "done",
   // products / document_types / statuses / app_settings
   active: "active",
@@ -111,6 +115,7 @@ const FIELD_LABELS: Record<string, string> = {
   color: "color",
   default_currency: "default currency",
   stuck_after_days: "stuck after (days)",
+  show_recovery: "show recovery",
   // users
   role: "role",
   event: "event",
@@ -152,6 +157,7 @@ const FIELDS_DESCRIBED_SEPARATELY = new Set([
   "active",
   "default_currency",
   "stuck_after_days",
+  "show_recovery",
   "role",
   "event",
   "final_product",
@@ -258,6 +264,10 @@ export function activityDetailChips(row: ActivityLog): string[] {
     chips.push(`stuck after ${details.stuck_after_days[0]} -> ${details.stuck_after_days[1]} days`);
   }
 
+  if (details.show_recovery) {
+    chips.push(details.show_recovery[1] ? "recovery shown" : "recovery hidden");
+  }
+
   if (details.role) {
     chips.push(`role ${details.role[0] ?? "—"} -> ${details.role[1] ?? "—"}`);
   }
@@ -318,6 +328,7 @@ export function activityTarget(row: ActivityLog): ActivityTarget | null {
     case "project_step":
     case "project_product":
     case "project_intermediary":
+    case "project_tranche":
       return row.details?.parent_id ? { table: "projects", id: row.details.parent_id } : null;
     case "contact_product":
     case "contact_document":

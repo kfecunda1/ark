@@ -16,6 +16,7 @@ const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 export function DefaultsForm({ settings }: DefaultsFormProps) {
   const [defaultCurrency, setDefaultCurrency] = useState<Currency>(settings.default_currency);
   const [stuckAfterDays, setStuckAfterDays] = useState(String(settings.stuck_after_days));
+  const [showRecovery, setShowRecovery] = useState(settings.show_recovery);
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -33,7 +34,7 @@ export function DefaultsForm({ settings }: DefaultsFormProps) {
 
     setIsPending(true);
     try {
-      const result = await updateAppSettings(defaultCurrency, days);
+      const result = await updateAppSettings(defaultCurrency, days, showRecovery);
       if (result.error) {
         setError(result.error);
         return;
@@ -88,6 +89,22 @@ export function DefaultsForm({ settings }: DefaultsFormProps) {
         <p className="mt-1.5 text-xs text-white/35">
           Projects with no activity for this many days show up as &quot;stuck&quot; on the Dashboard.
         </p>
+      </div>
+
+      <div>
+        <label className="flex items-center gap-2.5 text-sm text-white/80">
+          <input
+            type="checkbox"
+            checked={showRecovery}
+            onChange={(e) => {
+              setShowRecovery(e.target.checked);
+              setSuccess(false);
+            }}
+            className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
+          />
+          Show Recovery
+        </label>
+        <p className="mt-1.5 text-xs text-white/35">Hides recovery features. No data is deleted.</p>
       </div>
 
       {error && (

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
 import { getAllStatuses } from "@/lib/statuses";
 import { getActiveDocumentTypes } from "@/lib/document-types";
+import { getAppSettings } from "@/lib/app-settings";
 import { getProjectIntermediaryChain } from "@/lib/intermediaries";
 import { personLabel } from "@/lib/people";
 import type { Contact, Person, ProjectProduct } from "@/lib/types";
@@ -25,6 +26,7 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
     statuses,
     documentTypes,
     projectIntermediaries,
+    appSettings,
   ] = await Promise.all([
     supabase.from("projects").select("*").eq("id", id).maybeSingle(),
     supabase.from("contacts").select("id, full_name, archived_at").order("full_name"),
@@ -34,6 +36,7 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
     getAllStatuses(),
     getActiveDocumentTypes(),
     getProjectIntermediaryChain(id),
+    getAppSettings(),
   ]);
 
   if (!project) {
@@ -71,6 +74,7 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
         products={products}
         statuses={statuses}
         documentTypes={documentTypes}
+        showRecovery={appSettings.show_recovery}
       />
     </div>
   );

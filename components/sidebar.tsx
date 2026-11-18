@@ -21,11 +21,13 @@ interface SidebarProps {
   open: boolean;
   onClose: () => void;
   inboxNewCount: number;
+  showRecovery: boolean;
 }
 
-export function Sidebar({ open, onClose, inboxNewCount }: SidebarProps) {
+export function Sidebar({ open, onClose, inboxNewCount, showRecovery }: SidebarProps) {
   const pathname = usePathname();
   const { section } = useProjectSection();
+  const navItems = showRecovery ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.href !== "/recovery");
 
   // /projects/[id] (and its /edit) is the one URL for every project
   // regardless of is_recovery, so a plain pathname match can't tell
@@ -74,7 +76,7 @@ export function Sidebar({ open, onClose, inboxNewCount }: SidebarProps) {
         </div>
 
         <nav className="flex flex-1 flex-col gap-1">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          {navItems.map(({ href, label, icon: Icon }) => {
             const active = isActive(href);
             return (
               <Link

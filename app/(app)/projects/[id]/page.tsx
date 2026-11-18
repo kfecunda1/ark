@@ -18,6 +18,7 @@ import { ProjectTimeline } from "@/components/projects/project-timeline";
 import { createClient } from "@/lib/supabase/server";
 import { getAllStatuses } from "@/lib/statuses";
 import { getActiveDocumentTypes } from "@/lib/document-types";
+import { getAppSettings } from "@/lib/app-settings";
 import { formatDateTime } from "@/lib/format";
 import { amountInWords, formatMoney } from "@/lib/money";
 import { buildIntermediaryPickerOptions, getProjectIntermediaryChain } from "@/lib/intermediaries";
@@ -88,6 +89,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     { data: projectProductsData },
     documentTypes,
     statuses,
+    appSettings,
   ] = await Promise.all([
     supabase.from("project_documents").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
     supabase.from("project_tranches").select("*").eq("project_id", project.id).order("tranche_number"),
@@ -96,6 +98,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     supabase.from("project_products").select("*").eq("project_id", project.id).order("sort_order"),
     getActiveDocumentTypes(),
     getAllStatuses(),
+    getAppSettings(),
   ]);
   const projectDocuments = (projectDocumentsData as ProjectDocument[] | null) ?? [];
   const tranches = (tranchesData as ProjectTranche[] | null) ?? [];
@@ -169,10 +172,10 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link
-            href={project.is_recovery ? "/recovery" : "/projects"}
+            href={appSettings.show_recovery && project.is_recovery ? "/recovery" : "/projects"}
             className="text-xs font-medium text-white/40 hover:text-white/70"
           >
-            ← Back to {project.is_recovery ? "recovery projects" : "projects"}
+            ← Back to {appSettings.show_recovery && project.is_recovery ? "recovery projects" : "projects"}
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-tight text-white">{project.name}</h1>
@@ -183,7 +186,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             )}
           </div>
           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-white/45">
-            {project.is_recovery && (
+            {appSettings.show_recovery && project.is_recovery && (
               <>
                 <RecoveryBadge />
                 <span>·</span>
@@ -226,7 +229,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         <PriorityBadge priority={project.priority} />
         <StageSelect projectId={project.id} currentStage={project.stage} />
         <StatusSelect projectId={project.id} currentStatus={project.status} statuses={statuses} />
-        <RecoveryToggle projectId={project.id} isRecovery={project.is_recovery} />
+        {appSettings.show_recovery && <RecoveryToggle projectId={project.id} isRecovery={project.is_recovery} />}
       </div>
 
       <div className="mb-6">

@@ -52,6 +52,7 @@ export interface ProjectsListSearchParams {
   stage?: string;
   status?: string;
   intermediary?: string;
+  active_tranches?: string;
   sort?: string;
   dir?: string;
   archived?: string;
@@ -147,6 +148,23 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
     projects = projects.filter((p) => allowedProjectIds.has(p.id));
   }
 
+  // "Active Tranches" filter — a tranche that's been sent but not yet
+  // confirmed, same definition as the Dashboard's Active Tranches card/
+  // row (app/(app)/dashboard/page.tsx). Only queried when the filter is
+  // actually on, since every other filter above works off columns
+  // already on `projects` itself.
+  if (params.active_tranches === "true") {
+    const { data: activeTrancheRows } = await supabase
+      .from("project_tranches")
+      .select("project_id")
+      .not("sent_on", "is", null)
+      .is("confirmed_on", null);
+    const activeTrancheProjectIds = new Set(
+      ((activeTrancheRows as { project_id: string }[] | null) ?? []).map((t) => t.project_id)
+    );
+    projects = projects.filter((p) => activeTrancheProjectIds.has(p.id));
+  }
+
   // Earliest open next step per project — "open" meaning not yet done.
   const nextStepByProjectId = new Map<string, Pick<ProjectStep, "body" | "due_date">>();
   if (projects.length > 0) {
@@ -207,7 +225,9 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
       ? "Track and manage recovery projects."
       : "Track and manage incoming projects.";
   const emptyTitle = showArchived ? `No archived ${noun}` : isRecovery ? "No recovery projects yet" : "No projects yet";
-  const filtered = Boolean(params.product_type || params.stage || params.status || params.intermediary);
+  const filtered = Boolean(
+    params.product_type || params.stage || params.status || params.intermediary || params.active_tranches === "true"
+  );
   const newProjectHref = isRecovery ? "/projects/new?recovery=true" : "/projects/new";
 
   return (

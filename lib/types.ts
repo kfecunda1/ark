@@ -233,6 +233,9 @@ export interface ProjectProduct {
 // Tranche 1 and 2 are permanent slots the UI always shows, even with no
 // row here yet (see components/projects/tranches-section.tsx); 3+ are
 // added on demand. sent_on null means not sent yet.
+// confirmed_on (supabase/migrations/023_tranche_confirmed.sql) can only
+// be set alongside sent_on, and never before it — enforced by a check
+// constraint, not just the app.
 export interface ProjectTranche {
   id: string;
   project_id: string;
@@ -240,6 +243,7 @@ export interface ProjectTranche {
   amount: number | null;
   sent_on: string | null;
   notes: string | null;
+  confirmed_on: string | null;
   created_at: string;
 }
 
@@ -343,6 +347,11 @@ export interface Note {
 export interface AppSettings {
   default_currency: Currency;
   stuck_after_days: number;
+  // supabase/migrations/024_show_recovery.sql — Settings → Defaults'
+  // "Show Recovery" toggle. Purely a display switch: off hides
+  // recovery features throughout the app, but changes nothing about
+  // any project's own is_recovery value or data.
+  show_recovery: boolean;
   updated_at: string;
 }
 
@@ -364,7 +373,8 @@ export type ActivityEntityType =
   | "person"
   | "receiver_intermediary"
   | "project_intermediary"
-  | "status";
+  | "status"
+  | "project_tranche";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
@@ -397,6 +407,7 @@ export interface ActivityDetails {
   // app_settings
   default_currency?: [Currency, Currency];
   stuck_after_days?: [number, number];
+  show_recovery?: [boolean, boolean];
   // users (active is reused from products/document_types above, with
   // entity_type === "user" picking the "deactivated"/"reactivated"
   // wording instead of "hidden"/"shown" — see lib/activity.ts)
@@ -416,6 +427,11 @@ export interface ActivityDetails {
   // updated — the only UPDATE either table gets is a reorder)
   person_id?: string;
   position?: number | [number, number];
+  // project_tranche (supabase/migrations/023_tranche_confirmed.sql) —
+  // always a pair, the trigger only ever fires on a confirmed_on
+  // change.
+  tranche_number?: number;
+  confirmed_on?: [string | null, string | null];
 }
 
 export interface ActivityLog {

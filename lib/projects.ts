@@ -98,6 +98,16 @@ export function dueDateTone(dueDate: string): DueTone {
   return "upcoming";
 }
 
+// Whole days between a past date (e.g. a tranche's sent_on) and today
+// — the Dashboard's Active Tranches list uses this for "N days since
+// sent", the same parseDateOnly basis dueDateTone above uses so both
+// read the date the same way regardless of time zone.
+export function daysSince(dateStr: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((today.getTime() - parseDateOnly(dateStr).getTime()) / 86_400_000);
+}
+
 export function dueDateLabel(dueDate: string): string {
   const tone = dueDateTone(dueDate);
   if (tone === "today") return "Due today";

@@ -7,9 +7,10 @@ import { GlobalSearch } from "@/components/global-search";
 
 interface TopBarProps {
   onMenuClick: () => void;
+  showRecovery: boolean;
 }
 
-export function TopBar({ onMenuClick }: TopBarProps) {
+export function TopBar({ onMenuClick, showRecovery }: TopBarProps) {
   const router = useRouter();
 
   async function handleLogout() {
@@ -29,7 +30,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
         <Menu className="h-5 w-5" />
       </button>
 
-      <GlobalSearch />
+      <GlobalSearch showRecovery={showRecovery} />
 
       <div className="ml-auto flex items-center gap-2">
         <button
