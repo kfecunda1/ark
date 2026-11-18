@@ -75,6 +75,37 @@ export interface Profile {
   // form.tsx). While true, app/change-password/page.tsx is the only
   // page they can reach (lib/supabase/proxy.ts enforces this).
   must_change_password: boolean;
+  // supabase/migrations/022_telegram_inbox.sql. Set by the user
+  // themselves in Settings → My Profile; the Telegram webhook (app/api/
+  // telegram/inbox/route.ts) matches an inbound message's from.id
+  // against this to decide whose Inbox it belongs to.
+  telegram_user_id: number | null;
+}
+
+// supabase/migrations/022_telegram_inbox.sql.
+export type InboxItemKind = "text" | "document" | "photo" | "video";
+export type InboxItemStatus = "new" | "filed" | "dismissed";
+export type InboxFiledToType = "project" | "contact";
+
+// "Too large for Telegram" has no column of its own — the app infers
+// it as kind !== "text" && storage_path === null (see the migration's
+// comment on inbox_items for why).
+export interface InboxItem {
+  id: string;
+  telegram_update_id: number;
+  profile_id: string | null;
+  received_at: string;
+  kind: InboxItemKind;
+  text_or_caption: string | null;
+  forwarded_from: string | null;
+  file_name: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  storage_path: string | null;
+  status: InboxItemStatus;
+  filed_to_type: InboxFiledToType | null;
+  filed_to_id: string | null;
+  media_group_id: string | null;
 }
 
 export interface Contact {

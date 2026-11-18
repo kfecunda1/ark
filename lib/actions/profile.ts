@@ -40,6 +40,45 @@ export async function updateOwnFullName(fullName: string): Promise<{ error: stri
   }
 }
 
+// Blank clears it (sets null); otherwise it must be a plain integer —
+// the numeric id @userinfobot reports, not a @username. profiles_
+// update_self already confines this to the caller's own row; the
+// unique constraint (022_telegram_inbox.sql) is what actually stops
+// two profiles from claiming the same Telegram account, surfaced here
+// as a normal returned error rather than a thrown one.
+export async function updateOwnTelegramId(value: string): Promise<{ error: string | null }> {
+  const trimmed = value.trim();
+  let telegramUserId: number | null = null;
+  if (trimmed) {
+    if (!/^\d+$/.test(trimmed)) {
+      return { error: "Telegram Id must be numbers only — get it from @userinfobot." };
+    }
+    telegramUserId = Number(trimmed);
+  }
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return { error: "Not signed in." };
+    }
+
+    const { error } = await supabase.from("profiles").update({ telegram_user_id: telegramUserId }).eq("id", user.id);
+    if (error) {
+      return {
+        error: error.code === "23505" ? "That Telegram Id is already linked to another ARK user." : error.message,
+      };
+    }
+
+    revalidatePath("/settings");
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
 // Called by components/settings/change-password-form.tsx right after
 // supabase.auth.updateUser() reports success on the client — that
 // report is never trusted on its own. This independently re-

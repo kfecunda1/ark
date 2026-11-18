@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Layers, RotateCcw } from "lucide-react";
+import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Inbox, Layers, RotateCcw } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { RecoveryBadge } from "@/components/projects/badges";
 import { DueTodayAndOverdue, type DueItem } from "@/components/dashboard/due-today";
@@ -30,10 +30,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const { data, error } = await supabase.from("projects").select("*").is("archived_at", null);
   const projects = (data as Project[] | null) ?? [];
 
-  const [products, statuses, appSettings] = await Promise.all([
+  const [products, statuses, appSettings, { count: inboxNewCount }] = await Promise.all([
     getAllProducts(),
     getAllStatuses(),
     getAppSettings(),
+    supabase.from("inbox_items").select("*", { count: "exact", head: true }).eq("status", "new"),
   ]);
   const statusByName = new Map(statuses.map((s) => [s.name, s]));
   const openProjects = projects.filter((project) => !isClosedStatus(project.status, statuses));
@@ -216,13 +217,21 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   // same best-effort single-status link the old hard-coded href was.
   const completedStatusName = statuses.find((s) => s.active && s.kind === "completed")?.name;
 
-  const STATS = [
+  const STATS: {
+    label: string;
+    value: number;
+    icon: typeof Layers;
+    tone: string;
+    href: string;
+    suffix: string | null;
+  }[] = [
     {
       label: "Open Projects",
       value: openNonRecoveryCount,
       icon: Layers,
       tone: "text-white",
       href: "/projects",
+      suffix: null,
     },
     {
       label: "Completed This Month",
@@ -230,6 +239,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       icon: CheckCircle2,
       tone: "text-emerald-300",
       href: completedStatusName ? `/projects?status=${encodeURIComponent(completedStatusName)}` : "/projects",
+      suffix: null,
     },
     {
       label: "Open Recovery Projects",
@@ -237,6 +247,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       icon: RotateCcw,
       tone: "text-amber-300",
       href: "/recovery",
+      suffix: null,
+    },
+    {
+      label: "Inbox",
+      value: inboxNewCount ?? 0,
+      icon: Inbox,
+      tone: "text-cyan-300",
+      href: "/inbox",
+      suffix: " to file",
     },
   ];
 
@@ -272,7 +291,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </GlassCard>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {STATS.map((stat) => (
           <Link key={stat.label} href={stat.href} className="block">
             <GlassCard className="p-6">
@@ -282,6 +301,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               </div>
               <p className={`mt-3 text-3xl font-semibold tracking-tight ${stat.tone}`}>
                 {error ? "—" : stat.value}
+                {!error && stat.suffix && <span className="text-sm font-medium text-white/40">{stat.suffix}</span>}
               </p>
             </GlassCard>
           </Link>

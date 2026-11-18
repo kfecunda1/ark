@@ -10,9 +10,24 @@ const PROTECTED_PATHS = [
   "/activity",
   "/settings",
   "/change-password",
+  "/inbox",
 ];
 
+// The Telegram webhook (app/api/telegram/inbox/route.ts) is the one
+// route in this app that's never called with a Supabase session
+// cookie — Telegram's servers call it directly, authenticated only by
+// its own X-Telegram-Bot-Api-Secret-Token header (checked inside the
+// route itself). Explicitly short-circuiting it here, rather than
+// just leaving it out of PROTECTED_PATHS, means it skips the
+// session-refresh Supabase call entirely instead of merely not being
+// redirected by it.
+const PUBLIC_API_PATHS = ["/api/telegram/inbox"];
+
 export async function updateSession(request: NextRequest) {
+  if (PUBLIC_API_PATHS.includes(request.nextUrl.pathname)) {
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

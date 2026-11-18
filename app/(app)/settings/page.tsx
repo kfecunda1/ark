@@ -7,6 +7,7 @@ import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { ExportBackupButton } from "@/components/settings/export-backup-button";
 import { UsersSection } from "@/components/settings/users-section";
 import { StorageMeter } from "@/components/settings/storage-meter";
+import { TelegramBotPanel } from "@/components/settings/telegram-bot-panel";
 import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
 import { getAllStatuses } from "@/lib/statuses";
@@ -23,15 +24,17 @@ export default async function SettingsPage() {
 
   let isAdmin = false;
   let fullName: string | null = null;
+  let telegramUserId: number | null = null;
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, full_name")
+      .select("role, full_name, telegram_user_id")
       .eq("id", user.id)
       .maybeSingle();
-    const row = profile as { role: string | null; full_name: string | null } | null;
+    const row = profile as { role: string | null; full_name: string | null; telegram_user_id: number | null } | null;
     isAdmin = row?.role === "admin";
     fullName = row?.full_name ?? null;
+    telegramUserId = row?.telegram_user_id ?? null;
   }
 
   const [products, statuses, documentTypes, appSettings, usersResult, storageUsedBytes] = isAdmin
@@ -55,7 +58,7 @@ export default async function SettingsPage() {
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">My Profile</h2>
         <GlassCard interactive={false} className="p-6">
-          <MyProfileForm fullName={fullName} />
+          <MyProfileForm fullName={fullName} telegramUserId={telegramUserId} />
         </GlassCard>
       </div>
 
@@ -111,6 +114,13 @@ export default async function SettingsPage() {
             <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Storage</h2>
             <GlassCard interactive={false} className="p-6">
               <StorageMeter usedBytes={storageUsedBytes} />
+            </GlassCard>
+          </div>
+
+          <div className="mt-6">
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Telegram bot</h2>
+            <GlassCard interactive={false} className="p-6">
+              <TelegramBotPanel />
             </GlassCard>
           </div>
 

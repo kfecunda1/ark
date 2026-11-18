@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Contact, FolderKanban, History, LayoutDashboard, RotateCcw, StickyNote, Settings, User, X } from "lucide-react";
+import { Contact, FolderKanban, History, Inbox, LayoutDashboard, RotateCcw, StickyNote, Settings, User, X } from "lucide-react";
 import { useProjectSection } from "@/components/project-section-context";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/recovery", label: "Recovery Projects", icon: RotateCcw },
   { href: "/receivers", label: "Receivers", icon: Contact },
@@ -19,9 +20,10 @@ const NAV_ITEMS = [
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
+  inboxNewCount: number;
 }
 
-export function Sidebar({ open, onClose }: SidebarProps) {
+export function Sidebar({ open, onClose, inboxNewCount }: SidebarProps) {
   const pathname = usePathname();
   const { section } = useProjectSection();
 
@@ -90,7 +92,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     active ? "text-accent-soft" : "text-white/40 group-hover:text-white/70"
                   }`}
                 />
-                {label}
+                {href === "/inbox" ? `${label} (${inboxNewCount})` : label}
               </Link>
             );
           })}
