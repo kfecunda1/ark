@@ -82,7 +82,7 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
       .limit(RESULT_LIMIT),
     supabase
       .from("project_documents")
-      .select("id, file_name, project_id")
+      .select("id, file_name, project_id, document_type, tranche_id")
       .ilike("file_name", likePattern)
       .limit(RESULT_LIMIT),
     supabase
@@ -107,7 +107,9 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
 
   const contactMatches = (contactsRes.data as { id: string; full_name: string }[] | null) ?? [];
   const projectDocMatches =
-    (projectDocsRes.data as { id: string; file_name: string; project_id: string }[] | null) ?? [];
+    (projectDocsRes.data as
+      | { id: string; file_name: string; project_id: string; document_type: string; tranche_id: string | null }[]
+      | null) ?? [];
   const noteMatches =
     (notesRes.data as
       | { id: string; title: string | null; content: string; project_id: string | null; contact_id: string | null }[]
@@ -156,7 +158,9 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
   // same fetch-by-id helpers also pick up this person's intermediary
   // projects/receivers, which never matched the text search on their
   // own name either.
-  const [{ data: projectRows }, docParentProjects, noteParentProjects, noteParentContacts, intermediaryProjects, intermediaryReceivers] =
+  const docTrancheIds = [...new Set(projectDocMatches.map((d) => d.tranche_id).filter((id): id is string => Boolean(id)))];
+
+  const [{ data: projectRows }, docParentProjects, noteParentProjects, noteParentContacts, intermediaryProjects, intermediaryReceivers, docTranchesRes] =
     await Promise.all([
       supabase
         .from("projects")
@@ -168,7 +172,14 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
       fetchContactsByIds(supabase, noteContactIds),
       fetchProjectsByIds(supabase, intermediaryProjectIds),
       fetchContactsByIds(supabase, intermediaryReceiverIds),
+      docTrancheIds.length > 0
+        ? supabase.from("project_tranches").select("id, tranche_number").in("id", docTrancheIds)
+        : Promise.resolve({ data: [] as { id: string; tranche_number: number }[] }),
     ]);
+
+  const trancheNumberById = new Map(
+    ((docTranchesRes.data as { id: string; tranche_number: number }[] | null) ?? []).map((t) => [t.id, t.tranche_number])
+  );
 
   const textMatchedProjects = (projectRows as ProjectFields[] | null) ?? [];
   const projectMatches = [
@@ -211,11 +222,13 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
 
   const documentResults: SearchResult[] = projectDocMatches.map((doc) => {
     const project = projectById.get(doc.project_id);
+    const trancheNumber = doc.tranche_id ? trancheNumberById.get(doc.tranche_id) : undefined;
+    const trancheLabel = trancheNumber != null ? `Tranche ${trancheNumber}` : "General";
     return {
       type: "document",
       id: doc.id,
       title: doc.file_name,
-      subtitle: `Project: ${project?.name ?? "Unknown project"}`,
+      subtitle: `${trancheLabel} · ${doc.document_type} · Project: ${project?.name ?? "Unknown project"}`,
       parentId: doc.project_id,
       parentType: "project",
     };

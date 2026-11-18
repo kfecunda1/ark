@@ -1,5 +1,5 @@
 import { LOCALE } from "@/lib/format";
-import type { Currency, ProjectPriority, ProjectStage } from "@/lib/types";
+import type { Currency, ProjectPriority, ProjectStage, ProjectTranche } from "@/lib/types";
 
 // Kept in sync by hand with the CHECK constraint added by
 // supabase/migrations/002_currency_check.sql.
@@ -14,6 +14,18 @@ export const STAGE_LABELS: Record<ProjectStage, string> = {
   match: "Match",
   status: "Status",
 };
+
+// Tranche 1 and 2 are permanent slots the detail page always shows,
+// even with no project_tranches row behind them yet; 3+ only show up
+// once someone adds them ("Tranches after" in components/projects/
+// tranches-section.tsx). This is every slot that should currently be
+// offered as a destination — for the tranche rows themselves, and for
+// the "For tranche" / "Move to…" pickers in components/projects/
+// project-documents.tsx — regardless of whether its row exists yet.
+export function virtualTrancheNumbers(tranches: ProjectTranche[]): number[] {
+  const extra = tranches.map((t) => t.tranche_number).filter((n) => n > 2).sort((a, b) => a - b);
+  return [1, 2, ...extra];
+}
 
 // Statuses are admin-managed data now (supabase/migrations/019_
 // statuses.sql's `statuses` table) — see lib/statuses.ts for the

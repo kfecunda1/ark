@@ -99,6 +99,7 @@ const FIELD_LABELS: Record<string, string> = {
   document_type: "document type",
   file_name: "file name",
   file_path: "file path",
+  tranche_id: "tranche",
   // project steps (timeline)
   kind: "type",
   body: "text",
@@ -156,6 +157,10 @@ const FIELDS_DESCRIBED_SEPARATELY = new Set([
   "final_product",
   "reminder_done",
   "is_recovery",
+  // already spelled out in the row's own summary ("<file> moved to
+  // Tranche N" / "moved to General") — see log_project_document_
+  // activity() in supabase/migrations/021_tranche_documents.sql.
+  "tranche_id",
 ]);
 
 function asPair<T>(value: T | [T, T] | undefined): [T, T] | null {

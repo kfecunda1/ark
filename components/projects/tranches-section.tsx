@@ -2,17 +2,20 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Plus, Trash2 } from "lucide-react";
 import { upsertProjectTranche, deleteProjectTranche } from "@/lib/actions/projects";
-import { formatDateOnly } from "@/lib/projects";
+import { formatDateOnly, virtualTrancheNumbers } from "@/lib/projects";
 import { dateKeyInTimeZone } from "@/lib/format";
 import { MoneyInput } from "@/components/money-input";
-import type { Currency, ProjectTranche } from "@/lib/types";
+import { ProjectDocuments, type ProjectDocumentWithUrl } from "@/components/projects/project-documents";
+import type { Currency, DocumentTypeRecord, ProjectTranche } from "@/lib/types";
 
 interface TranchesSectionProps {
   projectId: string;
   tranches: ProjectTranche[];
   currency: Currency;
+  documents: ProjectDocumentWithUrl[];
+  documentTypes: DocumentTypeRecord[];
 }
 
 const fieldClass =
@@ -27,6 +30,10 @@ interface RowProps {
   onSave: (amount: string, sentOn: string, notes: string) => void;
   onDelete?: () => void;
   onCancel?: () => void;
+  projectId: string;
+  tranches: ProjectTranche[];
+  documents: ProjectDocumentWithUrl[];
+  documentTypes: DocumentTypeRecord[];
 }
 
 // Identifies a tranche by its actual saved values rather than object
@@ -39,10 +46,27 @@ function trancheKey(tranche: ProjectTranche | null): string {
   return `${tranche?.amount ?? ""}|${tranche?.sent_on ?? ""}|${tranche?.notes ?? ""}`;
 }
 
-function TrancheRow({ number, tranche, currency, removable, disabled, onSave, onDelete, onCancel }: RowProps) {
+function TrancheRow({
+  number,
+  tranche,
+  currency,
+  removable,
+  disabled,
+  onSave,
+  onDelete,
+  onCancel,
+  projectId,
+  tranches,
+  documents,
+  documentTypes,
+}: RowProps) {
   const [amount, setAmount] = useState(tranche?.amount != null ? String(tranche.amount) : "");
   const [sentOn, setSentOn] = useState(tranche?.sent_on ?? "");
   const [notes, setNotes] = useState(tranche?.notes ?? "");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const docCount = tranche ? documents.filter((d) => d.tranche_id === tranche.id).length : 0;
+  const [docsOpen, setDocsOpen] = useState(docCount > 0);
 
   // Resyncs the fields to the server's actual row once its *values*
   // change (a successful save, or a refresh after someone else's edit)
@@ -116,7 +140,7 @@ function TrancheRow({ number, tranche, currency, removable, disabled, onSave, on
           className={fieldClass}
         />
       </div>
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => onSave(amount, sentOn, notes)}
@@ -146,23 +170,80 @@ function TrancheRow({ number, tranche, currency, removable, disabled, onSave, on
           </button>
         )}
         {removable && onDelete && (
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={disabled}
-            aria-label={`Remove tranche ${number}`}
-            className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-rose-300 transition-colors duration-150 ease-out hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Remove
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {confirmingDelete ? (
+              <>
+                <span className="text-xs text-amber-300">
+                  {docCount > 0
+                    ? `${docCount} document${docCount === 1 ? "" : "s"} will move to General.`
+                    : `Remove tranche ${number}?`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDelete();
+                    setConfirmingDelete(false);
+                  }}
+                  disabled={disabled}
+                  className="rounded-md bg-rose-500 px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {disabled ? "Removing…" : "Confirm"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={disabled}
+                  className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                disabled={disabled}
+                aria-label={`Remove tranche ${number}`}
+                className="inline-flex items-center gap-1 text-xs font-medium text-rose-300 transition-colors duration-150 ease-out hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Remove
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 border-t border-white/[0.06] pt-3">
+        <button
+          type="button"
+          onClick={() => setDocsOpen((open) => !open)}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-white/60 transition-colors duration-150 ease-out hover:text-white/90"
+        >
+          {docsOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          <FileText className="h-3.5 w-3.5" />
+          Documents
+          <span className="rounded-full border border-white/10 bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-white/50">
+            {docCount}
+          </span>
+        </button>
+        {docsOpen && (
+          <div className="mt-2">
+            <ProjectDocuments
+              projectId={projectId}
+              documents={documents}
+              documentTypes={documentTypes}
+              tranches={tranches}
+              scope={{ kind: "tranche", number }}
+            />
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-export function TranchesSection({ projectId, tranches, currency }: TranchesSectionProps) {
+export function TranchesSection({ projectId, tranches, currency, documents, documentTypes }: TranchesSectionProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -170,7 +251,7 @@ export function TranchesSection({ projectId, tranches, currency }: TranchesSecti
   const [addingNext, setAddingNext] = useState(false);
 
   const byNumber = new Map(tranches.map((t) => [t.tranche_number, t]));
-  const extraNumbers = tranches.map((t) => t.tranche_number).filter((n) => n > 2).sort((a, b) => a - b);
+  const extraNumbers = virtualTrancheNumbers(tranches).filter((n) => n > 2);
   const nextNumber = Math.max(2, ...extraNumbers) + 1;
 
   function handleSave(trancheNumber: number, amount: string, sentOn: string, notes: string) {
@@ -220,6 +301,10 @@ export function TranchesSection({ projectId, tranches, currency }: TranchesSecti
             disabled={isPending}
             onSave={(amount, sentOn, notes) => handleSave(number, amount, sentOn, notes)}
             onDelete={number > 2 ? () => handleDelete(number) : undefined}
+            projectId={projectId}
+            tranches={tranches}
+            documents={documents}
+            documentTypes={documentTypes}
           />
           {savedNumber === number && !isPending && (
             <p className="text-xs text-emerald-300">Saved.</p>
@@ -236,6 +321,10 @@ export function TranchesSection({ projectId, tranches, currency }: TranchesSecti
           disabled={isPending}
           onSave={(amount, sentOn, notes) => handleSave(nextNumber, amount, sentOn, notes)}
           onCancel={() => setAddingNext(false)}
+          projectId={projectId}
+          tranches={tranches}
+          documents={documents}
+          documentTypes={documentTypes}
         />
       ) : (
         <button

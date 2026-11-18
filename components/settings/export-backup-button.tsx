@@ -5,7 +5,7 @@ import JSZip from "jszip";
 import { createClient } from "@/lib/supabase/client";
 import { dateKeyInTimeZone } from "@/lib/format";
 import { toCsv } from "@/lib/csv";
-import type { Contact, ContactDocument, Project, ProjectDocument } from "@/lib/types";
+import type { Contact, ContactDocument, Project, ProjectDocument, ProjectTranche } from "@/lib/types";
 
 // One CSV per table — every table in the schema except profiles (an
 // auth-linked table, not part of the business data) and the two
@@ -57,27 +57,49 @@ export function ExportBackupButton() {
       const supabase = createClient();
       const zip = new JSZip();
 
-      // 1. One CSV per table.
+      // 1. Fetch every table's rows first (written as CSV further down,
+      // once project_documents has its derived tranche_number column —
+      // see step 2).
       const rowsByTable: Partial<Record<(typeof TABLES)[number], Record<string, unknown>[]>> = {};
       for (const table of TABLES) {
         const { data, error: queryError } = await supabase.from(table).select("*");
         if (queryError) {
           throw new Error(`Failed to read "${table}": ${queryError.message}`);
         }
-        const rows = (data as Record<string, unknown>[] | null) ?? [];
-        rowsByTable[table] = rows;
-        zip.file(`${table}.csv`, toCsv(rows));
+        rowsByTable[table] = (data as Record<string, unknown>[] | null) ?? [];
       }
 
       // 2. Every file in both private buckets, grouped into a folder per
-      // owning project/contact, under its original file name.
+      // owning project/contact (project documents further grouped into a
+      // "Tranche N" subfolder, or none for General), under its original
+      // file name.
       const projects = (rowsByTable.projects ?? []) as unknown as Project[];
       const contacts = (rowsByTable.contacts ?? []) as unknown as Contact[];
       const projectDocs = (rowsByTable.project_documents ?? []) as unknown as ProjectDocument[];
       const contactDocs = (rowsByTable.contact_documents ?? []) as unknown as ContactDocument[];
+      const projectTranches = (rowsByTable.project_tranches ?? []) as unknown as ProjectTranche[];
 
       const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
       const contactNameById = new Map(contacts.map((c) => [c.id, c.full_name]));
+      const trancheNumberById = new Map(projectTranches.map((t) => [t.id, t.tranche_number]));
+
+      function trancheSubfolder(trancheId: string | null): string {
+        if (!trancheId) return "";
+        const number = trancheNumberById.get(trancheId);
+        return number != null ? `/Tranche ${number}` : "";
+      }
+
+      // The documents CSV gets a derived tranche_number column (the raw
+      // tranche_id FK alone isn't useful to someone reading the backup by
+      // hand) — written here, now that projectTranches is on hand, rather
+      // than in the generic per-table loop above.
+      const projectDocsWithTrancheNumber = projectDocs.map((doc) => ({
+        ...doc,
+        tranche_number: doc.tranche_id ? (trancheNumberById.get(doc.tranche_id) ?? null) : null,
+      }));
+      for (const table of TABLES) {
+        zip.file(`${table}.csv`, toCsv(table === "project_documents" ? projectDocsWithTrancheNumber : rowsByTable[table]!));
+      }
 
       // Link documents (file_path null, url set) have nothing to download —
       // they're already captured in project_documents.csv/contact_documents.csv
@@ -88,7 +110,7 @@ export function ExportBackupButton() {
           .map((doc): FileJob => ({
             bucket: "project-documents",
             path: doc.file_path as string,
-            zipPath: `project-documents/${folderName(projectNameById.get(doc.project_id) ?? "Unknown project", doc.project_id)}/${doc.file_name}`,
+            zipPath: `project-documents/${folderName(projectNameById.get(doc.project_id) ?? "Unknown project", doc.project_id)}${trancheSubfolder(doc.tranche_id)}/${doc.file_name}`,
           })),
         ...contactDocs
           .filter((doc) => doc.file_path)

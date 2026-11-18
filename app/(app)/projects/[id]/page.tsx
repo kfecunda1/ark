@@ -274,13 +274,25 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
 
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Tranches</h2>
-        <TranchesSection projectId={project.id} tranches={tranches} currency={project.currency} />
+        <TranchesSection
+          projectId={project.id}
+          tranches={tranches}
+          currency={project.currency}
+          documents={documentsWithUrls}
+          documentTypes={documentTypes}
+        />
       </div>
 
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Documents</h2>
         <GlassCard interactive={false} className="p-6">
-          <ProjectDocuments projectId={project.id} documents={documentsWithUrls} documentTypes={documentTypes} />
+          <ProjectDocuments
+            projectId={project.id}
+            documents={documentsWithUrls}
+            documentTypes={documentTypes}
+            tranches={tranches}
+            scope={{ kind: "all" }}
+          />
         </GlassCard>
       </div>
 

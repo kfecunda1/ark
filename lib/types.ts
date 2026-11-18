@@ -234,6 +234,10 @@ export interface DocumentTypeRecord {
 // url null; a link to a file kept elsewhere (e.g. Google Drive) has url
 // set and file_path null, with file_name holding the name the user gave
 // it.
+// tranche_id null means "General" — not attached to any tranche
+// (supabase/migrations/021_tranche_documents.sql). FK is ON DELETE SET
+// NULL, so removing a tranche moves its documents back to General
+// rather than deleting them.
 export interface ProjectDocument {
   id: string;
   project_id: string;
@@ -242,6 +246,7 @@ export interface ProjectDocument {
   file_name: string;
   file_hash: string | null;
   url: string | null;
+  tranche_id: string | null;
   created_at: string;
 }
 
@@ -347,6 +352,10 @@ export interface ActivityDetails {
   parent_type?: "project" | "contact";
   parent_id?: string;
   document_type?: ProjectDocumentType;
+  // project_document only — scalar on created/deleted, a pair on a
+  // "moved to Tranche N" / "moved to General" update (supabase/
+  // migrations/021_tranche_documents.sql).
+  tranche_id?: string | null | [string | null, string | null];
   kind?: ProjectStepKind;
   due_date?: string | null;
   done?: [boolean, boolean];

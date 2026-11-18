@@ -474,6 +474,37 @@ export async function deleteProjectTranche(
   }
 }
 
+// Gets-or-creates the project_tranches row for a given slot number,
+// returning its id — Tranche 1/2 are always shown on the detail page
+// (components/projects/tranches-section.tsx) even with no row behind
+// them yet, so attaching a document to one of them (which needs a real
+// tranche_id to point at, see supabase/migrations/021_tranche_
+// documents.sql) must be able to create that row on the fly instead of
+// requiring the user to "save" an empty tranche first. Upserting with
+// only the key columns set leaves amount/sent_on/notes alone when the
+// row already exists.
+export async function ensureProjectTranche(
+  projectId: string,
+  trancheNumber: number
+): Promise<{ id: string | null; error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("project_tranches")
+      .upsert({ project_id: projectId, tranche_number: trancheNumber }, { onConflict: "project_id,tranche_number" })
+      .select("id")
+      .single();
+
+    if (error) {
+      return { id: null, error: error.message };
+    }
+
+    return { id: (data as { id: string }).id, error: null };
+  } catch (err) {
+    return { id: null, error: unexpectedErrorMessage(err) };
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Documents
 // ----------------------------------------------------------------------------
@@ -483,7 +514,8 @@ export async function addProjectDocument(
   documentType: ProjectDocumentType,
   filePath: string,
   fileName: string,
-  fileHash: string | null
+  fileHash: string | null,
+  trancheId: string | null = null
 ): Promise<{ error: string | null }> {
   try {
     const supabase = await createClient();
@@ -493,6 +525,7 @@ export async function addProjectDocument(
       file_path: filePath,
       file_name: fileName,
       file_hash: fileHash,
+      tranche_id: trancheId,
     });
 
     if (error) {
@@ -514,7 +547,8 @@ export async function addProjectDocumentLink(
   projectId: string,
   documentType: ProjectDocumentType,
   name: string,
-  url: string
+  url: string,
+  trancheId: string | null = null
 ): Promise<{ error: string | null }> {
   try {
     const supabase = await createClient();
@@ -523,6 +557,7 @@ export async function addProjectDocumentLink(
       document_type: documentType,
       file_name: name,
       url,
+      tranche_id: trancheId,
     });
 
     if (error) {
@@ -559,6 +594,38 @@ export async function deleteProjectDocument(documentId: string): Promise<{ error
       if (storageError) {
         console.error("[deleteProjectDocument] failed to remove storage file:", storageError.message);
       }
+    }
+
+    if (existing?.project_id) {
+      revalidatePath(`/projects/${existing.project_id}`);
+    }
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// trancheId null moves the document back to General. The DB trigger
+// (supabase/migrations/021_tranche_documents.sql) rejects a tranche
+// that doesn't belong to this document's own project; everything else
+// about "did it work" is the normal error-message path.
+export async function moveProjectDocument(
+  documentId: string,
+  trancheId: string | null
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+
+    const { data: existing } = await supabase
+      .from("project_documents")
+      .select("project_id")
+      .eq("id", documentId)
+      .maybeSingle();
+
+    const { error } = await supabase.from("project_documents").update({ tranche_id: trancheId }).eq("id", documentId);
+
+    if (error) {
+      return { error: error.message };
     }
 
     if (existing?.project_id) {
