@@ -11,7 +11,7 @@ import { DueDateBadge } from "@/components/projects/due-date-badge";
 import { SortableHeader, MobileSortControl, type SortOption } from "@/components/sort-controls";
 import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
-import { getAllStatuses } from "@/lib/statuses";
+import { getAllStatuses, isClosedStatus } from "@/lib/statuses";
 import { getProjectProductsByProjectIds, countedProducts, displayProduct } from "@/lib/project-products";
 import { compareNullsLast, parseSortDirection } from "@/lib/sort";
 import { formatDateTime } from "@/lib/format";
@@ -148,21 +148,23 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
     projects = projects.filter((p) => allowedProjectIds.has(p.id));
   }
 
-  // "Active Tranches" filter — a tranche that's been sent but not yet
-  // confirmed, same definition as the Dashboard's Active Tranches card/
-  // row (app/(app)/dashboard/page.tsx). Only queried when the filter is
-  // actually on, since every other filter above works off columns
-  // already on `projects` itself.
+  // "Active Tranches" filter — a confirmed tranche on a project that's
+  // open (not archived, not completed/lost), same definition as the
+  // Dashboard's Active Tranches card/row (app/(app)/dashboard/
+  // page.tsx). Only queried when the filter is actually on, since
+  // every other filter above works off columns already on `projects`
+  // itself.
   if (params.active_tranches === "true") {
     const { data: activeTrancheRows } = await supabase
       .from("project_tranches")
       .select("project_id")
-      .not("sent_on", "is", null)
-      .is("confirmed_on", null);
+      .not("confirmed_on", "is", null);
     const activeTrancheProjectIds = new Set(
       ((activeTrancheRows as { project_id: string }[] | null) ?? []).map((t) => t.project_id)
     );
-    projects = projects.filter((p) => activeTrancheProjectIds.has(p.id));
+    projects = projects.filter(
+      (p) => activeTrancheProjectIds.has(p.id) && !p.archived_at && !isClosedStatus(p.status, statuses)
+    );
   }
 
   // Earliest open next step per project — "open" meaning not yet done.

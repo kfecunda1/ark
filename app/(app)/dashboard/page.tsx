@@ -20,6 +20,12 @@ const STAGE_BAR_COLORS: Record<ProjectStage, string> = {
   status: "bg-silver/70",
 };
 
+// A full, standalone literal (not assembled from a template string or a
+// variable) so Tailwind's static scan always picks it up — same reason
+// every STAGE_BAR_COLORS value above is written out whole rather than
+// built from parts.
+const ACTIVE_TRANCHES_BAR_COLOR = "bg-amber-500/70";
+
 interface DashboardPageProps {
   searchParams: Promise<{ passwordChanged?: string }>;
 }
@@ -36,7 +42,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     getAllStatuses(),
     getAppSettings(),
     supabase.from("inbox_items").select("*", { count: "exact", head: true }).eq("status", "new"),
-    supabase.from("project_tranches").select("*").not("sent_on", "is", null).is("confirmed_on", null),
+    supabase.from("project_tranches").select("*").not("confirmed_on", "is", null),
   ]);
 
   // Settings → Defaults' "Show Recovery" toggle (supabase/migrations/
@@ -134,14 +140,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const projectIsRecoveryById = new Map(projects.map((p) => [p.id, p.is_recovery]));
   const projectCurrencyById = new Map(projects.map((p) => [p.id, p.currency]));
 
-  // Active Tranches: sent but not yet confirmed, on a non-archived
-  // project (the `not sent_on is null` / `is confirmed_on null` filter
-  // already ran in the query above — this just scopes it to projects
-  // still in the `projects` list, same as every other card/section on
-  // this page). Oldest sent date first.
+  // Active Tranches: confirmed, on a project that's open (not
+  // archived, and not completed/lost — exactly `openProjects`' own
+  // definition above, which already respects the Show Recovery
+  // switch too). Newest confirmation first.
+  const openProjectIds = new Set(openProjects.map((p) => p.id));
   const activeTranches = ((activeTranchesData as ProjectTranche[] | null) ?? [])
-    .filter((t) => projectNameById.has(t.project_id))
-    .sort((a, b) => (a.sent_on as string).localeCompare(b.sent_on as string));
+    .filter((t) => openProjectIds.has(t.project_id))
+    .sort((a, b) => (b.confirmed_on as string).localeCompare(a.confirmed_on as string));
 
   const activeTrancheTotalsByCurrency = new Map<string, number>();
   for (const tranche of activeTranches) {
@@ -383,8 +389,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           ) : (
             <div className="flex flex-col gap-2">
               {activeTranches.map((tranche) => {
-                const days = daysSince(tranche.sent_on as string);
-                const dayTone = days >= 14 ? "text-red-300" : days >= 7 ? "text-amber-300" : "text-white/50";
+                const days = daysSince(tranche.confirmed_on as string);
                 return (
                   <Link
                     key={tranche.id}
@@ -399,9 +404,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     <span className="shrink-0 text-xs font-medium text-white/80">
                       {formatMoney(tranche.amount, projectCurrencyById.get(tranche.project_id))}
                     </span>
-                    <span className="shrink-0 text-xs text-white/40">Sent {formatDateOnly(tranche.sent_on as string)}</span>
-                    <span className={`shrink-0 text-xs font-medium ${dayTone}`}>
-                      {days} day{days === 1 ? "" : "s"} since sent
+                    <span className="shrink-0 text-xs text-white/40">
+                      Confirmed on {formatDateOnly(tranche.confirmed_on as string)}
+                    </span>
+                    <span className="shrink-0 text-xs font-medium text-white/50">
+                      {days} day{days === 1 ? "" : "s"} since confirmed
                     </span>
                   </Link>
                 );
@@ -445,32 +452,37 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
               <div className="my-1 border-t border-white/[0.06]" />
 
-              <div className="flex flex-col gap-1">
-                <Link
-                  href="/projects?active_tranches=true"
-                  className="group flex items-center gap-4 rounded-lg px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-white/[0.04]"
-                >
-                  <span className="w-36 shrink-0 text-sm text-white/60 group-hover:text-white/90">
-                    Active Tranches
-                  </span>
-                  <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
-                    <span
-                      className="block h-full rounded-full bg-amber-500/70 transition-all duration-300 ease-out"
-                      style={{
-                        width: `${
-                          activeTrancheProjectCount === 0
-                            ? 0
-                            : Math.max(4, (activeTrancheProjectCount / maxStageCount) * 100)
-                        }%`,
-                      }}
-                    />
-                  </span>
-                  <span className="w-8 shrink-0 text-right text-sm font-medium text-white/80">
-                    {activeTrancheProjectCount}
-                  </span>
-                </Link>
-                <p className="px-2 text-[11px] text-white/30">Also counted in its stage — not an additional stage.</p>
-              </div>
+              {(() => {
+                // Same formula and same max as the stage bars above —
+                // scaled against maxStageCount, not its own count, so
+                // it's directly comparable to them at a glance.
+                const activeTrancheWidth =
+                  activeTrancheProjectCount === 0 ? 0 : Math.max(4, (activeTrancheProjectCount / maxStageCount) * 100);
+                return (
+                  <div className="flex flex-col gap-1">
+                    <Link
+                      href="/projects?active_tranches=true"
+                      className="group flex items-center gap-4 rounded-lg px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-white/[0.04]"
+                    >
+                      <span className="w-36 shrink-0 text-sm text-white/60 group-hover:text-white/90">
+                        Active Tranches
+                      </span>
+                      <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+                        <span
+                          className={`block h-full rounded-full transition-all duration-300 ease-out ${ACTIVE_TRANCHES_BAR_COLOR}`}
+                          style={{ width: `${activeTrancheWidth}%` }}
+                        />
+                      </span>
+                      <span className="w-8 shrink-0 text-right text-sm font-medium text-white/80">
+                        {activeTrancheProjectCount}
+                      </span>
+                    </Link>
+                    <p className="px-2 text-[11px] text-white/30">
+                      Also counted in its stage — not an additional stage.
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </GlassCard>
