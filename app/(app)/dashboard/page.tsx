@@ -96,11 +96,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   );
   const maxStageCount = Math.max(1, ...STAGES.map((stage) => stageCounts[stage]));
 
-  // All products, not just active ones — a project already set to a
-  // since-hidden product must still count toward this breakdown. Each
-  // open project counts under its final product once it has one,
-  // otherwise under every option still in play — same rule the
-  // Projects list's product filter uses.
+  // Counted against every product (not just active ones) first — a
+  // project already set to a since-hidden product must still count
+  // toward this breakdown. Each open project counts under its final
+  // product once it has one, otherwise under every option still in
+  // play — same rule the Projects list's product filter uses.
   const openProjectProductsById = await getProjectProductsByProjectIds(openProjects.map((p) => p.id));
   const productTypeCounts = products.reduce(
     (acc, product) => {
@@ -111,7 +111,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     },
     {} as Record<string, number>
   );
-  const maxProductCount = Math.max(1, ...products.map((product) => productTypeCounts[product.name]));
+  // Display is scoped down to active products, plus any hidden one
+  // that still has open projects counted against it (labeled "(hidden)"
+  // below rather than silently vanishing) — order follows `products`
+  // itself (Settings → Products' sort_order), just with the irrelevant
+  // hidden/zero-count rows dropped out of it.
+  const visibleProducts = products.filter((product) => product.active || productTypeCounts[product.name] > 0);
+  const maxProductCount = Math.max(1, ...visibleProducts.map((product) => productTypeCounts[product.name]));
 
   // Stuck: open, not archived (already guaranteed by the `projects`
   // query above), not completed/lost, no activity in 7+ days.
@@ -477,7 +483,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <p className="text-sm text-white/35">No open projects.</p>
           ) : (
             <div className="flex flex-col gap-3">
-              {products.map((product) => {
+              {visibleProducts.map((product) => {
                 const count = productTypeCounts[product.name];
                 const width = count === 0 ? 0 : Math.max(4, (count / maxProductCount) * 100);
                 return (
@@ -486,8 +492,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     href={`/projects?product_type=${encodeURIComponent(product.name)}`}
                     className="group flex items-center gap-4 rounded-lg px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-white/[0.04]"
                   >
-                    <span className="w-14 shrink-0 truncate text-sm text-white/60 group-hover:text-white/90">
+                    <span className="w-24 shrink-0 text-sm break-words text-white/60 group-hover:text-white/90">
                       {product.name}
+                      {!product.active && " (hidden)"}
                     </span>
                     <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
                       <span
