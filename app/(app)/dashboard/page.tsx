@@ -514,6 +514,38 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <GlassCard interactive={false} className="flex h-full flex-col p-6">
+          <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
+            <AlertTriangle className="h-4 w-4 text-white/40" />
+            Stuck Projects
+          </h2>
+          {stuckProjects.length === 0 ? (
+            <p className="text-sm text-white/35">No stuck projects.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {stuckProjects.map((project) => (
+                <Link
+                  key={project.id}
+                  href={`/projects/${project.id}`}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
+                  {project.is_recovery && <RecoveryBadge />}
+                  <span className="shrink-0 text-xs text-white/40">{formatDateTime(project.last_activity_at)}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </GlassCard>
+
+        <GlassCard interactive={false} className="flex h-full flex-col p-6">
+          <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
+            <CalendarClock className="h-4 w-4 text-white/40" />
+            Due today & overdue
+          </h2>
+          <DueTodayAndOverdue items={dueItems} />
+        </GlassCard>
+
         <GlassCard interactive={false} className="p-6">
           <h2 className="mb-4 text-sm font-medium text-white/70">Open Projects by Product</h2>
           {openProjects.length === 0 ? (
@@ -545,38 +577,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   </Link>
                 );
               })}
-            </div>
-          )}
-        </GlassCard>
-
-        <GlassCard interactive={false} className="p-6">
-          <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
-            <CalendarClock className="h-4 w-4 text-white/40" />
-            Due today & overdue
-          </h2>
-          <DueTodayAndOverdue items={dueItems} />
-        </GlassCard>
-
-        <GlassCard interactive={false} className="p-6">
-          <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
-            <AlertTriangle className="h-4 w-4 text-white/40" />
-            Stuck Projects
-          </h2>
-          {stuckProjects.length === 0 ? (
-            <p className="text-sm text-white/35">No stuck projects.</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {stuckProjects.map((project) => (
-                <Link
-                  key={project.id}
-                  href={`/projects/${project.id}`}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
-                >
-                  <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
-                  {project.is_recovery && <RecoveryBadge />}
-                  <span className="shrink-0 text-xs text-white/40">{formatDateTime(project.last_activity_at)}</span>
-                </Link>
-              ))}
             </div>
           )}
         </GlassCard>
