@@ -141,6 +141,14 @@ export function FileIntoPanel({
 
       {destinationType === "project" ? (
         <EntityPicker
+          // Forces a remount on tab switch — EntityPicker seeds its own
+          // internal allOptions/selected/query state from props only
+          // once, on mount (components/entity-picker.tsx's
+          // `useState(options)`), so without a key that changes here,
+          // switching tabs reused the same instance and kept showing
+          // whichever list loaded first instead of picking up the new
+          // options/placeholder for the newly selected tab.
+          key="project"
           name="inbox_target_project"
           label="Project"
           options={projectOptions}
@@ -149,6 +157,7 @@ export function FileIntoPanel({
         />
       ) : (
         <EntityPicker
+          key="contact"
           name="inbox_target_contact"
           label="Receiver"
           options={contactOptions}
