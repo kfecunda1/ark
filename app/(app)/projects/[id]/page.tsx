@@ -6,6 +6,7 @@ import { PriorityBadge, RecoveryBadge } from "@/components/projects/badges";
 import { StageSelect } from "@/components/projects/stage-select";
 import { StatusSelect } from "@/components/projects/status-select";
 import { ArchiveProjectButton } from "@/components/projects/archive-project-button";
+import { DeleteProjectButton } from "@/components/projects/delete-project-button";
 import { ProjectDocuments } from "@/components/projects/project-documents";
 import { TranchesSection } from "@/components/projects/tranches-section";
 import { MatchedReceiverSelect } from "@/components/projects/matched-receiver-select";
@@ -19,6 +20,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAllStatuses } from "@/lib/statuses";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { getAppSettings } from "@/lib/app-settings";
+import { isCurrentUserAdmin } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { amountInWords, formatMoney } from "@/lib/money";
 import { buildIntermediaryPickerOptions, getProjectIntermediaryChain } from "@/lib/intermediaries";
@@ -90,6 +92,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     documentTypes,
     statuses,
     appSettings,
+    isAdmin,
   ] = await Promise.all([
     supabase.from("project_documents").select("*").eq("project_id", project.id).order("created_at", { ascending: false }),
     supabase.from("project_tranches").select("*").eq("project_id", project.id).order("tranche_number"),
@@ -99,12 +102,34 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     getActiveDocumentTypes(),
     getAllStatuses(),
     getAppSettings(),
+    isCurrentUserAdmin(),
   ]);
   const projectDocuments = (projectDocumentsData as ProjectDocument[] | null) ?? [];
   const tranches = (tranchesData as ProjectTranche[] | null) ?? [];
   const steps = (stepsData as ProjectStep[] | null) ?? [];
   const notes = (notesData as Note[] | null) ?? [];
   const projectProducts = (projectProductsData as ProjectProduct[] | null) ?? [];
+
+  // Admin-only counts for the Delete confirmation dialog (components/
+  // projects/delete-project-button.tsx) — tranche_payouts/tranche_
+  // payout_shares are admin-only RLS, so these two are only ever
+  // queried for an admin's own session, which is also the only session
+  // that ever renders the button these counts feed.
+  let payoutCount = 0;
+  let payoutShareCount = 0;
+  if (isAdmin && tranches.length > 0) {
+    const trancheIds = tranches.map((t) => t.id);
+    const { data: payoutRows } = await supabase.from("tranche_payouts").select("id").in("tranche_id", trancheIds);
+    const payoutIds = ((payoutRows as { id: string }[] | null) ?? []).map((p) => p.id);
+    payoutCount = payoutIds.length;
+    if (payoutIds.length > 0) {
+      const { count } = await supabase
+        .from("tranche_payout_shares")
+        .select("id", { count: "exact", head: true })
+        .in("tranche_payout_id", payoutIds);
+      payoutShareCount = count ?? 0;
+    }
+  }
 
   const authorIds = [
     ...new Set(
@@ -195,7 +220,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             <span>{project.final_product ?? "Product not decided"}</span>
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <ArchiveProjectButton projectId={project.id} archived={Boolean(project.archived_at)} />
           <Link
             href={`/projects/${project.id}/edit`}
@@ -204,6 +229,19 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             <Pencil className="h-4 w-4" />
             Edit
           </Link>
+          {isAdmin && (
+            <DeleteProjectButton
+              projectId={project.id}
+              trancheCount={tranches.length}
+              payoutCount={payoutCount}
+              payoutShareCount={payoutShareCount}
+              stepCount={steps.length}
+              noteCount={notes.length}
+              productOptionCount={projectProducts.length}
+              intermediaryCount={intermediaryChain.length}
+              documentCount={projectDocuments.length}
+            />
+          )}
         </div>
       </div>
 

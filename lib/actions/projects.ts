@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { isCurrentUserAdmin } from "@/lib/auth";
 import { getContactProductRatio } from "@/lib/actions/contacts";
 import { STAGE_LABELS } from "@/lib/projects";
 import { parseMoneyFormValue } from "@/lib/money";
@@ -399,6 +400,56 @@ export async function toggleProjectArchived(
     revalidatePath("/projects");
     revalidatePath(`/projects/${id}`);
     revalidatePath("/dashboard");
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// Permanently deletes a project — admins only (supabase/migrations/
+// 026_delete_project.sql's projects_delete_admin RLS policy is the
+// real enforcement; this app-level check just turns a non-admin's
+// attempt into a clean message instead of an opaque RLS rejection).
+// Every child row (tranches, documents, timeline steps, notes, product
+// options, intermediary chain, and — via tranches — payouts/shares)
+// cascades on delete at the DB level; only the project-documents
+// storage files need cleaning up by hand here, the same way
+// deleteContact (lib/actions/contacts.ts) handles contact-documents.
+// The project's own 'deleted' activity_log row (log_project_activity(),
+// 001_ark_schema.sql) already fires automatically and carries nothing
+// but the project's name — no payout figures ever reach it.
+export async function deleteProject(projectId: string): Promise<{ error: string | null }> {
+  try {
+    if (!(await isCurrentUserAdmin())) {
+      return { error: "Only admins can delete projects." };
+    }
+
+    const supabase = await createClient();
+
+    const { data: documents } = await supabase
+      .from("project_documents")
+      .select("file_path")
+      .eq("project_id", projectId);
+    const filePaths = ((documents as { file_path: string | null }[] | null) ?? [])
+      .map((d) => d.file_path)
+      .filter((p): p is string => Boolean(p));
+
+    const { error } = await supabase.from("projects").delete().eq("id", projectId);
+    if (error) {
+      return { error: error.message };
+    }
+
+    if (filePaths.length > 0) {
+      const { error: storageError } = await supabase.storage.from("project-documents").remove(filePaths);
+      if (storageError) {
+        console.error("[deleteProject] failed to remove storage files:", storageError.message);
+      }
+    }
+
+    revalidatePath("/projects");
+    revalidatePath("/recovery");
+    revalidatePath("/dashboard");
+    revalidatePath("/payouts");
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
