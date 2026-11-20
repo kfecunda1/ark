@@ -23,6 +23,9 @@ const TABLES = [
   "project_documents",
   "contact_documents",
   "activity_log",
+  "payout_groups",
+  "tranche_payouts",
+  "tranche_payout_shares",
 ] as const;
 
 interface FileJob {

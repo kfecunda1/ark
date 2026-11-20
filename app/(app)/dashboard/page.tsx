@@ -42,7 +42,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     getAllStatuses(),
     getAppSettings(),
     supabase.from("inbox_items").select("*", { count: "exact", head: true }).eq("status", "new"),
-    supabase.from("project_tranches").select("*").not("confirmed_on", "is", null),
+    supabase.from("project_tranches").select("*").not("confirmed_on", "is", null).is("paid_out_on", null),
   ]);
 
   // Settings → Defaults' "Show Recovery" toggle (supabase/migrations/
@@ -140,7 +140,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const projectIsRecoveryById = new Map(projects.map((p) => [p.id, p.is_recovery]));
   const projectCurrencyById = new Map(projects.map((p) => [p.id, p.currency]));
 
-  // Active Tranches: confirmed, on a project that's open (not
+  // Active Tranches: confirmed and NOT YET paid out (025_payouts.sql
+  // adds the paid_out_on exclusion — once a tranche is paid out it's
+  // done, not "active" anymore), on a project that's open (not
   // archived, and not completed/lost — exactly `openProjects`' own
   // definition above, which already respects the Show Recovery
   // switch too). Newest confirmation first.

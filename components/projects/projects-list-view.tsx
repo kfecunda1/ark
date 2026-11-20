@@ -148,17 +148,18 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
     projects = projects.filter((p) => allowedProjectIds.has(p.id));
   }
 
-  // "Active Tranches" filter — a confirmed tranche on a project that's
-  // open (not archived, not completed/lost), same definition as the
-  // Dashboard's Active Tranches card/row (app/(app)/dashboard/
-  // page.tsx). Only queried when the filter is actually on, since
-  // every other filter above works off columns already on `projects`
-  // itself.
+  // "Active Tranches" filter — a confirmed, not-yet-paid-out tranche
+  // on a project that's open (not archived, not completed/lost), same
+  // definition as the Dashboard's Active Tranches card/row (app/(app)/
+  // dashboard/page.tsx). Only queried when the filter is actually on,
+  // since every other filter above works off columns already on
+  // `projects` itself.
   if (params.active_tranches === "true") {
     const { data: activeTrancheRows } = await supabase
       .from("project_tranches")
       .select("project_id")
-      .not("confirmed_on", "is", null);
+      .not("confirmed_on", "is", null)
+      .is("paid_out_on", null);
     const activeTrancheProjectIds = new Set(
       ((activeTrancheRows as { project_id: string }[] | null) ?? []).map((t) => t.project_id)
     );

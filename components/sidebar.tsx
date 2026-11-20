@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Contact, FolderKanban, History, Inbox, LayoutDashboard, RotateCcw, StickyNote, Settings, User, X } from "lucide-react";
+import { Contact, FolderKanban, History, Inbox, LayoutDashboard, RotateCcw, StickyNote, Settings, User, Wallet, X } from "lucide-react";
 import { useProjectSection } from "@/components/project-section-context";
 
 const NAV_ITEMS = [
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: "/people", label: "Contacts", icon: User },
   { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/activity", label: "Activity", icon: History },
+  { href: "/payouts", label: "Payouts", icon: Wallet },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -22,12 +23,17 @@ interface SidebarProps {
   onClose: () => void;
   inboxNewCount: number;
   showRecovery: boolean;
+  isAdmin: boolean;
 }
 
-export function Sidebar({ open, onClose, inboxNewCount, showRecovery }: SidebarProps) {
+export function Sidebar({ open, onClose, inboxNewCount, showRecovery, isAdmin }: SidebarProps) {
   const pathname = usePathname();
   const { section } = useProjectSection();
-  const navItems = showRecovery ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.href !== "/recovery");
+  const navItems = NAV_ITEMS.filter((item) => {
+    if (item.href === "/recovery") return showRecovery;
+    if (item.href === "/payouts") return isAdmin;
+    return true;
+  });
 
   // /projects/[id] (and its /edit) is the one URL for every project
   // regardless of is_recovery, so a plain pathname match can't tell

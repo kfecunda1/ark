@@ -108,6 +108,7 @@ const FIELD_LABELS: Record<string, string> = {
   due_date: "due date",
   // project_tranche
   confirmed_on: "confirmed on",
+  paid_out_on: "paid out on",
   done: "done",
   // products / document_types / statuses / app_settings
   active: "active",

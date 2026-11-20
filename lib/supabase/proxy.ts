@@ -11,6 +11,7 @@ const PROTECTED_PATHS = [
   "/settings",
   "/change-password",
   "/inbox",
+  "/payouts",
 ];
 
 // The Telegram webhook (app/api/telegram/inbox/route.ts) is the one

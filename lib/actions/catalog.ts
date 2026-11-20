@@ -13,14 +13,15 @@ import { createClient } from "@/lib/supabase/server";
 // app that relies on RLS rather than an app-level check.
 export type CatalogTable = "products" | "document_types";
 
-// statuses (019_statuses.sql) shares that same active/sort_order shape
-// for hide-show and reorder purposes — but not for add/rename: it also
-// has two required columns (kind, color) that addCatalogItem/
-// renameCatalogItem below don't set, so it only ever appears here, on
-// setCatalogItemActive/moveCatalogItem, never on those two. Its own
-// add/rename actions (which do set kind/color) live in lib/actions/
-// statuses.ts instead.
-export type SortableCatalogTable = CatalogTable | "statuses";
+// statuses (019_statuses.sql) and payout_groups (025_payouts.sql) share
+// that same active/sort_order shape for hide-show and reorder purposes
+// — but not for add/rename: each also has required columns
+// (kind/color, default_share_pct) that addCatalogItem/renameCatalogItem
+// below don't set, so they only ever appear here, on
+// setCatalogItemActive/moveCatalogItem, never on those two. Their own
+// add/rename actions live in lib/actions/statuses.ts and lib/actions/
+// payout-groups.ts instead.
+export type SortableCatalogTable = CatalogTable | "statuses" | "payout_groups";
 
 function unexpectedErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong. Please try again.";

@@ -415,29 +415,39 @@ export async function toggleProjectArchived(
 // 1 and 2 are cleared (amount/date set back to empty) instead.
 // ----------------------------------------------------------------------------
 
-// confirmedOnRaw mirrors sentOnRaw/notesRaw's "" means empty convention.
-// Both checks here match the DB's own project_tranches_confirmed_
-// requires_sent constraint (023_tranche_confirmed.sql) exactly — this
-// just turns the same rule into a friendly message instead of a raw
-// constraint-violation error, for both "setting a confirmed date with
-// no sent date" and "clearing the sent date while a confirmed date is
-// still set" (the same payload shape either way).
+// confirmedOnRaw/paidOutOnRaw mirror sentOnRaw/notesRaw's "" means
+// empty convention. All four checks here match the DB's own
+// project_tranches_confirmed_requires_sent and project_tranches_paid_
+// out_requires_confirmed constraints (023_tranche_confirmed.sql,
+// 025_payouts.sql) exactly — this just turns the same rules into a
+// friendly message instead of a raw constraint-violation error, for
+// "setting a date with no prerequisite date" and "clearing a
+// prerequisite date while the dependent one is still set" alike (the
+// same payload shape either way).
 export async function upsertProjectTranche(
   projectId: string,
   trancheNumber: number,
   amountRaw: string,
   sentOnRaw: string,
   notesRaw: string,
-  confirmedOnRaw: string
+  confirmedOnRaw: string,
+  paidOutOnRaw: string
 ): Promise<{ error: string | null }> {
   const sentOn = sentOnRaw.trim() || null;
   const confirmedOn = confirmedOnRaw.trim() || null;
+  const paidOutOn = paidOutOnRaw.trim() || null;
 
   if (confirmedOn && !sentOn) {
     return { error: "A confirmed date requires a sent date — clear the confirmed date first." };
   }
   if (confirmedOn && sentOn && confirmedOn < sentOn) {
     return { error: "Confirmed date can't be before the sent date." };
+  }
+  if (paidOutOn && !confirmedOn) {
+    return { error: "A paid out date requires a confirmed date — clear the paid out date first." };
+  }
+  if (paidOutOn && confirmedOn && paidOutOn < confirmedOn) {
+    return { error: "Paid out date can't be before the confirmed date." };
   }
 
   try {
@@ -451,6 +461,7 @@ export async function upsertProjectTranche(
         sent_on: sentOn,
         notes: notesRaw.trim() || null,
         confirmed_on: confirmedOn,
+        paid_out_on: paidOutOn,
       },
       { onConflict: "project_id,tranche_number" }
     );
@@ -461,6 +472,7 @@ export async function upsertProjectTranche(
 
     revalidatePath(`/projects/${projectId}`);
     revalidatePath("/dashboard");
+    revalidatePath("/payouts");
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };

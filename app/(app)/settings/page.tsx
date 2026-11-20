@@ -1,6 +1,7 @@
 import { GlassCard } from "@/components/glass-card";
 import { ManageableList } from "@/components/settings/manageable-list";
 import { ManageableStatusList } from "@/components/settings/manageable-status-list";
+import { ManageablePayoutGroupList } from "@/components/settings/manageable-payout-group-list";
 import { DefaultsForm } from "@/components/settings/defaults-form";
 import { MyProfileForm } from "@/components/settings/my-profile-form";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
@@ -11,6 +12,7 @@ import { TelegramBotPanel } from "@/components/settings/telegram-bot-panel";
 import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
 import { getAllStatuses } from "@/lib/statuses";
+import { getAllPayoutGroups } from "@/lib/payout-groups";
 import { getAllDocumentTypes } from "@/lib/document-types";
 import { getAppSettings } from "@/lib/app-settings";
 import { getStorageUsedBytes } from "@/lib/storage-usage";
@@ -37,16 +39,17 @@ export default async function SettingsPage() {
     telegramUserId = row?.telegram_user_id ?? null;
   }
 
-  const [products, statuses, documentTypes, appSettings, usersResult, storageUsedBytes] = isAdmin
+  const [products, statuses, documentTypes, payoutGroups, appSettings, usersResult, storageUsedBytes] = isAdmin
     ? await Promise.all([
         getAllProducts(),
         getAllStatuses(),
         getAllDocumentTypes(),
+        getAllPayoutGroups(),
         getAppSettings(),
         listUsers(),
         getStorageUsedBytes(),
       ])
-    : [[], [], [], null, { users: [], error: null }, 0];
+    : [[], [], [], [], null, { users: [], error: null }, 0];
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -89,6 +92,13 @@ export default async function SettingsPage() {
             <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Statuses</h2>
             <GlassCard interactive={false} className="p-6">
               <ManageableStatusList statuses={statuses} />
+            </GlassCard>
+          </div>
+
+          <div className="mt-6">
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Groups</h2>
+            <GlassCard interactive={false} className="p-6">
+              <ManageablePayoutGroupList groups={payoutGroups} />
             </GlassCard>
           </div>
 

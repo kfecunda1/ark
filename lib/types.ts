@@ -48,6 +48,44 @@ export interface StatusRecord {
   updated_at: string;
 }
 
+// One row of the `payout_groups` table (Settings → Groups, admin
+// only — supabase/migrations/025_payouts.sql). Same hide-don't-delete
+// shape as Product/StatusRecord above. default_share_pct pre-fills a
+// new tranche_payout_shares row for this group; it's never read back
+// once a share has actually been saved for a given tranche.
+export interface PayoutGroup {
+  id: string;
+  name: string;
+  default_share_pct: number;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// One row per tranche whose commission has been worked out
+// (supabase/migrations/025_payouts.sql) — a paid-out tranche with no
+// row here yet (or one with our_pct still null) is what the Payouts
+// page shows as "Commission not set", not a zero. Admin-only RLS, and
+// deliberately never activity-logged — see AGENTS.md/the migration's
+// own comment on why.
+export interface TranchePayout {
+  id: string;
+  tranche_id: string;
+  our_pct: number | null;
+  notes: string | null;
+  updated_at: string;
+}
+
+// share_pct is this group's % of OUR commission (not of the deal) —
+// see TranchePayout above.
+export interface TranchePayoutShare {
+  id: string;
+  tranche_payout_id: string;
+  group_id: string;
+  share_pct: number;
+}
+
 export type ProjectPriority = "low" | "medium" | "high" | "urgent";
 
 export type Currency = "USD" | "EUR";
@@ -235,7 +273,9 @@ export interface ProjectProduct {
 // added on demand. sent_on null means not sent yet.
 // confirmed_on (supabase/migrations/023_tranche_confirmed.sql) can only
 // be set alongside sent_on, and never before it — enforced by a check
-// constraint, not just the app.
+// constraint, not just the app. paid_out_on (025_payouts.sql) is the
+// same idea one step further: it can only be set alongside
+// confirmed_on, and never before it.
 export interface ProjectTranche {
   id: string;
   project_id: string;
@@ -244,6 +284,7 @@ export interface ProjectTranche {
   sent_on: string | null;
   notes: string | null;
   confirmed_on: string | null;
+  paid_out_on: string | null;
   created_at: string;
 }
 
@@ -427,11 +468,13 @@ export interface ActivityDetails {
   // updated — the only UPDATE either table gets is a reorder)
   person_id?: string;
   position?: number | [number, number];
-  // project_tranche (supabase/migrations/023_tranche_confirmed.sql) —
-  // always a pair, the trigger only ever fires on a confirmed_on
-  // change.
+  // project_tranche (supabase/migrations/023_tranche_confirmed.sql,
+  // 025_payouts.sql) — always a pair; the trigger fires on a
+  // confirmed_on and/or paid_out_on change (each gets its own row when
+  // both change in the same update).
   tranche_number?: number;
   confirmed_on?: [string | null, string | null];
+  paid_out_on?: [string | null, string | null];
 }
 
 export interface ActivityLog {

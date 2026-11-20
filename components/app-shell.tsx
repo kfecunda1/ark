@@ -9,9 +9,10 @@ interface AppShellProps {
   children: React.ReactNode;
   inboxNewCount: number;
   showRecovery: boolean;
+  isAdmin: boolean;
 }
 
-export function AppShell({ children, inboxNewCount, showRecovery }: AppShellProps) {
+export function AppShell({ children, inboxNewCount, showRecovery, isAdmin }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
@@ -22,6 +23,7 @@ export function AppShell({ children, inboxNewCount, showRecovery }: AppShellProp
           onClose={() => setMobileNavOpen(false)}
           inboxNewCount={inboxNewCount}
           showRecovery={showRecovery}
+          isAdmin={isAdmin}
         />
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar onMenuClick={() => setMobileNavOpen(true)} showRecovery={showRecovery} />
