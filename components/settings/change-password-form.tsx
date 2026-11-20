@@ -125,6 +125,9 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
           id="current_password"
           type="password"
           autoComplete="current-password"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
           required
           value={currentPassword}
           onChange={(e) => setCurrentPassword(e.target.value)}
@@ -140,6 +143,9 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
           id="new_password"
           type="password"
           autoComplete="new-password"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
           required
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
@@ -158,6 +164,9 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
           id="confirm_password"
           type="password"
           autoComplete="new-password"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
           required
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}

@@ -9,7 +9,10 @@ import type { UserRole } from "@/lib/types";
 // there's no literal "permanent", so this is the commonly recommended
 // effectively-permanent value (10 years). "none" un-bans.
 const BAN_DURATION = "87600h";
-const MIN_TEMP_PASSWORD_LENGTH = 16;
+// Matches ChangePasswordForm's own MIN_LENGTH (components/settings/
+// change-password-form.tsx) — whatever an admin sets here, the user
+// could just as easily have typed themselves on that screen.
+const MIN_TEMP_PASSWORD_LENGTH = 12;
 
 function unexpectedErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong. Please try again.";
@@ -148,7 +151,8 @@ export async function addUser(
   fullName: string,
   email: string,
   role: UserRole,
-  temporaryPassword: string
+  temporaryPassword: string,
+  mustChangePassword: boolean
 ): Promise<{ error: string | null }> {
   const admin = await requireActiveAdmin();
   if ("error" in admin) {
@@ -161,7 +165,7 @@ export async function addUser(
   if (!trimmedEmail) return { error: "Email is required." };
   if (role !== "admin" && role !== "member") return { error: "Invalid role." };
   if (temporaryPassword.length < MIN_TEMP_PASSWORD_LENGTH) {
-    return { error: `Temporary password must be at least ${MIN_TEMP_PASSWORD_LENGTH} characters.` };
+    return { error: `Password must be at least ${MIN_TEMP_PASSWORD_LENGTH} characters.` };
   }
 
   const service = createServiceClient();
@@ -184,7 +188,7 @@ export async function addUser(
       email: trimmedEmail,
       role,
       active: true,
-      must_change_password: true,
+      must_change_password: mustChangePassword,
     });
 
     if (profileError) {
@@ -212,7 +216,8 @@ export async function addUser(
 
 export async function resetUserPassword(
   userId: string,
-  temporaryPassword: string
+  temporaryPassword: string,
+  mustChangePassword: boolean
 ): Promise<{ error: string | null }> {
   const admin = await requireActiveAdmin();
   if ("error" in admin) {
@@ -220,7 +225,7 @@ export async function resetUserPassword(
   }
 
   if (temporaryPassword.length < MIN_TEMP_PASSWORD_LENGTH) {
-    return { error: `Temporary password must be at least ${MIN_TEMP_PASSWORD_LENGTH} characters.` };
+    return { error: `Password must be at least ${MIN_TEMP_PASSWORD_LENGTH} characters.` };
   }
 
   const service = createServiceClient();
@@ -243,7 +248,7 @@ export async function resetUserPassword(
 
     const { error: profileError } = await service
       .from("profiles")
-      .update({ must_change_password: true })
+      .update({ must_change_password: mustChangePassword })
       .eq("id", userId);
     if (profileError) {
       return { error: profileError.message };

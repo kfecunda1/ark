@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Plus } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, Plus } from "lucide-react";
 import { addUser, resetUserPassword, setUserActive, setUserRole, type UserRow } from "@/lib/actions/users";
 import { generateTemporaryPassword } from "@/lib/password";
 import { formatDateTime } from "@/lib/format";
@@ -28,6 +28,10 @@ function displayName(user: Pick<UserRow, "full_name" | "email">): string {
 interface RevealedPassword {
   userLabel: string;
   password: string;
+  // Whether "Require password change at next login" was checked — if
+  // not, this is the user's real, ongoing password, not a temporary
+  // one, so the panel shouldn't call it that.
+  isTemporary: boolean;
 }
 
 function PasswordRevealPanel({ reveal, onDismiss }: { reveal: RevealedPassword; onDismiss: () => void }) {
@@ -46,7 +50,9 @@ function PasswordRevealPanel({ reveal, onDismiss }: { reveal: RevealedPassword; 
 
   return (
     <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-4">
-      <p className="text-sm font-medium text-amber-200">Temporary password for {reveal.userLabel}</p>
+      <p className="text-sm font-medium text-amber-200">
+        {reveal.isTemporary ? "Temporary password" : "Password"} for {reveal.userLabel}
+      </p>
       <div className="mt-2 flex items-center gap-2">
         <code className="flex-1 overflow-x-auto rounded-md bg-black/30 px-3 py-2 text-sm text-white select-all">
           {reveal.password}
@@ -76,33 +82,66 @@ function TempPasswordField({
   id,
   value,
   onChange,
+  mustChangePassword,
+  onMustChangePasswordChange,
 }: {
   id: string;
   value: string;
   onChange: (value: string) => void;
+  mustChangePassword: boolean;
+  onMustChangePasswordChange: (value: boolean) => void;
 }) {
+  const [visible, setVisible] = useState(false);
+
   return (
     <div>
       <label className={labelClass} htmlFor={id}>
-        Temporary Password
+        Password
       </label>
       <div className="flex gap-2">
-        <input
-          id={id}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          autoComplete="new-password"
-          className={`${fieldClass} flex-1`}
-        />
+        <div className="relative flex-1">
+          <input
+            id={id}
+            type={visible ? "text" : "password"}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            autoComplete="new-password"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            className={`${fieldClass} pr-9`}
+          />
+          <button
+            type="button"
+            onClick={() => setVisible((v) => !v)}
+            aria-label={visible ? "Hide password" : "Show password"}
+            className="absolute top-1/2 right-2.5 -translate-y-1/2 text-white/40 transition-colors duration-150 ease-out hover:text-white/80"
+          >
+            {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
         <button
           type="button"
-          onClick={() => onChange(generateTemporaryPassword())}
+          onClick={() => {
+            onChange(generateTemporaryPassword());
+            setVisible(true);
+          }}
           className="shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white"
         >
           Generate
         </button>
       </div>
-      <p className="mt-1.5 text-xs text-white/35">At least 16 characters.</p>
+      <p className="mt-1.5 text-xs text-white/35">At least 12 characters — generate one, or type your own.</p>
+
+      <label className="mt-3 flex items-center gap-2.5 text-sm text-white/80">
+        <input
+          type="checkbox"
+          checked={mustChangePassword}
+          onChange={(e) => onMustChangePasswordChange(e.target.checked)}
+          className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
+        />
+        Require password change at next login
+      </label>
     </div>
   );
 }
@@ -119,9 +158,11 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState<UserRole>("member");
   const [newPassword, setNewPassword] = useState(generateTemporaryPassword());
+  const [newMustChangePassword, setNewMustChangePassword] = useState(true);
 
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [resetPassword, setResetPassword] = useState("");
+  const [resetMustChangePassword, setResetMustChangePassword] = useState(true);
 
   const [confirmingDeactivateId, setConfirmingDeactivateId] = useState<string | null>(null);
 
@@ -130,17 +171,22 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
     setReveal(null);
     startTransition(async () => {
       try {
-        const result = await addUser(newName, newEmail, newRole, newPassword);
+        const result = await addUser(newName, newEmail, newRole, newPassword, newMustChangePassword);
         if (result.error) {
           setError(result.error);
           return;
         }
-        setReveal({ userLabel: displayName({ full_name: newName, email: newEmail }), password: newPassword });
+        setReveal({
+          userLabel: displayName({ full_name: newName, email: newEmail }),
+          password: newPassword,
+          isTemporary: newMustChangePassword,
+        });
         setAdding(false);
         setNewName("");
         setNewEmail("");
         setNewRole("member");
         setNewPassword(generateTemporaryPassword());
+        setNewMustChangePassword(true);
         router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
@@ -154,14 +200,15 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
     setBusyId(user.id);
     startTransition(async () => {
       try {
-        const result = await resetUserPassword(user.id, resetPassword);
+        const result = await resetUserPassword(user.id, resetPassword, resetMustChangePassword);
         if (result.error) {
           setError(result.error);
           return;
         }
-        setReveal({ userLabel: displayName(user), password: resetPassword });
+        setReveal({ userLabel: displayName(user), password: resetPassword, isTemporary: resetMustChangePassword });
         setResettingId(null);
         setResetPassword("");
+        setResetMustChangePassword(true);
         router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
@@ -268,6 +315,8 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
                         id={`reset-password-${user.id}`}
                         value={resetPassword}
                         onChange={setResetPassword}
+                        mustChangePassword={resetMustChangePassword}
+                        onMustChangePasswordChange={setResetMustChangePassword}
                       />
                     </div>
                     <div className="flex gap-2">
@@ -284,6 +333,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
                         onClick={() => {
                           setResettingId(null);
                           setResetPassword("");
+                          setResetMustChangePassword(true);
                         }}
                         disabled={rowBusy}
                         className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
@@ -298,6 +348,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
                     onClick={() => {
                       setResettingId(user.id);
                       setResetPassword(generateTemporaryPassword());
+                      setResetMustChangePassword(true);
                       setConfirmingDeactivateId(null);
                     }}
                     disabled={rowBusy}
@@ -396,7 +447,13 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
               </option>
             </select>
           </div>
-          <TempPasswordField id="new_user_password" value={newPassword} onChange={setNewPassword} />
+          <TempPasswordField
+            id="new_user_password"
+            value={newPassword}
+            onChange={setNewPassword}
+            mustChangePassword={newMustChangePassword}
+            onMustChangePasswordChange={setNewMustChangePassword}
+          />
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -423,6 +480,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
             setAdding(true);
             setReveal(null);
             setNewPassword(generateTemporaryPassword());
+            setNewMustChangePassword(true);
           }}
           className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white"
         >
