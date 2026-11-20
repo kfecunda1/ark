@@ -53,6 +53,7 @@ export interface ProjectsListSearchParams {
   status?: string;
   intermediary?: string;
   active_tranches?: string;
+  unmatched?: string;
   sort?: string;
   dir?: string;
   archived?: string;
@@ -117,6 +118,12 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
     projects = projects.filter((p) =>
       countedProducts(p.final_product, projectProductsByProjectId.get(p.id) ?? []).includes(params.product_type!)
     );
+  }
+
+  // "Not matched" filter (Dashboard's own card) — no matched receiver
+  // yet. Works the same on /recovery as on /projects.
+  if (params.unmatched === "true") {
+    projects = projects.filter((p) => !p.matched_contact_id);
   }
 
   // "Intermediary" filter — every person who appears in at least one
@@ -229,7 +236,12 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
       : "Track and manage incoming projects.";
   const emptyTitle = showArchived ? `No archived ${noun}` : isRecovery ? "No recovery projects yet" : "No projects yet";
   const filtered = Boolean(
-    params.product_type || params.stage || params.status || params.intermediary || params.active_tranches === "true"
+    params.product_type ||
+      params.stage ||
+      params.status ||
+      params.intermediary ||
+      params.active_tranches === "true" ||
+      params.unmatched === "true"
   );
   const newProjectHref = isRecovery ? "/projects/new?recovery=true" : "/projects/new";
 

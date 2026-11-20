@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Inbox, Landmark, Layers, RotateCcw } from "lucide-react";
+import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Inbox, Landmark, Layers, RotateCcw, Unlink } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { RecoveryBadge } from "@/components/projects/badges";
 import { DueTodayAndOverdue, type DueItem } from "@/components/dashboard/due-today";
@@ -126,10 +126,24 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const maxProductCount = Math.max(1, ...visibleProducts.map((product) => productTypeCounts[product.name]));
 
   // Stuck: open, not archived (already guaranteed by the `projects`
-  // query above), not completed/lost, no activity in 7+ days.
+  // query above), not completed/lost (openProjects), has a matched
+  // receiver, in the Match or Status stage, no activity for
+  // stuck_after_days or more. A brand-new or still-unmatched project
+  // isn't "stuck" by this rule — it just hasn't gotten there yet.
   const stuckProjects = openProjects
-    .filter((project) => now.getTime() - new Date(project.last_activity_at).getTime() >= STUCK_AFTER_MS)
+    .filter(
+      (project) =>
+        project.matched_contact_id != null &&
+        (project.stage === "match" || project.stage === "status") &&
+        now.getTime() - new Date(project.last_activity_at).getTime() >= STUCK_AFTER_MS
+    )
     .sort((a, b) => new Date(a.last_activity_at).getTime() - new Date(b.last_activity_at).getTime());
+
+  // Not matched: open, not archived, no matched receiver yet.
+  const notMatchedProjects = openProjects.filter((project) => !project.matched_contact_id);
+  const notMatchedDocsReceivedCount = notMatchedProjects.filter(
+    (project) => project.stage === "documents_received"
+  ).length;
 
   // Due today & overdue: open next steps AND note reminders, due today
   // or overdue, across every non-archived project (note reminders on a
@@ -287,6 +301,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       href: "/projects",
       suffix: null,
       extra: null,
+    },
+    {
+      label: "Not matched",
+      value: notMatchedProjects.length,
+      icon: Unlink,
+      tone: "text-sky-300",
+      href: "/projects?unmatched=true",
+      suffix: null,
+      extra: `${notMatchedDocsReceivedCount} with documents received`,
     },
     {
       label: "Completed (month)",
