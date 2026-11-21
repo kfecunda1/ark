@@ -18,7 +18,7 @@ export default function ChangePasswordRequiredPage() {
     // mobile browsers, and starting from the top with generous padding
     // (instead of centering) means the button is always reachable by
     // scrolling regardless of keyboard height or viewport-unit quirks.
-    <div className="flex min-h-dvh justify-center px-4 py-10">
+    <div className="flex min-h-dvh justify-center pt-[max(2.5rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(2.5rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
       <GlassCard interactive={false} className="h-fit w-full max-w-sm p-8">
         <div className="mb-8 text-center">
           <h1 className="text-xl font-semibold tracking-tight text-white">Change your password</h1>

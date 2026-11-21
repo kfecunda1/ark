@@ -57,11 +57,15 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center pt-[env(safe-area-inset-top)] pr-[max(1rem,env(safe-area-inset-right))] pb-[env(safe-area-inset-bottom)] pl-[max(1rem,env(safe-area-inset-left))]">
       <GlassCard interactive={false} className="w-full max-w-sm p-8">
-        <div className="mb-8 text-center">
-          <h1 className="text-xl font-semibold tracking-tight text-white">ARK</h1>
-          <p className="mt-1 text-sm text-white/45">Sign in to your account</p>
+        <div className="mb-8 flex flex-col items-center text-center">
+          <div className="mb-3 flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/ark-mark.svg" alt="" width={56} height={56} className="h-14 w-14 shrink-0 rounded-[12px]" />
+            <h1 className="font-wordmark text-xl font-semibold tracking-[4px] text-[#e6ebf0]">ARK</h1>
+          </div>
+          <p className="text-sm text-white/45">Sign in to your account</p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">

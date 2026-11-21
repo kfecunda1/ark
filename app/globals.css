@@ -47,6 +47,9 @@
   --color-accent-soft: var(--accent-soft);
   --color-silver: var(--silver);
   --font-sans: var(--font-dm-sans);
+  /* The "ARK" wordmark only (components/sidebar.tsx, app/login/
+   * page.tsx) — exposed as the `font-wordmark` utility. */
+  --font-wordmark: var(--font-space-grotesk);
 }
 
 html {

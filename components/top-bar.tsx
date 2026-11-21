@@ -21,14 +21,20 @@ export function TopBar({ onMenuClick, showRecovery }: TopBarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-white/[0.06] bg-[#080b12]/70 px-4 backdrop-blur-xl sm:px-6">
-      <button
-        onClick={onMenuClick}
-        aria-label="Open menu"
-        className="rounded-lg p-2 text-white/60 transition-colors duration-150 ease-out hover:bg-white/5 hover:text-white lg:hidden"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
+    <header
+      className="sticky top-0 z-30 flex min-h-16 items-center gap-4 border-b border-white/[0.06] bg-[#080b12]/70 pb-2 backdrop-blur-xl pt-[max(0.5rem,env(safe-area-inset-top))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))]"
+    >
+      <div className="flex items-center gap-2 lg:hidden">
+        <button
+          onClick={onMenuClick}
+          aria-label="Open menu"
+          className="rounded-lg p-2 text-white/60 transition-colors duration-150 ease-out hover:bg-white/5 hover:text-white"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/ark-mark.svg" alt="ARK" width={28} height={28} className="h-7 w-7 shrink-0 rounded-md" />
+      </div>
 
       <GlobalSearch showRecovery={showRecovery} />
 

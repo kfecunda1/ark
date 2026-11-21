@@ -66,12 +66,16 @@ export function Sidebar({ open, onClose, inboxNewCount, showRecovery, isAdmin }:
         }`}
       />
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-white/[0.06] bg-[#0a0e17]/95 px-4 py-6 backdrop-blur-2xl transition-transform duration-200 ease-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:bg-[#0a0e17]/40 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-white/[0.06] bg-[#0a0e17]/95 pr-4 pl-[max(1rem,env(safe-area-inset-left))] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] backdrop-blur-2xl transition-transform duration-200 ease-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:bg-[#0a0e17]/40 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="mb-8 flex items-center justify-between px-2">
-          <span className="text-lg font-semibold tracking-tight text-white">ARK</span>
+          <span className="flex items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/ark-mark.svg" alt="" width={32} height={32} className="h-8 w-8 shrink-0 rounded-[7px]" />
+            <span className="font-wordmark text-lg font-semibold tracking-[4px] text-[#e6ebf0]">ARK</span>
+          </span>
           <button
             onClick={onClose}
             aria-label="Close menu"
