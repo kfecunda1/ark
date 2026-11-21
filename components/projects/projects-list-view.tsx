@@ -8,10 +8,13 @@ import { ProjectFilters } from "@/components/projects/project-filters";
 import { StageBadge, RecoveryBadge } from "@/components/projects/badges";
 import { StatusSelect } from "@/components/projects/status-select";
 import { DueDateBadge } from "@/components/projects/due-date-badge";
+import { ViewToggle } from "@/components/projects/view-toggle";
+import { ProjectsBoard, type BoardProject } from "@/components/projects/projects-board";
 import { SortableHeader, MobileSortControl, type SortOption } from "@/components/sort-controls";
 import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
 import { getAllStatuses, isClosedStatus } from "@/lib/statuses";
+import { getAppSettings } from "@/lib/app-settings";
 import { getProjectProductsByProjectIds, countedProducts, displayProduct } from "@/lib/project-products";
 import { computeChecklistStatus, getRequiredDocumentsByProduct, type ChecklistStatus } from "@/lib/checklists";
 import { compareNullsLast, parseSortDirection } from "@/lib/sort";
@@ -59,6 +62,7 @@ export interface ProjectsListSearchParams {
   sort?: string;
   dir?: string;
   archived?: string;
+  view?: string;
 }
 
 interface ProjectsListViewProps {
@@ -81,6 +85,13 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
   const sort: ProjectSortKey = isProjectSortKey(params.sort) ? params.sort : "next_step_due";
   const dir = parseSortDirection(params.dir);
   const showArchived = params.archived === "true";
+  const appSettings = await getAppSettings();
+  // The Board toggle itself always shows on /projects; on /recovery it
+  // only shows (and ?view=board only takes effect) when Settings →
+  // Defaults' "Show Recovery" switch is on — same gate every other
+  // recovery-only piece of UI already respects.
+  const showViewToggle = !isRecovery || appSettings.show_recovery;
+  const view = showViewToggle && params.view === "board" ? "board" : "list";
 
   const supabase = await createClient();
   let query = supabase.from("projects").select("*").eq("is_recovery", isRecovery);
@@ -237,6 +248,38 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
     }
   }
 
+  // Board-only data (components/projects/projects-board.tsx) — matched
+  // receiver names and active-tranche counts aren't needed by the List
+  // view at all, so these two only run when there's actually a board
+  // to feed.
+  let matchedContactNameById = new Map<string, string>();
+  const activeTrancheCountByProjectId = new Map<string, number>();
+  if (view === "board" && projects.length > 0) {
+    const matchedContactIds = [
+      ...new Set(projects.map((p) => p.matched_contact_id).filter((id): id is string => Boolean(id))),
+    ];
+    const [{ data: matchedContactsData }, { data: boardTranchesData }] = await Promise.all([
+      matchedContactIds.length > 0
+        ? supabase.from("contacts").select("id, full_name").in("id", matchedContactIds)
+        : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+      supabase
+        .from("project_tranches")
+        .select("project_id")
+        .not("confirmed_on", "is", null)
+        .is("paid_out_on", null)
+        .in(
+          "project_id",
+          projects.map((p) => p.id)
+        ),
+    ]);
+    matchedContactNameById = new Map(
+      ((matchedContactsData as { id: string; full_name: string }[] | null) ?? []).map((c) => [c.id, c.full_name])
+    );
+    for (const row of (boardTranchesData as { project_id: string }[] | null) ?? []) {
+      activeTrancheCountByProjectId.set(row.project_id, (activeTrancheCountByProjectId.get(row.project_id) ?? 0) + 1);
+    }
+  }
+
   function sortValue(project: Project, key: ProjectSortKey): number | string | null {
     switch (key) {
       case "name":
@@ -261,6 +304,37 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
   }
 
   projects = [...projects].sort((a, b) => compareNullsLast(a, b, (p) => sortValue(p, sort), dir));
+
+  const boardProjects: BoardProject[] =
+    view === "board"
+      ? projects.map((p) => {
+          const options = projectProductsByProjectId.get(p.id) ?? [];
+          const checklist = checklistStatusByProjectId.get(p.id);
+          const nextStep = nextStepByProjectId.get(p.id);
+          return {
+            id: p.id,
+            name: p.name,
+            stage: p.stage,
+            status: p.status,
+            isRecovery: p.is_recovery,
+            productLabel: p.final_product ?? `Options: ${options.map((o) => o.product).join("/")}`,
+            totalFaceValueLabel: formatMoney(p.total_face_value, p.currency),
+            matchedReceiver: p.matched_contact_id
+              ? { id: p.matched_contact_id, label: matchedContactNameById.get(p.matched_contact_id) ?? "Receiver" }
+              : null,
+            nextStep: nextStep?.due_date ? { body: nextStep.body, dueDate: nextStep.due_date } : null,
+            checklist:
+              checklist && checklist.hasChecklist
+                ? {
+                    complete: checklist.requiredTypes.length - checklist.missingTypes.length,
+                    total: checklist.requiredTypes.length,
+                    isComplete: checklist.isComplete,
+                  }
+                : null,
+            activeTrancheCount: activeTrancheCountByProjectId.get(p.id) ?? 0,
+          };
+        })
+      : [];
 
   const noun = isRecovery ? "recovery projects" : "projects";
   const title = showArchived
@@ -303,10 +377,13 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
         </Link>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Suspense>
-          <ProjectFilters products={products} statuses={statuses} intermediaries={intermediaryFilterOptions} />
-          <MobileSortControl options={SORT_OPTIONS} currentSort={sort} currentDir={dir} />
+          <div className="flex flex-wrap items-center gap-3">
+            <ProjectFilters products={products} statuses={statuses} intermediaries={intermediaryFilterOptions} />
+            {view !== "board" && <MobileSortControl options={SORT_OPTIONS} currentSort={sort} currentDir={dir} />}
+          </div>
+          {showViewToggle && <ViewToggle />}
         </Suspense>
       </div>
 
@@ -337,7 +414,9 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
         </GlassCard>
       )}
 
-      {!error && projects.length > 0 && (
+      {!error && projects.length > 0 && view === "board" && <ProjectsBoard projects={boardProjects} statuses={statuses} />}
+
+      {!error && projects.length > 0 && view !== "board" && (
         <>
           <GlassCard interactive={false} className="hidden overflow-x-auto p-0 md:block">
             <table className="w-full min-w-[1040px] text-left text-sm">
