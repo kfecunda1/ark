@@ -8,6 +8,7 @@ import { ReceiverProductsSection } from "@/components/receivers/receiver-product
 import { ReceiverDocuments } from "@/components/receivers/receiver-documents";
 import { ReceiverNotesSection } from "@/components/receivers/receiver-notes-section";
 import { ReceiverIntermediariesSection } from "@/components/receivers/receiver-intermediaries-section";
+import { ReceiverMatchProjectsSection } from "@/components/receivers/receiver-match-projects-section";
 import { DeleteReceiverButton } from "@/components/receivers/delete-receiver-button";
 import { ContactPersonSelect } from "@/components/contact-person-select";
 import { createClient } from "@/lib/supabase/server";
@@ -16,6 +17,7 @@ import { getActiveProducts } from "@/lib/products";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { getProjectProductsByProjectIds, displayProduct } from "@/lib/project-products";
 import { getReceiverIntermediaries } from "@/lib/intermediaries";
+import { findProjectsNeedingReceiver } from "@/lib/actions/matching";
 import { personLabel } from "@/lib/people";
 import type { Contact, ContactDocument, ContactProduct, Note, Person, Project } from "@/lib/types";
 
@@ -68,6 +70,8 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
     isCurrentUserAdmin(),
     getReceiverIntermediaries(id),
   ]);
+
+  const { projects: projectsNeedingReceiver } = await findProjectsNeedingReceiver(id);
 
   // The query above already scopes to matched_contact_id = this
   // receiver — "Matched with" is the only relation a project carries to
@@ -214,6 +218,15 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
             ))}
           </div>
         )}
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Projects Needing This Receiver</h2>
+        <ReceiverMatchProjectsSection
+          receiverId={contact.id}
+          receiverLabel={contact.full_name}
+          projects={projectsNeedingReceiver}
+        />
       </div>
 
       <div className="mt-6">

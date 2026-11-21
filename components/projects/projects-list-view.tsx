@@ -328,6 +328,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                     currentDir={dir}
                     defaultDir="desc"
                   />
+                  <th className="px-4 py-3 font-medium" />
                 </tr>
               </thead>
               <tbody>
@@ -380,6 +381,17 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                       </td>
                       <td className="px-4 py-3 text-white/50">{formatDateTime(project.last_activity_at)}</td>
                       <td className="px-4 py-3 text-white/50">{formatDateTime(project.created_at)}</td>
+                      <td className="px-4 py-3">
+                        {!project.matched_contact_id && (
+                          <Link
+                            href={`/projects/${project.id}?findReceivers=true`}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-accent-soft hover:underline"
+                          >
+                            <Users className="h-3.5 w-3.5" />
+                            Find receivers
+                          </Link>
+                        )}
+                      </td>
                     </ClickableRow>
                   );
                 })}
@@ -455,6 +467,16 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                       <dd className="mt-0.5 text-white/50">{formatDateTime(project.last_activity_at)}</dd>
                     </div>
                   </dl>
+
+                  {!project.matched_contact_id && (
+                    <Link
+                      href={`/projects/${project.id}?findReceivers=true`}
+                      className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-accent-soft hover:underline"
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      Find receivers
+                    </Link>
+                  )}
                 </ClickableCard>
               );
             })}

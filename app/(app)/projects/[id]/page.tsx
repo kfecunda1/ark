@@ -10,6 +10,7 @@ import { DeleteProjectButton } from "@/components/projects/delete-project-button
 import { ProjectDocuments } from "@/components/projects/project-documents";
 import { TranchesSection } from "@/components/projects/tranches-section";
 import { MatchedReceiverSelect } from "@/components/projects/matched-receiver-select";
+import { FindReceiversPanel } from "@/components/projects/find-receivers-panel";
 import { ContactPersonSelect } from "@/components/contact-person-select";
 import { ProjectProductOptions } from "@/components/projects/project-product-options";
 import { ProjectIntermediariesSection } from "@/components/projects/project-intermediaries-section";
@@ -29,12 +30,12 @@ import type { Contact, Note, Person, Project, ProjectDocument, ProjectProduct, P
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ failedDocs?: string }>;
+  searchParams: Promise<{ failedDocs?: string; findReceivers?: string }>;
 }
 
 export default async function ProjectDetailPage({ params, searchParams }: ProjectDetailPageProps) {
   const { id } = await params;
-  const { failedDocs } = await searchParams;
+  const { failedDocs, findReceivers } = await searchParams;
   const failedDocNames = failedDocs ? failedDocs.split(",").filter(Boolean) : [];
   const supabase = await createClient();
 
@@ -291,6 +292,13 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             receivers={allContacts.map((c) => ({ id: c.id, label: c.full_name }))}
             currentReceiver={matchedContact ? { id: matchedContact.id, label: matchedReceiverLabel! } : null}
           />
+          <div className="mt-4">
+            <FindReceiversPanel
+              projectId={project.id}
+              hasMatch={Boolean(project.matched_contact_id)}
+              defaultOpen={findReceivers === "true"}
+            />
+          </div>
           <div className="mt-4">
             <ProjectIntermediariesSection
               projectId={project.id}
