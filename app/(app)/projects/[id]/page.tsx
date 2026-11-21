@@ -17,7 +17,8 @@ import { ProjectProductOptions } from "@/components/projects/project-product-opt
 import { ProjectIntermediariesSection } from "@/components/projects/project-intermediaries-section";
 import { SetProjectSection } from "@/components/projects/set-project-section";
 import { RecoveryToggle } from "@/components/projects/recovery-toggle";
-import { ProjectTimeline } from "@/components/projects/project-timeline";
+import { ProjectTimeline, type ComposerKind } from "@/components/projects/project-timeline";
+import { ProjectSummaryHeader } from "@/components/projects/project-summary-header";
 import { createClient } from "@/lib/supabase/server";
 import { getAllStatuses } from "@/lib/statuses";
 import { getActiveDocumentTypes } from "@/lib/document-types";
@@ -28,16 +29,23 @@ import { amountInWords, formatMoney } from "@/lib/money";
 import { buildIntermediaryPickerOptions, getProjectIntermediaryChain } from "@/lib/intermediaries";
 import { getReceiverIntermediaryPersonIds } from "@/lib/actions/intermediaries";
 import { computeChecklistStatus, getRequiredDocumentsByProduct } from "@/lib/checklists";
+import { personLabel } from "@/lib/people";
+import { daysSinceInstant } from "@/lib/projects";
 import type { Contact, Note, Person, Project, ProjectDocument, ProjectProduct, ProjectStep, ProjectTranche } from "@/lib/types";
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ failedDocs?: string; findReceivers?: string; uploadType?: string }>;
+  searchParams: Promise<{ failedDocs?: string; findReceivers?: string; uploadType?: string; composer?: string }>;
+}
+
+function isComposerKind(value: string | undefined): value is ComposerKind {
+  return value === "step_taken" || value === "next_step" || value === "note";
 }
 
 export default async function ProjectDetailPage({ params, searchParams }: ProjectDetailPageProps) {
   const { id } = await params;
-  const { failedDocs, findReceivers, uploadType } = await searchParams;
+  const { failedDocs, findReceivers, uploadType, composer } = await searchParams;
+  const initialComposerKind = isComposerKind(composer) ? composer : null;
   const failedDocNames = failedDocs ? failedDocs.split(",").filter(Boolean) : [];
   const supabase = await createClient();
 
@@ -121,6 +129,34 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     new Set(projectDocuments.map((d) => d.document_type))
   );
   const checklistProductLabel = project.final_product ?? projectProducts.map((p) => p.product).join(", ");
+
+  // Summary header (components/projects/project-summary-header.tsx) —
+  // every value below is derived from data this page already fetches
+  // for its own sections, nothing queried specifically for the header.
+  const summaryProductLabel =
+    project.final_product ?? `Options: ${projectProducts.map((p) => p.product).join(" / ")}`;
+  const summaryStatusColor = project.status ? statuses.find((s) => s.name === project.status)?.color ?? null : null;
+  const summaryContactPersonLabel = contactPerson
+    ? personLabel(contactPerson) + (contactPerson.archived_at ? " (Archived)" : "")
+    : null;
+  const summarySoonestNextStep = steps
+    .filter((s) => s.kind === "next_step" && !s.done)
+    .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""))[0];
+  const summaryNextStep = summarySoonestNextStep
+    ? { id: summarySoonestNextStep.id, body: summarySoonestNextStep.body, dueDate: summarySoonestNextStep.due_date }
+    : null;
+  const summaryTrancheStats = {
+    sentCount: tranches.filter((t) => t.sent_on).length,
+    confirmedCount: tranches.filter((t) => t.confirmed_on).length,
+    paidOutCount: tranches.filter((t) => t.paid_out_on).length,
+    activeAmountLabel: (() => {
+      const activeAmount = tranches
+        .filter((t) => t.confirmed_on && !t.paid_out_on)
+        .reduce((sum, t) => sum + (t.amount ?? 0), 0);
+      return activeAmount > 0 ? formatMoney(activeAmount, project.currency) : null;
+    })(),
+  };
+  const summaryLastActivityDaysAgo = daysSinceInstant(project.last_activity_at);
 
   // Admin-only counts for the Delete confirmation dialog (components/
   // projects/delete-project-button.tsx) — tranche_payouts/tranche_
@@ -206,6 +242,23 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   return (
     <div className="mx-auto max-w-4xl">
       <SetProjectSection isRecovery={project.is_recovery} />
+      <ProjectSummaryHeader
+        projectId={project.id}
+        projectName={project.name}
+        productLabel={summaryProductLabel}
+        showRecoveryBadge={appSettings.show_recovery && project.is_recovery}
+        stage={project.stage}
+        statusLabel={project.status}
+        statusColor={summaryStatusColor}
+        totalFaceValueLabel={formatMoney(project.total_face_value, project.currency)}
+        matchedReceiver={matchedContact ? { id: matchedContact.id, label: matchedReceiverLabel! } : null}
+        contactPersonLabel={summaryContactPersonLabel}
+        checklist={checklistStatus}
+        nextStep={summaryNextStep}
+        tranches={summaryTrancheStats}
+        lastActivityDaysAgo={summaryLastActivityDaysAgo}
+        stuckAfterDays={appSettings.stuck_after_days}
+      />
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link
@@ -304,7 +357,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         </GlassCard>
       </div>
 
-      <div className="mb-6">
+      <div id="matched-with" className="mb-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Matched With</h2>
         <GlassCard interactive={false} className="p-6">
           <MatchedReceiverSelect
@@ -367,10 +420,17 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         </GlassCard>
       </div>
 
-      <div className="mt-6">
+      <div id="project-timeline" className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Timeline</h2>
         <GlassCard interactive={false} className="p-6">
-          <ProjectTimeline projectId={project.id} steps={steps} notes={notes} authorNameById={authorNameById} />
+          <ProjectTimeline
+            key={composer ?? "default"}
+            projectId={project.id}
+            steps={steps}
+            notes={notes}
+            authorNameById={authorNameById}
+            initialComposerKind={initialComposerKind}
+          />
         </GlassCard>
       </div>
     </div>

@@ -108,6 +108,18 @@ export function daysSince(dateStr: string): number {
   return Math.round((today.getTime() - parseDateOnly(dateStr).getTime()) / 86_400_000);
 }
 
+// Same idea as daysSince above, but for a real instant (a timestamptz
+// column — last_activity_at, …) rather than a date-only one, so no
+// parseDateOnly/midnight step is needed. A free function rather than
+// inlined at each call site: react-hooks/purity flags Date.now()/`new
+// Date()` written directly in a component's own body (even a server
+// component), but not inside a plain helper function like this one —
+// components/projects/project-summary-header.tsx's "Last activity"
+// chip is the one caller today.
+export function daysSinceInstant(isoString: string): number {
+  return Math.floor((Date.now() - new Date(isoString).getTime()) / 86_400_000);
+}
+
 export function dueDateLabel(dueDate: string): string {
   const tone = dueDateTone(dueDate);
   if (tone === "today") return "Due today";

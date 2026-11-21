@@ -20,7 +20,7 @@ import type { Note, ProjectStep, ProjectStepKind } from "@/lib/types";
 // moved "Note" off project_steps and onto the notes table everyone
 // else already uses. "composer" below is the one add-kind the UI
 // still offers for notes alongside the two real step kinds.
-type ComposerKind = ProjectStepKind | "note";
+export type ComposerKind = ProjectStepKind | "note";
 
 type TimelineEntry = { kind: "step"; data: ProjectStep } | { kind: "note"; data: Note };
 
@@ -29,6 +29,15 @@ interface ProjectTimelineProps {
   steps: ProjectStep[];
   notes: Note[];
   authorNameById: Record<string, string>;
+  // Pre-opens a composer — set when this page was reached via the
+  // summary header's "+ Next step"/"+ Note" quick action
+  // (components/projects/project-summary-header.tsx's ?composer=…
+  // link). Only ever read once, on mount; the page gives this
+  // component a `key` derived from the same value so a different
+  // quick-action click remounts it with the new initial state, same
+  // pattern components/projects/project-documents.tsx's
+  // initialDocumentType uses.
+  initialComposerKind?: ComposerKind | null;
 }
 
 const KIND_ICON: Record<ComposerKind, typeof CalendarClock> = {
@@ -261,9 +270,9 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
 
 const QUICK_ADD_KINDS: ComposerKind[] = ["step_taken", "next_step", "note"];
 
-export function ProjectTimeline({ projectId, steps, notes, authorNameById }: ProjectTimelineProps) {
+export function ProjectTimeline({ projectId, steps, notes, authorNameById, initialComposerKind }: ProjectTimelineProps) {
   const router = useRouter();
-  const [composerKind, setComposerKind] = useState<ComposerKind | null>(null);
+  const [composerKind, setComposerKind] = useState<ComposerKind | null>(initialComposerKind ?? null);
   const [body, setBody] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [error, setError] = useState<string | null>(null);
