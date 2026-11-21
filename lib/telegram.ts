@@ -38,8 +38,25 @@ async function callTelegramApi<T>(method: string, body?: Record<string, unknown>
   }
 }
 
-export async function telegramSendMessage(chatId: number, text: string): Promise<void> {
-  const result = await callTelegramApi("sendMessage", { chat_id: chatId, text });
+export interface SendMessageOptions {
+  // "HTML" for the morning briefing (app/api/cron/morning-briefing/
+  // route.ts) — Telegram's own supported subset (<b>, <a href>, …),
+  // not full HTML. Omitted entirely for the plain-text inbox webhook
+  // reply, which has no markup to escape.
+  parseMode?: "HTML";
+  // The briefing links to several ARK pages — without this, Telegram
+  // renders a large link-preview card under the message for whichever
+  // URL appears first, which isn't wanted here.
+  disableWebPagePreview?: boolean;
+}
+
+export async function telegramSendMessage(chatId: number, text: string, options?: SendMessageOptions): Promise<void> {
+  const result = await callTelegramApi("sendMessage", {
+    chat_id: chatId,
+    text,
+    ...(options?.parseMode ? { parse_mode: options.parseMode } : {}),
+    ...(options?.disableWebPagePreview ? { disable_web_page_preview: true } : {}),
+  });
   if (!result.ok) {
     throw new Error(result.description ?? "sendMessage failed.");
   }

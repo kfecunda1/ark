@@ -27,16 +27,26 @@ export default async function SettingsPage() {
   let isAdmin = false;
   let fullName: string | null = null;
   let telegramUserId: number | null = null;
+  let briefingEnabled = true;
+  let briefingWeekdaysOnly = false;
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, full_name, telegram_user_id")
+      .select("role, full_name, telegram_user_id, briefing_enabled, briefing_weekdays_only")
       .eq("id", user.id)
       .maybeSingle();
-    const row = profile as { role: string | null; full_name: string | null; telegram_user_id: number | null } | null;
+    const row = profile as {
+      role: string | null;
+      full_name: string | null;
+      telegram_user_id: number | null;
+      briefing_enabled: boolean;
+      briefing_weekdays_only: boolean;
+    } | null;
     isAdmin = row?.role === "admin";
     fullName = row?.full_name ?? null;
     telegramUserId = row?.telegram_user_id ?? null;
+    briefingEnabled = row?.briefing_enabled ?? true;
+    briefingWeekdaysOnly = row?.briefing_weekdays_only ?? false;
   }
 
   const [products, statuses, documentTypes, payoutGroups, appSettings, usersResult, storageUsedBytes] = isAdmin
@@ -61,7 +71,12 @@ export default async function SettingsPage() {
       <div className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">My Profile</h2>
         <GlassCard interactive={false} className="p-6">
-          <MyProfileForm fullName={fullName} telegramUserId={telegramUserId} />
+          <MyProfileForm
+            fullName={fullName}
+            telegramUserId={telegramUserId}
+            briefingEnabled={briefingEnabled}
+            briefingWeekdaysOnly={briefingWeekdaysOnly}
+          />
         </GlassCard>
       </div>
 

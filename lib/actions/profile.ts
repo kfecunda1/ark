@@ -79,6 +79,38 @@ export async function updateOwnTelegramId(value: string): Promise<{ error: strin
   }
 }
 
+// Settings → My Profile's "Morning briefing" / "Weekdays only"
+// toggles (components/settings/my-profile-form.tsx) — same "own row
+// only" scope as updateOwnTelegramId above, and likewise never
+// activity-logged (a personal preference, not shared/auditable data).
+export async function updateOwnBriefingPrefs(
+  briefingEnabled: boolean,
+  briefingWeekdaysOnly: boolean
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return { error: "Not signed in." };
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ briefing_enabled: briefingEnabled, briefing_weekdays_only: briefingWeekdaysOnly })
+      .eq("id", user.id);
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/settings");
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
 // Called by components/settings/change-password-form.tsx right after
 // supabase.auth.updateUser() reports success on the client — that
 // report is never trusted on its own. This independently re-

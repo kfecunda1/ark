@@ -118,6 +118,12 @@ export interface Profile {
   // telegram/inbox/route.ts) matches an inbound message's from.id
   // against this to decide whose Inbox it belongs to.
   telegram_user_id: number | null;
+  // supabase/migrations/029_morning_briefing.sql. Settings → My
+  // Profile's own toggles — the morning briefing cron (app/api/cron/
+  // morning-briefing/route.ts) skips anyone with briefing_enabled
+  // false outright, and skips briefing_weekdays_only on a Sat/Sun.
+  briefing_enabled: boolean;
+  briefing_weekdays_only: boolean;
 }
 
 // supabase/migrations/022_telegram_inbox.sql.
