@@ -409,6 +409,12 @@ export interface AppSettings {
   // recovery features throughout the app, but changes nothing about
   // any project's own is_recovery value or data.
   show_recovery: boolean;
+  // supabase/migrations/030_document_checklists.sql — Settings →
+  // Document Checklists' own toggle. On, a project in stage "new"
+  // whose document checklist just went complete is moved to
+  // "documents_received" automatically (lib/checklists.ts's
+  // maybeAutoAdvanceStage) — off disables that, nothing else.
+  auto_advance_on_documents: boolean;
   updated_at: string;
 }
 
@@ -465,6 +471,7 @@ export interface ActivityDetails {
   default_currency?: [Currency, Currency];
   stuck_after_days?: [number, number];
   show_recovery?: [boolean, boolean];
+  auto_advance_on_documents?: [boolean, boolean];
   // users (active is reused from products/document_types above, with
   // entity_type === "user" picking the "deactivated"/"reactivated"
   // wording instead of "hidden"/"shown" — see lib/activity.ts)

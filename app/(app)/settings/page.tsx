@@ -9,13 +9,15 @@ import { ExportBackupButton } from "@/components/settings/export-backup-button";
 import { UsersSection } from "@/components/settings/users-section";
 import { StorageMeter } from "@/components/settings/storage-meter";
 import { TelegramBotPanel } from "@/components/settings/telegram-bot-panel";
+import { DocumentChecklistGrid } from "@/components/settings/document-checklist-grid";
 import { createClient } from "@/lib/supabase/server";
-import { getAllProducts } from "@/lib/products";
+import { getAllProducts, getActiveProducts } from "@/lib/products";
 import { getAllStatuses } from "@/lib/statuses";
 import { getAllPayoutGroups } from "@/lib/payout-groups";
-import { getAllDocumentTypes } from "@/lib/document-types";
+import { getAllDocumentTypes, getActiveDocumentTypes } from "@/lib/document-types";
 import { getAppSettings } from "@/lib/app-settings";
 import { getStorageUsedBytes } from "@/lib/storage-usage";
+import { getRequiredDocumentsByProduct } from "@/lib/checklists";
 import { listUsers } from "@/lib/actions/users";
 
 export default async function SettingsPage() {
@@ -49,7 +51,18 @@ export default async function SettingsPage() {
     briefingWeekdaysOnly = row?.briefing_weekdays_only ?? false;
   }
 
-  const [products, statuses, documentTypes, payoutGroups, appSettings, usersResult, storageUsedBytes] = isAdmin
+  const [
+    products,
+    statuses,
+    documentTypes,
+    payoutGroups,
+    appSettings,
+    usersResult,
+    storageUsedBytes,
+    activeProducts,
+    activeDocumentTypes,
+    requiredByProduct,
+  ] = isAdmin
     ? await Promise.all([
         getAllProducts(),
         getAllStatuses(),
@@ -58,8 +71,11 @@ export default async function SettingsPage() {
         getAppSettings(),
         listUsers(),
         getStorageUsedBytes(),
+        getActiveProducts(),
+        getActiveDocumentTypes(),
+        getRequiredDocumentsByProduct(supabase),
       ])
-    : [[], [], [], [], null, { users: [], error: null }, 0];
+    : [[], [], [], [], null, { users: [], error: null }, 0, [], [], new Map<string, string[]>()];
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -100,6 +116,18 @@ export default async function SettingsPage() {
             <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Document Types</h2>
             <GlassCard interactive={false} className="p-6">
               <ManageableList table="document_types" items={documentTypes} itemLabel="document type" />
+            </GlassCard>
+          </div>
+
+          <div id="document-checklists" className="mt-6">
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Document Checklists</h2>
+            <GlassCard interactive={false} className="p-6">
+              <DocumentChecklistGrid
+                products={activeProducts}
+                documentTypes={activeDocumentTypes}
+                requiredByProduct={requiredByProduct}
+                autoAdvanceOnDocuments={appSettings?.auto_advance_on_documents ?? true}
+              />
             </GlassCard>
           </div>
 

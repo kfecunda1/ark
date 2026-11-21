@@ -50,6 +50,15 @@ interface ProjectDocumentsProps {
   documentTypes: DocumentTypeRecord[];
   tranches: ProjectTranche[];
   scope: DocumentsScope;
+  // Pre-selects the upload form's document type — set when this page
+  // was reached via a Documents checklist "Upload" shortcut
+  // (components/projects/document-checklist-panel.tsx's ?uploadType=…
+  // link, read by app/(app)/projects/[id]/page.tsx and passed straight
+  // through). Only ever read once, on mount — the page gives this
+  // component a `key` derived from the same value, so a different
+  // "Upload" click (a new ?uploadType=…) remounts it with the new
+  // initial state instead of needing an effect to sync it in place.
+  initialDocumentType?: string | null;
 }
 
 interface PendingUpload {
@@ -83,9 +92,18 @@ function DocumentIcon({ doc }: { doc: ProjectDocumentWithUrl }) {
   return <FileText className="h-4 w-4 shrink-0 text-white/35" />;
 }
 
-export function ProjectDocuments({ projectId, documents, documentTypes, tranches, scope }: ProjectDocumentsProps) {
+export function ProjectDocuments({
+  projectId,
+  documents,
+  documentTypes,
+  tranches,
+  scope,
+  initialDocumentType,
+}: ProjectDocumentsProps) {
   const router = useRouter();
-  const [documentType, setDocumentType] = useState<ProjectDocumentType>(documentTypes[0]?.name ?? "");
+  const [documentType, setDocumentType] = useState<ProjectDocumentType>(
+    initialDocumentType || documentTypes[0]?.name || ""
+  );
   const [isChecking, setIsChecking] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);

@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Archive } from "lucide-react";
+import { Archive, FileWarning } from "lucide-react";
 import { STAGES, STAGE_LABELS } from "@/lib/projects";
 import type { Product, StatusRecord } from "@/lib/types";
 
@@ -25,6 +25,7 @@ export function ProjectFilters({ products, statuses, intermediaries }: ProjectFi
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const showArchived = searchParams.get("archived") === "true";
+  const missingDocuments = searchParams.get("missing_documents") === "true";
 
   function setParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -103,6 +104,20 @@ export function ProjectFilters({ products, statuses, intermediaries }: ProjectFi
           </option>
         ))}
       </select>
+
+      <button
+        type="button"
+        onClick={() => setParam("missing_documents", missingDocuments ? "" : "true")}
+        aria-pressed={missingDocuments}
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors duration-150 ease-out ${
+          missingDocuments
+            ? "border-rose-500/40 bg-rose-500/15 text-rose-300"
+            : "border-white/[0.06] bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"
+        }`}
+      >
+        <FileWarning className="h-3.5 w-3.5" />
+        Missing documents
+      </button>
 
       <button
         type="button"

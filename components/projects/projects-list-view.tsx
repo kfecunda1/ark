@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
 import { getAllStatuses, isClosedStatus } from "@/lib/statuses";
 import { getProjectProductsByProjectIds, countedProducts, displayProduct } from "@/lib/project-products";
+import { computeChecklistStatus, getRequiredDocumentsByProduct, type ChecklistStatus } from "@/lib/checklists";
 import { compareNullsLast, parseSortDirection } from "@/lib/sort";
 import { formatDateTime } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
@@ -54,6 +55,7 @@ export interface ProjectsListSearchParams {
   intermediary?: string;
   active_tranches?: string;
   unmatched?: string;
+  missing_documents?: string;
   sort?: string;
   dir?: string;
   archived?: string;
@@ -175,6 +177,45 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
     );
   }
 
+  // Document checklist per project (lib/checklists.ts) — the "Docs"
+  // column and the "Missing documents" filter below both read this
+  // same map, computed for whatever `projects` already survived every
+  // other filter above.
+  const requiredByProduct = await getRequiredDocumentsByProduct(supabase);
+  const { data: checklistDocsData } =
+    projects.length > 0
+      ? await supabase.from("project_documents").select("project_id, document_type").in(
+          "project_id",
+          projects.map((p) => p.id)
+        )
+      : { data: [] as { project_id: string; document_type: string }[] };
+  const documentTypesByProjectId = new Map<string, Set<string>>();
+  for (const row of (checklistDocsData as { project_id: string; document_type: string }[] | null) ?? []) {
+    const set = documentTypesByProjectId.get(row.project_id) ?? new Set<string>();
+    set.add(row.document_type);
+    documentTypesByProjectId.set(row.project_id, set);
+  }
+  const checklistStatusByProjectId = new Map<string, ChecklistStatus>(
+    projects.map((p) => [
+      p.id,
+      computeChecklistStatus(
+        p.final_product,
+        projectProductsByProjectId.get(p.id)?.map((o) => o.product) ?? [],
+        requiredByProduct,
+        documentTypesByProjectId.get(p.id) ?? new Set<string>()
+      ),
+    ])
+  );
+
+  // "Missing documents" filter — a checklist exists for this project
+  // but isn't complete yet.
+  if (params.missing_documents === "true") {
+    projects = projects.filter((p) => {
+      const status = checklistStatusByProjectId.get(p.id);
+      return status?.hasChecklist && !status.isComplete;
+    });
+  }
+
   // Earliest open next step per project — "open" meaning not yet done.
   const nextStepByProjectId = new Map<string, Pick<ProjectStep, "body" | "due_date">>();
   if (projects.length > 0) {
@@ -241,7 +282,8 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
       params.status ||
       params.intermediary ||
       params.active_tranches === "true" ||
-      params.unmatched === "true"
+      params.unmatched === "true" ||
+      params.missing_documents === "true"
   );
   const newProjectHref = isRecovery ? "/projects/new?recovery=true" : "/projects/new";
 
@@ -305,6 +347,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                   <SortableHeader sortKey="product" label="Product" currentSort={sort} currentDir={dir} />
                   <SortableHeader sortKey="stage" label="Stage" currentSort={sort} currentDir={dir} />
                   <SortableHeader sortKey="status" label="Status" currentSort={sort} currentDir={dir} />
+                  <th className="px-4 py-3 font-medium">Docs</th>
                   <th className="px-4 py-3 font-medium">Contact Person Project</th>
                   <SortableHeader
                     sortKey="total_face_value"
@@ -358,6 +401,25 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                       </td>
                       <td className="px-4 py-3">
                         <StatusSelect projectId={project.id} currentStatus={project.status} statuses={statuses} />
+                      </td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const checklist = checklistStatusByProjectId.get(project.id);
+                          if (!checklist?.hasChecklist) return <span className="text-white/30">—</span>;
+                          const complete = checklist.requiredTypes.length - checklist.missingTypes.length;
+                          return (
+                            <span
+                              title={
+                                checklist.missingTypes.length > 0
+                                  ? `Missing: ${checklist.missingTypes.join(", ")}`
+                                  : "Complete"
+                              }
+                              className={`font-medium ${checklist.isComplete ? "text-emerald-300" : "text-white/60"}`}
+                            >
+                              {complete}/{checklist.requiredTypes.length}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-white/70">
                         {project.contact_person_id ? contactPersonNameById.get(project.contact_person_id) ?? "—" : "—"}
@@ -429,6 +491,29 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                         <StatusSelect projectId={project.id} currentStatus={project.status} statuses={statuses} />
                       </dd>
                     </div>
+                    {checklistStatusByProjectId.get(project.id)?.hasChecklist && (
+                      <div>
+                        <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Docs</dt>
+                        <dd className="mt-0.5">
+                          {(() => {
+                            const checklist = checklistStatusByProjectId.get(project.id)!;
+                            const complete = checklist.requiredTypes.length - checklist.missingTypes.length;
+                            return (
+                              <span
+                                title={
+                                  checklist.missingTypes.length > 0
+                                    ? `Missing: ${checklist.missingTypes.join(", ")}`
+                                    : "Complete"
+                                }
+                                className={`font-medium ${checklist.isComplete ? "text-emerald-300" : "text-white/70"}`}
+                              >
+                                {complete}/{checklist.requiredTypes.length}
+                              </span>
+                            );
+                          })()}
+                        </dd>
+                      </div>
+                    )}
                     {project.contact_person_id && (
                       <div>
                         <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">

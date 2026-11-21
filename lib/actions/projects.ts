@@ -9,6 +9,7 @@ import { STAGE_LABELS } from "@/lib/projects";
 import { parseMoneyFormValue } from "@/lib/money";
 import { syncProjectIntermediaries } from "@/lib/intermediaries";
 import { withPreservedExtension } from "@/lib/storage";
+import { maybeAutoAdvanceStage } from "@/lib/checklists";
 import type { Currency, ProjectDocumentType, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
 
 export interface ProjectFormState {
@@ -620,6 +621,8 @@ export async function addProjectDocument(
       return { error: error.message };
     }
 
+    await maybeAutoAdvanceStage(supabase, projectId);
+
     revalidatePath(`/projects/${projectId}`);
     return { error: null, id: (data as { id: string }).id };
   } catch (err) {
@@ -651,6 +654,8 @@ export async function addProjectDocumentLink(
     if (error) {
       return { error: error.message };
     }
+
+    await maybeAutoAdvanceStage(supabase, projectId);
 
     revalidatePath(`/projects/${projectId}`);
     return { error: null };
@@ -752,6 +757,13 @@ export async function renameProjectDocument(documentId: string, newName: string)
     if (error) {
       return { error: error.message };
     }
+
+    // A rename never touches document_type, so this is a no-op for
+    // the checklist in practice — called anyway for the same reason
+    // addProjectDocument/addProjectDocumentLink are: any edit to a
+    // project's own documents is a plausible moment for its checklist
+    // to have newly gone complete.
+    await maybeAutoAdvanceStage(supabase, existing.project_id);
 
     revalidatePath(`/projects/${existing.project_id}`);
     return { error: null };

@@ -11,6 +11,7 @@ import { ProjectDocuments } from "@/components/projects/project-documents";
 import { TranchesSection } from "@/components/projects/tranches-section";
 import { MatchedReceiverSelect } from "@/components/projects/matched-receiver-select";
 import { FindReceiversPanel } from "@/components/projects/find-receivers-panel";
+import { DocumentChecklistPanel } from "@/components/projects/document-checklist-panel";
 import { ContactPersonSelect } from "@/components/contact-person-select";
 import { ProjectProductOptions } from "@/components/projects/project-product-options";
 import { ProjectIntermediariesSection } from "@/components/projects/project-intermediaries-section";
@@ -26,16 +27,17 @@ import { formatDateTime } from "@/lib/format";
 import { amountInWords, formatMoney } from "@/lib/money";
 import { buildIntermediaryPickerOptions, getProjectIntermediaryChain } from "@/lib/intermediaries";
 import { getReceiverIntermediaryPersonIds } from "@/lib/actions/intermediaries";
+import { computeChecklistStatus, getRequiredDocumentsByProduct } from "@/lib/checklists";
 import type { Contact, Note, Person, Project, ProjectDocument, ProjectProduct, ProjectStep, ProjectTranche } from "@/lib/types";
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ failedDocs?: string; findReceivers?: string }>;
+  searchParams: Promise<{ failedDocs?: string; findReceivers?: string; uploadType?: string }>;
 }
 
 export default async function ProjectDetailPage({ params, searchParams }: ProjectDetailPageProps) {
   const { id } = await params;
-  const { failedDocs, findReceivers } = await searchParams;
+  const { failedDocs, findReceivers, uploadType } = await searchParams;
   const failedDocNames = failedDocs ? failedDocs.split(",").filter(Boolean) : [];
   const supabase = await createClient();
 
@@ -110,6 +112,15 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const steps = (stepsData as ProjectStep[] | null) ?? [];
   const notes = (notesData as Note[] | null) ?? [];
   const projectProducts = (projectProductsData as ProjectProduct[] | null) ?? [];
+
+  const requiredByProduct = await getRequiredDocumentsByProduct(supabase);
+  const checklistStatus = computeChecklistStatus(
+    project.final_product,
+    projectProducts.map((p) => p.product),
+    requiredByProduct,
+    new Set(projectDocuments.map((d) => d.document_type))
+  );
+  const checklistProductLabel = project.final_product ?? projectProducts.map((p) => p.product).join(", ");
 
   // Admin-only counts for the Delete confirmation dialog (components/
   // projects/delete-project-button.tsx) — tranche_payouts/tranche_
@@ -272,6 +283,15 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       </div>
 
       <div className="mb-6">
+        <DocumentChecklistPanel
+          projectId={project.id}
+          productLabel={checklistProductLabel}
+          status={checklistStatus}
+          isAdmin={isAdmin}
+        />
+      </div>
+
+      <div className="mb-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Products</h2>
         <GlassCard interactive={false} className="p-6">
           <ProjectProductOptions
@@ -332,15 +352,17 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         />
       </div>
 
-      <div className="mt-6">
+      <div id="project-documents" className="mt-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Documents</h2>
         <GlassCard interactive={false} className="p-6">
           <ProjectDocuments
+            key={uploadType ?? "default"}
             projectId={project.id}
             documents={documentsWithUrls}
             documentTypes={documentTypes}
             tranches={tranches}
             scope={{ kind: "all" }}
+            initialDocumentType={uploadType}
           />
         </GlassCard>
       </div>

@@ -1,7 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import type { AppSettings } from "@/lib/types";
 
-const FALLBACK: AppSettings = { default_currency: "USD", stuck_after_days: 7, show_recovery: true, updated_at: "" };
+const FALLBACK: AppSettings = {
+  default_currency: "USD",
+  stuck_after_days: 7,
+  show_recovery: true,
+  auto_advance_on_documents: true,
+  updated_at: "",
+};
 
 // app_settings is a singleton row (supabase/migrations/011_settings_
 // tables.sql) seeded by that migration itself, so this should always
@@ -11,7 +17,7 @@ export async function getAppSettings(): Promise<AppSettings> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("app_settings")
-    .select("default_currency, stuck_after_days, show_recovery, updated_at")
+    .select("default_currency, stuck_after_days, show_recovery, auto_advance_on_documents, updated_at")
     .maybeSingle();
   if (error) {
     console.error("[getAppSettings] query failed:", error.message);

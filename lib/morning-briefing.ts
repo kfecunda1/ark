@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { TIME_ZONE, dateKeyInTimeZone, truncate } from "@/lib/format";
 import { dueDateLabel, followUpLabel } from "@/lib/projects";
 import { formatMoney } from "@/lib/money";
+import { computeChecklistStatus, getRequiredDocumentsByProduct } from "@/lib/checklists";
 import type { Currency, Project, ProjectTranche } from "@/lib/types";
 
 // Everything behind the ARK Telegram bot's morning briefing — shared
@@ -59,6 +60,7 @@ export interface BriefingSnapshot {
   notMatchedCount: number;
   notMatchedDocsReceivedCount: number;
   inboxToFileCount: number;
+  projectsMissingDocumentsCount: number;
   // Admin-only figures — never an amount or a percentage, just counts/
   // days, same as every other payout-adjacent surface in this app.
   payoutsWithoutCommissionCount: number;
@@ -197,6 +199,41 @@ export async function getBriefingSnapshot(supabase: SupabaseClient): Promise<Bri
   const notMatchedProjects = openProjects.filter((p) => !p.matched_contact_id);
   const notMatchedDocsReceivedCount = notMatchedProjects.filter((p) => p.stage === "documents_received").length;
 
+  // "N projects missing documents" — same checklist math as the
+  // Project page/Projects list (lib/checklists.ts), scoped to the same
+  // open-projects set as everything else in this briefing.
+  const [requiredByProduct, { data: openProjectProductsData }, { data: openProjectDocsData }] =
+    openProjects.length > 0
+      ? await Promise.all([
+          getRequiredDocumentsByProduct(supabase),
+          supabase.from("project_products").select("project_id, product").in("project_id", openProjects.map((p) => p.id)),
+          supabase
+            .from("project_documents")
+            .select("project_id, document_type")
+            .in("project_id", openProjects.map((p) => p.id)),
+        ])
+      : [new Map<string, string[]>(), { data: [] }, { data: [] }];
+
+  const optionsByProjectId = new Map<string, string[]>();
+  for (const row of (openProjectProductsData as { project_id: string; product: string }[] | null) ?? []) {
+    optionsByProjectId.set(row.project_id, [...(optionsByProjectId.get(row.project_id) ?? []), row.product]);
+  }
+  const docTypesByProjectId = new Map<string, Set<string>>();
+  for (const row of (openProjectDocsData as { project_id: string; document_type: string }[] | null) ?? []) {
+    const set = docTypesByProjectId.get(row.project_id) ?? new Set<string>();
+    set.add(row.document_type);
+    docTypesByProjectId.set(row.project_id, set);
+  }
+  const projectsMissingDocumentsCount = openProjects.filter((p) => {
+    const status = computeChecklistStatus(
+      p.final_product,
+      optionsByProjectId.get(p.id) ?? [],
+      requiredByProduct,
+      docTypesByProjectId.get(p.id) ?? new Set<string>()
+    );
+    return status.hasChecklist && !status.isComplete;
+  }).length;
+
   // Admin-only — same "Commission not set" definition the Payouts page
   // uses (lib/actions/matching.ts has no equivalent; this is its own
   // small query, same shape as app/(app)/payouts/page.tsx's).
@@ -235,6 +272,7 @@ export async function getBriefingSnapshot(supabase: SupabaseClient): Promise<Bri
     notMatchedCount: notMatchedProjects.length,
     notMatchedDocsReceivedCount,
     inboxToFileCount: inboxToFileCount ?? 0,
+    projectsMissingDocumentsCount,
     payoutsWithoutCommissionCount,
     daysSinceBackup,
   };
@@ -297,6 +335,10 @@ export function buildBriefingText(snapshot: BriefingSnapshot, isAdmin: boolean):
 
   if (snapshot.inboxToFileCount > 0) {
     sections.push(`📥 Inbox: ${snapshot.inboxToFileCount} to file`);
+  }
+
+  if (snapshot.projectsMissingDocumentsCount > 0) {
+    sections.push(`📄 ${snapshot.projectsMissingDocumentsCount} projects missing documents`);
   }
 
   if (isAdmin) {
