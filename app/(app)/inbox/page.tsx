@@ -3,25 +3,61 @@ import { InboxTabs } from "@/components/inbox/inbox-tabs";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { isCurrentUserAdmin } from "@/lib/auth";
+import { buildInboxSuggestions, suggestDocumentType } from "@/lib/inbox-suggestions";
 import type { InboxItem } from "@/lib/types";
 
 export default async function InboxPage() {
   const supabase = await createClient();
 
-  const [{ data: itemsData }, { data: profilesData }, { data: projectsData }, { data: contactsData }, documentTypes, isAdmin] =
-    await Promise.all([
-      supabase.from("inbox_items").select("*").order("received_at", { ascending: false }),
-      supabase.from("profiles").select("id, full_name, email"),
-      supabase.from("projects").select("id, name").is("archived_at", null).order("name"),
-      supabase.from("contacts").select("id, full_name").is("archived_at", null).order("full_name"),
-      getActiveDocumentTypes(),
-      isCurrentUserAdmin(),
-    ]);
+  const [
+    { data: itemsData },
+    { data: profilesData },
+    { data: projectsData },
+    { data: contactsData },
+    { data: peopleData },
+    { data: receiverIntermediariesData },
+    { data: projectIntermediariesData },
+    documentTypes,
+    isAdmin,
+  ] = await Promise.all([
+    supabase.from("inbox_items").select("*").order("received_at", { ascending: false }),
+    supabase.from("profiles").select("id, full_name, email"),
+    supabase.from("projects").select("id, name").is("archived_at", null).order("name"),
+    supabase.from("contacts").select("id, full_name").is("archived_at", null).order("full_name"),
+    supabase.from("people").select("id, first_name, last_name").is("archived_at", null),
+    supabase.from("receiver_intermediaries").select("person_id, receiver_id"),
+    supabase.from("project_intermediaries").select("person_id, project_id"),
+    getActiveDocumentTypes(),
+    isCurrentUserAdmin(),
+  ]);
 
   const items = (itemsData as InboxItem[] | null) ?? [];
   const profiles = (profilesData as { id: string; full_name: string | null; email: string | null }[] | null) ?? [];
   const projects = (projectsData as { id: string; name: string }[] | null) ?? [];
   const contacts = (contactsData as { id: string; full_name: string }[] | null) ?? [];
+  const people = (peopleData as { id: string; first_name: string; last_name: string | null }[] | null) ?? [];
+  const receiverIntermediaries =
+    (receiverIntermediariesData as { person_id: string; receiver_id: string }[] | null) ?? [];
+  const projectIntermediaries =
+    (projectIntermediariesData as { person_id: string; project_id: string }[] | null) ?? [];
+
+  // Suggested filing destination/document type for every "To file"
+  // item — pure read-only matching (lib/inbox-suggestions.ts); filed
+  // and dismissed items never need one.
+  const toFileItems = items.filter((i) => i.status === "new");
+  const suggestionsByItemId: Record<string, { type: "project" | "contact"; id: string; label: string }[]> = {};
+  const suggestedDocTypeByItemId: Record<string, string> = {};
+  for (const item of toFileItems) {
+    suggestionsByItemId[item.id] = buildInboxSuggestions(item, {
+      projects,
+      contacts,
+      people,
+      receiverIntermediaries,
+      projectIntermediaries,
+    });
+    const docType = suggestDocumentType(item, documentTypes);
+    if (docType) suggestedDocTypeByItemId[item.id] = docType;
+  }
 
   // Covers both the original sender (profile_id) and whoever actually
   // filed an item (filed_by) — both are just profile ids.
@@ -173,6 +209,8 @@ export default async function InboxPage() {
           filedOpenUrlByItemId={filedOpenUrlByItemId}
           filedTrancheNumberByItemId={filedTrancheNumberByItemId}
           isAdmin={isAdmin}
+          suggestionsByItemId={suggestionsByItemId}
+          suggestedDocTypeByItemId={suggestedDocTypeByItemId}
         />
       </GlassCard>
     </div>

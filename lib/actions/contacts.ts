@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isCurrentUserAdmin } from "@/lib/auth";
+import { withPreservedExtension } from "@/lib/storage";
 import type { Contact, ContactDocumentType, ProductType } from "@/lib/types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -483,6 +484,38 @@ export async function deleteContactDocument(documentId: string): Promise<{ error
     if (existing?.contact_id) {
       revalidatePath(`/receivers/${existing.contact_id}`);
     }
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// Same "display name only, extension preserved" rename as
+// renameProjectDocument (lib/actions/projects.ts) — see there for why.
+export async function renameContactDocument(documentId: string, newName: string): Promise<{ error: string | null }> {
+  if (!newName.trim()) {
+    return { error: "Name can't be empty." };
+  }
+
+  try {
+    const supabase = await createClient();
+
+    const { data: existing, error: readError } = await supabase
+      .from("contact_documents")
+      .select("contact_id, file_name")
+      .eq("id", documentId)
+      .maybeSingle();
+    if (readError || !existing) {
+      return { error: readError?.message ?? "Document not found." };
+    }
+
+    const finalName = withPreservedExtension(existing.file_name, newName);
+    const { error } = await supabase.from("contact_documents").update({ file_name: finalName }).eq("id", documentId);
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath(`/receivers/${existing.contact_id}`);
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };

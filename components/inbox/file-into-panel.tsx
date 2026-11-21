@@ -7,12 +7,24 @@ import { fileInboxItemAsDocument, fileInboxItemAsNote, type InboxDuplicateMatch 
 import { createClient } from "@/lib/supabase/client";
 import type { DocumentTypeRecord, ProjectTranche } from "@/lib/types";
 
+export interface FileIntoDestination {
+  type: "project" | "contact";
+  id: string;
+  label: string;
+}
+
 interface FileIntoPanelProps {
   itemId: string;
   hasFile: boolean;
   projectOptions: EntityOption[];
   contactOptions: EntityOption[];
   documentTypes: DocumentTypeRecord[];
+  // Pre-fills the destination/document type (a clicked "Suggested: X —
+  // File here" chip, components/inbox/inbox-tabs.tsx) — read only once,
+  // on mount; the caller remounts this component (via a key that
+  // includes the destination) if a different suggestion is picked.
+  initialDestination?: FileIntoDestination | null;
+  initialDocumentType?: string | null;
   // The destination's own label (e.g. the project/receiver name), for
   // the "Filed to <destination>" confirmation (components/inbox/
   // inbox-tabs.tsx) — read off whichever EntityPicker is selected at
@@ -29,15 +41,21 @@ export function FileIntoPanel({
   projectOptions,
   contactOptions,
   documentTypes,
+  initialDestination,
+  initialDocumentType,
   onFiled,
   onCancel,
 }: FileIntoPanelProps) {
-  const [destinationType, setDestinationType] = useState<"project" | "contact">("project");
-  const [selectedProject, setSelectedProject] = useState<EntityOption | null>(null);
-  const [selectedContact, setSelectedContact] = useState<EntityOption | null>(null);
+  const [destinationType, setDestinationType] = useState<"project" | "contact">(initialDestination?.type ?? "project");
+  const [selectedProject, setSelectedProject] = useState<EntityOption | null>(
+    initialDestination?.type === "project" ? { id: initialDestination.id, label: initialDestination.label } : null
+  );
+  const [selectedContact, setSelectedContact] = useState<EntityOption | null>(
+    initialDestination?.type === "contact" ? { id: initialDestination.id, label: initialDestination.label } : null
+  );
   const [tranches, setTranches] = useState<ProjectTranche[]>([]);
   const [trancheValue, setTrancheValue] = useState(TRANCHE_GENERAL);
-  const [documentType, setDocumentType] = useState(documentTypes[0]?.name ?? "");
+  const [documentType, setDocumentType] = useState(initialDocumentType || documentTypes[0]?.name || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingMatches, setPendingMatches] = useState<InboxDuplicateMatch[] | null>(null);
@@ -158,6 +176,7 @@ export function FileIntoPanel({
           name="inbox_target_project"
           label="Project"
           options={projectOptions}
+          defaultId={initialDestination?.type === "project" ? initialDestination.id : undefined}
           entityNoun="project"
           onSelect={selectProject}
         />
@@ -167,6 +186,7 @@ export function FileIntoPanel({
           name="inbox_target_contact"
           label="Receiver"
           options={contactOptions}
+          defaultId={initialDestination?.type === "contact" ? initialDestination.id : undefined}
           entityNoun="receiver"
           onSelect={setSelectedContact}
         />

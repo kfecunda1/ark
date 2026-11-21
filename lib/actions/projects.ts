@@ -8,6 +8,7 @@ import { getContactProductRatio } from "@/lib/actions/contacts";
 import { STAGE_LABELS } from "@/lib/projects";
 import { parseMoneyFormValue } from "@/lib/money";
 import { syncProjectIntermediaries } from "@/lib/intermediaries";
+import { withPreservedExtension } from "@/lib/storage";
 import type { Currency, ProjectDocumentType, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
 
 export interface ProjectFormState {
@@ -718,6 +719,41 @@ export async function moveProjectDocument(
     if (existing?.project_id) {
       revalidatePath(`/projects/${existing.project_id}`);
     }
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// The Documents section's inline "Rename" action — updates only the
+// display name (file_name); the storage object/key is never touched.
+// withPreservedExtension re-appends the document's current extension
+// if the typed name dropped it, so "Invoice" -> "Invoice.pdf" rather
+// than a document that silently stops looking like a PDF.
+export async function renameProjectDocument(documentId: string, newName: string): Promise<{ error: string | null }> {
+  if (!newName.trim()) {
+    return { error: "Name can't be empty." };
+  }
+
+  try {
+    const supabase = await createClient();
+
+    const { data: existing, error: readError } = await supabase
+      .from("project_documents")
+      .select("project_id, file_name")
+      .eq("id", documentId)
+      .maybeSingle();
+    if (readError || !existing) {
+      return { error: readError?.message ?? "Document not found." };
+    }
+
+    const finalName = withPreservedExtension(existing.file_name, newName);
+    const { error } = await supabase.from("project_documents").update({ file_name: finalName }).eq("id", documentId);
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath(`/projects/${existing.project_id}`);
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };

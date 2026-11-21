@@ -4,18 +4,22 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Check,
   ExternalLink,
   FileText,
   Forward,
   Pause,
+  Pencil,
   Play,
   RotateCcw,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 import type { EntityOption } from "@/components/entity-picker";
-import { FileIntoPanel } from "@/components/inbox/file-into-panel";
-import { dismissInboxItem, deleteInboxItem } from "@/lib/actions/inbox";
+import { FileIntoPanel, type FileIntoDestination } from "@/components/inbox/file-into-panel";
+import { BulkFilePanel } from "@/components/inbox/bulk-file-panel";
+import { dismissInboxItem, deleteInboxItem, renameInboxItem } from "@/lib/actions/inbox";
 import { getDocumentKind } from "@/lib/storage";
 import { isTooLargeForTelegram } from "@/lib/inbox";
 import { formatDateTime, relativeTime, truncate } from "@/lib/format";
@@ -33,6 +37,8 @@ interface InboxTabsProps {
   filedOpenUrlByItemId: Record<string, string>;
   filedTrancheNumberByItemId: Record<string, number>;
   isAdmin: boolean;
+  suggestionsByItemId: Record<string, FileIntoDestination[]>;
+  suggestedDocTypeByItemId: Record<string, string>;
 }
 
 type Tab = "to_file" | "filed" | "dismissed";
@@ -148,15 +154,26 @@ export function InboxTabs({
   filedOpenUrlByItemId,
   filedTrancheNumberByItemId,
   isAdmin,
+  suggestionsByItemId,
+  suggestedDocTypeByItemId,
 }: InboxTabsProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [tab, setTab] = useState<Tab>("to_file");
   const [filingId, setFilingId] = useState<string | null>(null);
+  const [prefillByItemId, setPrefillByItemId] = useState<Record<string, FileIntoDestination>>({});
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filedConfirmation, setFiledConfirmation] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+
+  // Bulk selection — "to_file" tab only (see toggleSelectAll/toggleSelected
+  // below and the bulk bar rendered above the item list).
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkFiling, setBulkFiling] = useState(false);
+  const [bulkDismissConfirm, setBulkDismissConfirm] = useState(false);
+  const [isBulkDismissing, setIsBulkDismissing] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   // Auto-dismiss the "Filed to …" confirmation after a few seconds
   // rather than leaving it sitting there indefinitely.
@@ -173,6 +190,59 @@ export function InboxTabs({
     .filter((i) => i.status === "filed")
     .sort((a, b) => (b.filed_at ?? "").localeCompare(a.filed_at ?? ""));
   const dismissedItems = items.filter((i) => i.status === "dismissed");
+
+  // Filtering against the *current* toFileItems (not the raw id set)
+  // means a selection surviving a single-item file/dismiss elsewhere
+  // just quietly drops that item instead of pointing at a stale row.
+  const selectedItems = toFileItems.filter((i) => selectedIds.has(i.id));
+
+  function toggleSelected(itemId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      const allSelected = toFileItems.length > 0 && toFileItems.every((i) => prev.has(i.id));
+      return allSelected ? new Set() : new Set(toFileItems.map((i) => i.id));
+    });
+  }
+
+  async function handleBulkDismiss() {
+    setBulkError(null);
+    setIsBulkDismissing(true);
+    const targets = selectedItems;
+    const failures: string[] = [];
+    for (const item of targets) {
+      const result = await dismissInboxItem(item.id, true);
+      if (result.error) {
+        failures.push(`${itemLabel(item)}: ${result.error}`);
+      }
+    }
+    setIsBulkDismissing(false);
+    setBulkDismissConfirm(false);
+    setSelectedIds(new Set());
+    if (failures.length > 0) {
+      setBulkError(`${failures.length} item(s) failed to dismiss:\n${failures.join("\n")}`);
+    }
+    router.refresh();
+  }
+
+  function removeFromBulkSelection(itemId: string) {
+    const next = new Set(selectedIds);
+    next.delete(itemId);
+    setSelectedIds(next);
+    if (next.size === 0) setBulkFiling(false);
+  }
+
+  function openSuggestion(itemId: string, suggestion: FileIntoDestination) {
+    setPrefillByItemId((prev) => ({ ...prev, [itemId]: suggestion }));
+    setFilingId(itemId);
+  }
 
   const searchLower = search.trim().toLowerCase();
   const filteredFiledItems =
@@ -254,6 +324,87 @@ export function InboxTabs({
     );
   }
 
+  // A "To file" item's inline rename, before it's filed — same
+  // "display name only, extension preserved" rule as the Documents
+  // sections' own rename (components/projects/project-documents.tsx,
+  // components/receivers/receiver-documents.tsx), via lib/storage.ts's
+  // withPreservedExtension (applied server-side in renameInboxItem).
+  // Never activity-logged — see that action's own comment.
+  function RenameControl({ item }: { item: InboxItem }) {
+    const [editing, setEditing] = useState(false);
+    const [value, setValue] = useState(item.file_name ?? "");
+    const [isSaving, setIsSaving] = useState(false);
+    const [localError, setLocalError] = useState<string | null>(null);
+
+    if (!item.file_name) return null;
+
+    async function save() {
+      setLocalError(null);
+      setIsSaving(true);
+      try {
+        const result = await renameInboxItem(item.id, value);
+        if (result.error) {
+          setLocalError(result.error);
+          return;
+        }
+        setEditing(false);
+        router.refresh();
+      } catch (err) {
+        setLocalError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      } finally {
+        setIsSaving(false);
+      }
+    }
+
+    if (!editing) {
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            setValue(item.file_name ?? "");
+            setLocalError(null);
+            setEditing(true);
+          }}
+          className="inline-flex items-center gap-1 text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          Rename
+        </button>
+      );
+    }
+
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1.5">
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={isSaving}
+          className="min-w-0 rounded-md border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-xs text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={isSaving}
+          aria-label="Save name"
+          className="inline-flex items-center rounded-md bg-accent px-1.5 py-1 text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Check className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          disabled={isSaving}
+          aria-label="Cancel rename"
+          className="inline-flex items-center rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-1 text-white/60 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+        {localError && <span className="text-xs text-rose-300">{localError}</span>}
+      </span>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.02] p-1">
@@ -287,17 +438,103 @@ export function InboxTabs({
             </p>
           )}
 
+          {toFileItems.length > 0 && (
+            <label className="flex w-fit items-center gap-2 text-xs font-medium text-white/50">
+              <input
+                type="checkbox"
+                checked={toFileItems.length > 0 && selectedItems.length === toFileItems.length}
+                onChange={toggleSelectAll}
+                className="h-3.5 w-3.5 rounded border-white/20 bg-white/[0.04] accent-accent"
+              />
+              Select all
+            </label>
+          )}
+
+          {bulkError && <p className="whitespace-pre-wrap text-xs text-rose-300">{bulkError}</p>}
+
+          {selectedItems.length > 0 &&
+            (bulkFiling ? (
+              <BulkFilePanel
+                items={selectedItems}
+                projectOptions={projectOptions}
+                contactOptions={contactOptions}
+                documentTypes={documentTypes}
+                onRemoveItem={removeFromBulkSelection}
+                onDone={() => {
+                  setBulkFiling(false);
+                  setSelectedIds(new Set());
+                }}
+                onCancel={() => setBulkFiling(false)}
+              />
+            ) : (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-accent/25 bg-accent/10 px-3.5 py-2.5">
+                <span className="text-xs font-medium text-white/80">{selectedItems.length} selected</span>
+                <button
+                  type="button"
+                  onClick={() => setBulkFiling(true)}
+                  className="rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover"
+                >
+                  File {selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} into…
+                </button>
+                {bulkDismissConfirm ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="text-xs text-amber-300">Dismiss {selectedItems.length}?</span>
+                    <button
+                      type="button"
+                      onClick={handleBulkDismiss}
+                      disabled={isBulkDismissing}
+                      className="rounded-md bg-rose-500 px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isBulkDismissing ? "Dismissing…" : "Confirm"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkDismissConfirm(false)}
+                      disabled={isBulkDismissing}
+                      className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setBulkDismissConfirm(true)}
+                    className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
+                  >
+                    Dismiss {selectedItems.length}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="ml-auto text-xs font-medium text-white/40 transition-colors duration-150 ease-out hover:text-white/70"
+                >
+                  Clear selection
+                </button>
+              </div>
+            ))}
+
           {toFileItems.length === 0 ? (
             <p className="text-sm text-white/35">Nothing to file.</p>
           ) : (
             toFileItems.map((item) => {
               const senderName = item.profile_id ? userNameById[item.profile_id] ?? "Unknown user" : "Unknown user";
               const signedUrl = item.storage_path ? signedUrlByPath[item.storage_path] ?? null : null;
+              const suggestions = suggestionsByItemId[item.id] ?? [];
+              const prefill = prefillByItemId[item.id] ?? null;
 
               return (
                 <div key={item.id} className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-white/40">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(item.id)}
+                        onChange={() => toggleSelected(item.id)}
+                        aria-label="Select item"
+                        className="h-3.5 w-3.5 rounded border-white/20 bg-white/[0.04] accent-accent"
+                      />
                       <span className="font-medium text-white/70">{senderName}</span>
                       <span title={formatDateTime(item.received_at)}>{relativeTime(item.received_at)}</span>
                       <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-white/50">
@@ -317,7 +554,22 @@ export function InboxTabs({
                   )}
                   <FilePreview item={item} signedUrl={signedUrl} />
 
-                  <div className="mt-3 flex items-center gap-3">
+                  {suggestions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {suggestions.map((s) => (
+                        <button
+                          key={`${s.type}-${s.id}`}
+                          type="button"
+                          onClick={() => openSuggestion(item.id, s)}
+                          className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent-soft transition-colors duration-150 ease-out hover:bg-accent/20"
+                        >
+                          Suggested: {s.label} — File here
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
                     <button
                       type="button"
                       onClick={() => setFilingId(filingId === item.id ? null : item.id)}
@@ -333,6 +585,7 @@ export function InboxTabs({
                     >
                       Dismiss
                     </button>
+                    <RenameControl item={item} />
                     <span className="ml-auto">
                       <DeleteButton itemId={item.id} />
                     </span>
@@ -341,11 +594,14 @@ export function InboxTabs({
                   {filingId === item.id && (
                     <div className="mt-3">
                       <FileIntoPanel
+                        key={`${item.id}-${prefill?.type ?? "none"}-${prefill?.id ?? "none"}`}
                         itemId={item.id}
                         hasFile={Boolean(item.storage_path)}
                         projectOptions={projectOptions}
                         contactOptions={contactOptions}
                         documentTypes={documentTypes}
+                        initialDestination={prefill}
+                        initialDocumentType={suggestedDocTypeByItemId[item.id] ?? null}
                         onFiled={handleFiled}
                         onCancel={() => setFilingId(null)}
                       />

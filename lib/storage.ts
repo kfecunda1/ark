@@ -90,6 +90,31 @@ export function formatFileSizeMB(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// The extension actually on a file name, or "" if it has none — unlike
+// fileExtension() above (which falls back to the whole string when
+// there's no dot, fine for its own MIME-lookup use but wrong here).
+function extractExtension(fileName: string): string {
+  const idx = fileName.lastIndexOf(".");
+  if (idx <= 0 || idx === fileName.length - 1) return "";
+  return fileName.slice(idx + 1);
+}
+
+// Renaming a document (inbox items, project/contact documents) keeps
+// the storage file untouched — only the display name changes — but a
+// user retyping "Invoice" shouldn't lose the ".pdf" that made it
+// recognizable. If currentFileName has an extension and the typed
+// newName doesn't already end with that same one (case-insensitive),
+// it's appended; a currentFileName with no extension (or a blank
+// newName) is left alone.
+export function withPreservedExtension(currentFileName: string, newName: string): string {
+  const trimmed = newName.trim();
+  if (!trimmed) return currentFileName;
+  const ext = extractExtension(currentFileName);
+  if (!ext) return trimmed;
+  if (trimmed.toLowerCase().endsWith(`.${ext.toLowerCase()}`)) return trimmed;
+  return `${trimmed}.${ext}`;
+}
+
 // SHA-256 of a file's bytes, as lowercase hex — used to detect the exact
 // same file being attached twice (see 001_ark_schema.sql's file_hash
 // column and unique partial index). Takes a Blob/File directly (a

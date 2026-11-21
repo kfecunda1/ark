@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, FileText, Film, Loader2, Pause, Play, Trash2 } from "lucide-react";
+import { Check, ExternalLink, FileText, Film, Loader2, Pause, Pencil, Play, Trash2, X } from "lucide-react";
 import { ProjectDocumentTypeBadge } from "@/components/projects/badges";
 import { DuplicateWarningBanner } from "@/components/duplicate-warning-banner";
 import { createClient } from "@/lib/supabase/client";
@@ -13,6 +13,7 @@ import {
   ensureProjectTranche,
   findProjectDocumentsByHash,
   moveProjectDocument,
+  renameProjectDocument,
 } from "@/lib/actions/projects";
 import { virtualTrancheNumbers } from "@/lib/projects";
 import {
@@ -94,6 +95,9 @@ export function ProjectDocuments({ projectId, documents, documentTypes, tranches
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [mode, setMode] = useState<"file" | "link">("file");
@@ -333,6 +337,30 @@ export function ProjectDocuments({ projectId, documents, documentTypes, tranches
     }
   }
 
+  function startRename(doc: ProjectDocumentWithUrl) {
+    setError(null);
+    setRenameValue(doc.file_name);
+    setRenamingId(doc.id);
+  }
+
+  async function handleRenameSave(documentId: string) {
+    setError(null);
+    setIsRenaming(true);
+    try {
+      const result = await renameProjectDocument(documentId, renameValue);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setRenamingId(null);
+        router.refresh();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setIsRenaming(false);
+    }
+  }
+
   function renderDocumentRow(doc: ProjectDocumentWithUrl) {
     const kind = doc.url ? null : getDocumentKind(doc.file_name);
     const isVideo = kind === "video" && doc.signedUrl;
@@ -361,14 +389,24 @@ export function ProjectDocuments({ projectId, documents, documentTypes, tranches
               <DocumentIcon doc={doc} />
             )}
             <div className="min-w-0">
-              <p className="truncate text-sm text-white/85">{doc.file_name}</p>
+              {renamingId === doc.id ? (
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  disabled={isRenaming}
+                  className="w-full min-w-0 rounded-md border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
+                />
+              ) : (
+                <p className="truncate text-sm text-white/85">{doc.file_name}</p>
+              )}
               <p className="mt-0.5 flex items-center gap-1.5 text-xs text-white/40">
                 <ProjectDocumentTypeBadge type={doc.document_type} />
                 {formatDateTime(doc.created_at)}
               </p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex flex-wrap shrink-0 items-center gap-2">
             <select
               aria-label="Move to"
               value={trancheSelectValue(currentTrancheNumber)}
@@ -397,6 +435,37 @@ export function ProjectDocuments({ projectId, documents, documentTypes, tranches
               </a>
             ) : (
               <span className="text-xs text-rose-300">No link</span>
+            )}
+            {renamingId === doc.id ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleRenameSave(doc.id)}
+                  disabled={isRenaming}
+                  aria-label="Save name"
+                  className="inline-flex items-center rounded-md bg-accent px-2 py-1.5 text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRenamingId(null)}
+                  disabled={isRenaming}
+                  aria-label="Cancel rename"
+                  className="inline-flex items-center rounded-md border border-white/10 bg-white/[0.04] px-2 py-1.5 text-white/60 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => startRename(doc)}
+                className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Rename
+              </button>
             )}
             <button
               type="button"

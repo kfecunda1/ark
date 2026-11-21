@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isCurrentUserAdmin } from "@/lib/auth";
 import { addProjectDocument, findProjectDocumentsByHash } from "@/lib/actions/projects";
 import { addContactDocument, findContactDocumentsByHash } from "@/lib/actions/contacts";
-import { buildDocumentPath, computeFileHash } from "@/lib/storage";
+import { buildDocumentPath, computeFileHash, withPreservedExtension } from "@/lib/storage";
 import type { InboxItem } from "@/lib/types";
 
 function unexpectedErrorMessage(err: unknown): string {
@@ -78,6 +78,34 @@ async function markFiled(
       filed_document_id: documentId,
     })
     .eq("id", item.id);
+}
+
+// A "To file" item's inline "Rename" action, before it's filed —
+// updates only file_name, same "display name only" rule as
+// renameProjectDocument/renameContactDocument (lib/actions/projects.ts
+// / contacts.ts). Deliberately never activity-logged: inbox_items has
+// no activity-log trigger at all, by design (022_telegram_inbox.sql).
+export async function renameInboxItem(itemId: string, newName: string): Promise<{ error: string | null }> {
+  if (!newName.trim()) {
+    return { error: "Name can't be empty." };
+  }
+
+  try {
+    const supabase = await createClient();
+    const { item, error: loadError } = await loadInboxItem(supabase, itemId);
+    if (loadError) return { error: loadError };
+    if (!item) return { error: "This item no longer exists." };
+    if (!item.file_name) return { error: "This item has no file to rename." };
+
+    const finalName = withPreservedExtension(item.file_name, newName);
+    const { error } = await supabase.from("inbox_items").update({ file_name: finalName }).eq("id", itemId);
+    if (error) return { error: error.message };
+
+    revalidatePath("/inbox");
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
 }
 
 export async function dismissInboxItem(itemId: string, dismissed: boolean): Promise<{ error: string | null }> {
