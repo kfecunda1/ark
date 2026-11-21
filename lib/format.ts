@@ -33,6 +33,29 @@ export function dateKeyInTimeZone(value: string): string {
   return new Date(value).toLocaleDateString("en-CA", { timeZone: TIME_ZONE });
 }
 
+// "2 h ago" style — the Inbox's "To file" cards (components/inbox/
+// inbox-tabs.tsx) pair this with formatDateTime(value) as a title=
+// tooltip for the full date. Computed from the caller's own clock
+// (Date.now()), not a fixed timezone like the helpers above — a
+// relative duration reads the same regardless of timezone, so there's
+// nothing for this one to pin. Deliberately coarse (whole minutes/
+// hours/days/weeks) rather than to-the-second, which both reads better
+// and keeps the gap between a server-rendered value and the moment the
+// client hydrates too small to ever visibly disagree.
+export function relativeTime(value: string): string {
+  const diffSec = Math.round((Date.now() - new Date(value).getTime()) / 1000);
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHour = Math.round(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} h ago`;
+  const diffDay = Math.round(diffHour / 24);
+  if (diffDay < 7) return `${diffDay} d ago`;
+  const diffWeek = Math.round(diffDay / 7);
+  if (diffWeek < 5) return `${diffWeek} w ago`;
+  return formatDateTime(value);
+}
+
 export function formatDateTime(value: string): string {
   const date = new Date(value);
   const datePart = date.toLocaleDateString(LOCALE, {

@@ -599,24 +599,28 @@ export async function addProjectDocument(
   fileName: string,
   fileHash: string | null,
   trancheId: string | null = null
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; id?: string }> {
   try {
     const supabase = await createClient();
-    const { error } = await supabase.from("project_documents").insert({
-      project_id: projectId,
-      document_type: documentType,
-      file_path: filePath,
-      file_name: fileName,
-      file_hash: fileHash,
-      tranche_id: trancheId,
-    });
+    const { data, error } = await supabase
+      .from("project_documents")
+      .insert({
+        project_id: projectId,
+        document_type: documentType,
+        file_path: filePath,
+        file_name: fileName,
+        file_hash: fileHash,
+        tranche_id: trancheId,
+      })
+      .select("id")
+      .single();
 
     if (error) {
       return { error: error.message };
     }
 
     revalidatePath(`/projects/${projectId}`);
-    return { error: null };
+    return { error: null, id: (data as { id: string }).id };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
   }

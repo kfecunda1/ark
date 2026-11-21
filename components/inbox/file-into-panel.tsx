@@ -13,7 +13,11 @@ interface FileIntoPanelProps {
   projectOptions: EntityOption[];
   contactOptions: EntityOption[];
   documentTypes: DocumentTypeRecord[];
-  onFiled: () => void;
+  // The destination's own label (e.g. the project/receiver name), for
+  // the "Filed to <destination>" confirmation (components/inbox/
+  // inbox-tabs.tsx) — read off whichever EntityPicker is selected at
+  // the moment filing actually succeeds.
+  onFiled: (destinationLabel: string) => void;
   onCancel: () => void;
 }
 
@@ -108,7 +112,9 @@ export function FileIntoPanel({
         }
       }
       setPendingMatches(null);
-      onFiled();
+      const destinationLabel =
+        (target.type === "project" ? selectedProject?.label : selectedContact?.label) ?? "destination";
+      onFiled(destinationLabel);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {

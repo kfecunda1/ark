@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { isCurrentUserAdmin } from "@/lib/auth";
 import { addProjectDocument, findProjectDocumentsByHash } from "@/lib/actions/projects";
 import { addContactDocument, findContactDocumentsByHash } from "@/lib/actions/contacts";
 import { buildDocumentPath, computeFileHash } from "@/lib/storage";
@@ -44,11 +45,15 @@ async function loadInboxItem(
 // Deletes the underlying storage object (if any) and marks the row
 // filed — the row itself is kept, as history, with filed_to_type/
 // filed_to_id recording where it went (supabase/migrations/022_
-// telegram_inbox.sql).
+// telegram_inbox.sql) and filed_by/filed_at/filed_document_id
+// (027_inbox_view.sql) recording who, when, and — for a Document,
+// never a Note — which new row it became, for the Filed tab's own
+// display.
 async function markFiled(
   supabase: Awaited<ReturnType<typeof createClient>>,
   item: InboxItem,
-  target: { type: "project" | "contact"; id: string }
+  target: { type: "project" | "contact"; id: string },
+  documentId: string | null
 ): Promise<void> {
   if (item.storage_path) {
     const { error } = await supabase.storage.from("inbox").remove([item.storage_path]);
@@ -56,9 +61,22 @@ async function markFiled(
       console.error("[markFiled] failed to remove inbox storage file:", error.message);
     }
   }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   await supabase
     .from("inbox_items")
-    .update({ status: "filed", filed_to_type: target.type, filed_to_id: target.id, storage_path: null })
+    .update({
+      status: "filed",
+      filed_to_type: target.type,
+      filed_to_id: target.id,
+      storage_path: null,
+      filed_by: user?.id ?? null,
+      filed_at: new Date().toISOString(),
+      filed_document_id: documentId,
+    })
     .eq("id", item.id);
 }
 
@@ -82,6 +100,16 @@ export async function deleteInboxItem(itemId: string): Promise<{ error: string |
     const supabase = await createClient();
     const { item, error: loadError } = await loadInboxItem(supabase, itemId);
     if (loadError) return { error: loadError };
+
+    // Deleting a *filed* item throws away part of the paper trail for
+    // something that became a real document/note elsewhere — admin
+    // only, same as the Filed tab's own Delete button being hidden for
+    // everyone else (components/inbox/inbox-tabs.tsx). A new or
+    // dismissed item carries no such history, so anyone registered can
+    // clean those up, matching inbox_items' own DELETE RLS policy.
+    if (item?.status === "filed" && !(await isCurrentUserAdmin())) {
+      return { error: "Only admins can delete a filed item." };
+    }
 
     const { error } = await supabase.from("inbox_items").delete().eq("id", itemId);
     if (error) return { error: error.message };
@@ -132,7 +160,7 @@ export async function fileInboxItemAsNote(
     });
     if (insertError) return { error: insertError.message };
 
-    await markFiled(supabase, item, target);
+    await markFiled(supabase, item, target, null);
 
     revalidatePath("/inbox");
     revalidatePath(target.type === "project" ? `/projects/${target.id}` : `/receivers/${target.id}`);
@@ -204,7 +232,7 @@ export async function fileInboxItemAsDocument(
       return { error: addResult.error };
     }
 
-    await markFiled(supabase, item, target);
+    await markFiled(supabase, item, target, addResult.id ?? null);
 
     revalidatePath("/inbox");
     revalidatePath(target.type === "project" ? `/projects/${target.id}` : `/receivers/${target.id}`);

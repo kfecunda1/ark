@@ -1,19 +1,21 @@
 import { GlassCard } from "@/components/glass-card";
-import { InboxList } from "@/components/inbox/inbox-list";
+import { InboxTabs } from "@/components/inbox/inbox-tabs";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveDocumentTypes } from "@/lib/document-types";
+import { isCurrentUserAdmin } from "@/lib/auth";
 import type { InboxItem } from "@/lib/types";
 
 export default async function InboxPage() {
   const supabase = await createClient();
 
-  const [{ data: itemsData }, { data: profilesData }, { data: projectsData }, { data: contactsData }, documentTypes] =
+  const [{ data: itemsData }, { data: profilesData }, { data: projectsData }, { data: contactsData }, documentTypes, isAdmin] =
     await Promise.all([
       supabase.from("inbox_items").select("*").order("received_at", { ascending: false }),
       supabase.from("profiles").select("id, full_name, email"),
       supabase.from("projects").select("id, name").is("archived_at", null).order("name"),
       supabase.from("contacts").select("id, full_name").is("archived_at", null).order("full_name"),
       getActiveDocumentTypes(),
+      isCurrentUserAdmin(),
     ]);
 
   const items = (itemsData as InboxItem[] | null) ?? [];
@@ -21,7 +23,9 @@ export default async function InboxPage() {
   const projects = (projectsData as { id: string; name: string }[] | null) ?? [];
   const contacts = (contactsData as { id: string; full_name: string }[] | null) ?? [];
 
-  const senderNameById = Object.fromEntries(
+  // Covers both the original sender (profile_id) and whoever actually
+  // filed an item (filed_by) — both are just profile ids.
+  const userNameById = Object.fromEntries(
     profiles.map((p) => [p.id, p.full_name?.trim() || p.email || "Unknown user"])
   );
 
@@ -57,13 +61,96 @@ export default async function InboxPage() {
     ]),
   ]);
 
-  const storagePaths = items.map((i) => i.storage_path).filter((p): p is string => Boolean(p));
-  let signedUrlByPath: Record<string, string> = {};
-  if (storagePaths.length > 0) {
-    const { data: signedUrls } = await supabase.storage.from("inbox").createSignedUrls(storagePaths, 3600);
-    signedUrlByPath = Object.fromEntries(
+  // Signed URLs for files still sitting in the inbox bucket — only
+  // "To file" items ever have one (filing clears storage_path).
+  const inboxStoragePaths = items.map((i) => i.storage_path).filter((p): p is string => Boolean(p));
+  let inboxSignedUrlByPath: Record<string, string> = {};
+  if (inboxStoragePaths.length > 0) {
+    const { data: signedUrls } = await supabase.storage.from("inbox").createSignedUrls(inboxStoragePaths, 3600);
+    inboxSignedUrlByPath = Object.fromEntries(
       (signedUrls ?? []).filter((s) => s.path && s.signedUrl).map((s) => [s.path as string, s.signedUrl as string])
     );
+  }
+
+  // The "Filed" tab's own "open the filed document" link and "Tranche
+  // N" label — resolved via filed_document_id (027_inbox_view.sql),
+  // which table it's in implied by filed_to_type. Keyed by inbox item
+  // id (not the document's own id) since that's how the UI looks it
+  // up, one item at a time.
+  const filedProjectDocItems = items.filter((i) => i.filed_to_type === "project" && i.filed_document_id);
+  const filedContactDocItems = items.filter((i) => i.filed_to_type === "contact" && i.filed_document_id);
+
+  const [{ data: projectDocsData }, { data: contactDocsData }] = await Promise.all([
+    filedProjectDocItems.length > 0
+      ? supabase
+          .from("project_documents")
+          .select("id, file_path, tranche_id")
+          .in("id", filedProjectDocItems.map((i) => i.filed_document_id as string))
+      : Promise.resolve({ data: [] as { id: string; file_path: string | null; tranche_id: string | null }[] }),
+    filedContactDocItems.length > 0
+      ? supabase
+          .from("contact_documents")
+          .select("id, file_path")
+          .in("id", filedContactDocItems.map((i) => i.filed_document_id as string))
+      : Promise.resolve({ data: [] as { id: string; file_path: string | null }[] }),
+  ]);
+
+  const projectDocsById = new Map(
+    ((projectDocsData as { id: string; file_path: string | null; tranche_id: string | null }[] | null) ?? []).map(
+      (d) => [d.id, d]
+    )
+  );
+  const contactDocsById = new Map(
+    ((contactDocsData as { id: string; file_path: string | null }[] | null) ?? []).map((d) => [d.id, d])
+  );
+
+  const trancheIds = [...projectDocsById.values()].map((d) => d.tranche_id).filter((id): id is string => Boolean(id));
+  const { data: tranchesData } =
+    trancheIds.length > 0
+      ? await supabase.from("project_tranches").select("id, tranche_number").in("id", trancheIds)
+      : { data: [] as { id: string; tranche_number: number }[] };
+  const trancheNumberById = Object.fromEntries(
+    ((tranchesData as { id: string; tranche_number: number }[] | null) ?? []).map((t) => [t.id, t.tranche_number])
+  );
+
+  const projectDocPaths = [...projectDocsById.values()].map((d) => d.file_path).filter((p): p is string => Boolean(p));
+  const contactDocPaths = [...contactDocsById.values()].map((d) => d.file_path).filter((p): p is string => Boolean(p));
+
+  const [{ data: projectDocSignedUrls }, { data: contactDocSignedUrls }] = await Promise.all([
+    projectDocPaths.length > 0
+      ? supabase.storage.from("project-documents").createSignedUrls(projectDocPaths, 3600)
+      : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
+    contactDocPaths.length > 0
+      ? supabase.storage.from("contact-documents").createSignedUrls(contactDocPaths, 3600)
+      : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
+  ]);
+  const projectDocUrlByPath: Record<string, string> = Object.fromEntries(
+    (projectDocSignedUrls ?? [])
+      .filter((s): s is { path: string; signedUrl: string } => Boolean(s.path) && Boolean(s.signedUrl))
+      .map((s) => [s.path, s.signedUrl])
+  );
+  const contactDocUrlByPath: Record<string, string> = Object.fromEntries(
+    (contactDocSignedUrls ?? [])
+      .filter((s): s is { path: string; signedUrl: string } => Boolean(s.path) && Boolean(s.signedUrl))
+      .map((s) => [s.path, s.signedUrl])
+  );
+
+  const filedOpenUrlByItemId: Record<string, string> = {};
+  const filedTrancheNumberByItemId: Record<string, number> = {};
+  for (const item of filedProjectDocItems) {
+    const doc = projectDocsById.get(item.filed_document_id as string);
+    if (doc?.file_path && projectDocUrlByPath[doc.file_path]) {
+      filedOpenUrlByItemId[item.id] = projectDocUrlByPath[doc.file_path];
+    }
+    if (doc?.tranche_id && trancheNumberById[doc.tranche_id] != null) {
+      filedTrancheNumberByItemId[item.id] = trancheNumberById[doc.tranche_id];
+    }
+  }
+  for (const item of filedContactDocItems) {
+    const doc = contactDocsById.get(item.filed_document_id as string);
+    if (doc?.file_path && contactDocUrlByPath[doc.file_path]) {
+      filedOpenUrlByItemId[item.id] = contactDocUrlByPath[doc.file_path];
+    }
   }
 
   return (
@@ -74,15 +161,18 @@ export default async function InboxPage() {
       </div>
 
       <GlassCard interactive={false} className="p-6">
-        <InboxList
+        <InboxTabs
           items={items}
-          senderNameById={senderNameById}
+          userNameById={userNameById}
           projectOptions={projects.map((p) => ({ id: p.id, label: p.name }))}
           contactOptions={contacts.map((c) => ({ id: c.id, label: c.full_name }))}
           projectNameById={projectNameById}
           contactNameById={contactNameById}
-          signedUrlByPath={signedUrlByPath}
+          signedUrlByPath={inboxSignedUrlByPath}
           documentTypes={documentTypes}
+          filedOpenUrlByItemId={filedOpenUrlByItemId}
+          filedTrancheNumberByItemId={filedTrancheNumberByItemId}
+          isAdmin={isAdmin}
         />
       </GlassCard>
     </div>

@@ -125,9 +125,9 @@ export type InboxItemKind = "text" | "document" | "photo" | "video";
 export type InboxItemStatus = "new" | "filed" | "dismissed";
 export type InboxFiledToType = "project" | "contact";
 
-// "Too large for Telegram" has no column of its own — the app infers
-// it as kind !== "text" && storage_path === null (see the migration's
-// comment on inbox_items for why).
+// "Too large for Telegram" has no column of its own — see lib/inbox.ts's
+// isTooLargeForTelegram for how it's derived (from file_size, not
+// storage_path — storage_path alone was the bug, see 027_inbox_view.sql).
 export interface InboxItem {
   id: string;
   telegram_update_id: number;
@@ -144,6 +144,16 @@ export interface InboxItem {
   filed_to_type: InboxFiledToType | null;
   filed_to_id: string | null;
   media_group_id: string | null;
+  // supabase/migrations/027_inbox_view.sql. filed_by/filed_at describe
+  // the filing action itself (who/when) — distinct from profile_id/
+  // received_at, which describe the original Telegram message.
+  // filed_document_id is the project_documents/contact_documents row
+  // this became when filed as a Document (null for a Note, or when
+  // not yet filed) — which table to look it up in is implied by
+  // filed_to_type.
+  filed_by: string | null;
+  filed_at: string | null;
+  filed_document_id: string | null;
 }
 
 export interface Contact {

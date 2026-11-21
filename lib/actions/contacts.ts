@@ -401,23 +401,27 @@ export async function addContactDocument(
   filePath: string,
   fileName: string,
   fileHash: string | null
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; id?: string }> {
   try {
     const supabase = await createClient();
-    const { error } = await supabase.from("contact_documents").insert({
-      contact_id: contactId,
-      document_type: documentType,
-      file_path: filePath,
-      file_name: fileName,
-      file_hash: fileHash,
-    });
+    const { data, error } = await supabase
+      .from("contact_documents")
+      .insert({
+        contact_id: contactId,
+        document_type: documentType,
+        file_path: filePath,
+        file_name: fileName,
+        file_hash: fileHash,
+      })
+      .select("id")
+      .single();
 
     if (error) {
       return { error: error.message };
     }
 
     revalidatePath(`/receivers/${contactId}`);
-    return { error: null };
+    return { error: null, id: (data as { id: string }).id };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
   }
