@@ -1,23 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { updateOwnFullName, updateOwnTelegramId, updateOwnBriefingPrefs } from "@/lib/actions/profile";
+import { useRouter } from "next/navigation";
+import { updateOwnFullName, updateOwnTelegramId, updateOwnBriefingPrefs, updateOwnLanguage } from "@/lib/actions/profile";
 import { sendTestBriefing } from "@/lib/actions/morning-briefing";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 
 interface MyProfileFormProps {
   fullName: string | null;
   telegramUserId: number | null;
   briefingEnabled: boolean;
   briefingWeekdaysOnly: boolean;
+  language: Lang;
 }
 
 const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
-export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, briefingWeekdaysOnly }: MyProfileFormProps) {
+export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, briefingWeekdaysOnly, language }: MyProfileFormProps) {
+  const router = useRouter();
   const [value, setValue] = useState(fullName ?? "");
   const [telegramId, setTelegramId] = useState(telegramUserId != null ? String(telegramUserId) : "");
+  const [lang, setLang] = useState<Lang>(language);
   const [briefingOn, setBriefingOn] = useState(briefingEnabled);
   const [weekdaysOnly, setWeekdaysOnly] = useState(briefingWeekdaysOnly);
   const [isPending, setIsPending] = useState(false);
@@ -28,6 +33,13 @@ export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, brief
   const [testError, setTestError] = useState<string | null>(null);
   const [testSent, setTestSent] = useState(false);
 
+  // This form's own copy always follows whichever language is
+  // *currently selected in the dropdown* (not yet saved) — so picking
+  // "Español" and hitting Save shows the result in Spanish immediately,
+  // without waiting for the page itself to re-render in the new
+  // language.
+  const t = getDictionary(lang);
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -36,22 +48,30 @@ export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, brief
     try {
       const nameResult = await updateOwnFullName(value);
       if (nameResult.error) {
-        setError(nameResult.error);
+        setError(resolveError(nameResult.error, lang));
         return;
       }
       const telegramResult = await updateOwnTelegramId(telegramId);
       if (telegramResult.error) {
-        setError(telegramResult.error);
+        setError(resolveError(telegramResult.error, lang));
         return;
       }
       const briefingResult = await updateOwnBriefingPrefs(briefingOn, weekdaysOnly);
       if (briefingResult.error) {
-        setError(briefingResult.error);
+        setError(resolveError(briefingResult.error, lang));
         return;
       }
+      if (lang !== language) {
+        const languageResult = await updateOwnLanguage(lang);
+        if (languageResult.error) {
+          setError(resolveError(languageResult.error, lang));
+          return;
+        }
+      }
       setSuccess(true);
+      router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
       setIsPending(false);
     }
@@ -69,7 +89,7 @@ export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, brief
       }
       setTestSent(true);
     } catch (err) {
-      setTestError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setTestError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
       setIsSendingTest(false);
     }
@@ -80,7 +100,7 @@ export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, brief
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <div>
           <label className={labelClass} htmlFor="display_name">
-            Display Name
+            {t.settings.displayName}
           </label>
           <input
             id="display_name"
@@ -94,8 +114,30 @@ export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, brief
         </div>
 
         <div>
+          <label className={labelClass} htmlFor="language">
+            {t.settings.language}
+          </label>
+          <select
+            id="language"
+            value={lang}
+            onChange={(e) => {
+              setLang(e.target.value as Lang);
+              setSuccess(false);
+            }}
+            className={fieldClass}
+          >
+            <option value="en" className="bg-[#0a0e17]">
+              {t.settings.languageEnglish}
+            </option>
+            <option value="es" className="bg-[#0a0e17]">
+              {t.settings.languageSpanish}
+            </option>
+          </select>
+        </div>
+
+        <div>
           <label className={labelClass} htmlFor="telegram_user_id">
-            Telegram Id
+            {t.settings.telegramId}
           </label>
           <input
             id="telegram_user_id"
@@ -108,7 +150,7 @@ export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, brief
             inputMode="numeric"
             className={fieldClass}
           />
-          <p className="mt-1.5 text-xs text-white/35">Get it from @userinfobot.</p>
+          <p className="mt-1.5 text-xs text-white/35">{t.settings.telegramIdHint}</p>
         </div>
 
         <div className="flex flex-col gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
@@ -122,7 +164,7 @@ export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, brief
               }}
               className="h-4 w-4 rounded border-white/20 bg-white/[0.03] accent-accent"
             />
-            Morning briefing
+            {t.settings.morningBriefing}
           </label>
           <label className="flex items-center gap-2.5 pl-6 text-sm text-white/60">
             <input
@@ -135,11 +177,9 @@ export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, brief
               }}
               className="h-4 w-4 rounded border-white/20 bg-white/[0.03] accent-accent disabled:opacity-40"
             />
-            Weekdays only
+            {t.settings.weekdaysOnly}
           </label>
-          <p className="pl-0 text-xs text-white/35">
-            Sent every morning to your Telegram, if an Id is set above.
-          </p>
+          <p className="pl-0 text-xs text-white/35">{t.settings.briefingHint}</p>
         </div>
 
         {error && (
@@ -147,7 +187,7 @@ export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, brief
         )}
         {success && (
           <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-            Saved.
+            {t.common.saved}
           </p>
         )}
 
@@ -157,7 +197,7 @@ export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, brief
             disabled={isPending}
             className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isPending ? "Saving…" : "Save"}
+            {isPending ? t.common.saving : t.common.save}
           </button>
         </div>
       </form>
@@ -169,13 +209,11 @@ export function MyProfileForm({ fullName, telegramUserId, briefingEnabled, brief
           disabled={isSendingTest || telegramUserId == null}
           className="w-fit rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isSendingTest ? "Sending…" : "Send me a test briefing now"}
+          {isSendingTest ? t.settings.sendingTestBriefing : t.settings.sendTestBriefing}
         </button>
-        {telegramUserId == null && (
-          <p className="text-xs text-white/35">Add and save a Telegram Id above first.</p>
-        )}
+        {telegramUserId == null && <p className="text-xs text-white/35">{t.settings.addTelegramIdFirst}</p>}
         {testError && <p className="text-xs text-red-300">{testError}</p>}
-        {testSent && <p className="text-xs text-emerald-300">Sent — check Telegram.</p>}
+        {testSent && <p className="text-xs text-emerald-300">{t.settings.testBriefingSent}</p>}
       </div>
     </div>
   );

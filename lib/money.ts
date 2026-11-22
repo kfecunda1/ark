@@ -132,8 +132,7 @@ function integerToWords(n: number): string {
  * Returns "" for null/undefined/negative/non-finite amounts, or a
  * currency with no known words — callers use that to render nothing.
  */
-export function amountInWords(amount: number | null | undefined, currency: string): string {
-  if (amount == null || !Number.isFinite(amount) || amount < 0) return "";
+function amountInWordsEn(amount: number, currency: string): string {
   const words = CURRENCY_WORDS[currency];
   if (!words) return "";
 
@@ -147,4 +146,139 @@ export function amountInWords(amount: number | null | undefined, currency: strin
   }
 
   return result.charAt(0).toUpperCase() + result.slice(1);
+}
+
+// ----------------------------------------------------------------------------
+// Spanish spell-out — same short-scale ranges as the English version
+// above, but with the grammar Spanish numbers actually need: "cien" vs
+// "ciento" (100 exactly vs 101-199), "uno" apocopating to "un"/"veintiún"
+// right before a masculine noun (dólar/euro/centavo are all masculine),
+// "mil" never taking "un" (1000 = "mil", not "un mil"), and "de" between
+// "millón(es)"/"mil millones" and the currency noun — but *only* when
+// that's the very last (lowest-order) nonzero part of the number, e.g.
+// "un millón de euros" but "un millón quinientos mil euros" (no "de").
+// ----------------------------------------------------------------------------
+
+const ES_ONES = [
+  "cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez",
+  "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve",
+];
+const ES_TWENTIES = [
+  "veinte", "veintiuno", "veintidós", "veintitrés", "veinticuatro", "veinticinco",
+  "veintiséis", "veintisiete", "veintiocho", "veintinueve",
+];
+const ES_TENS = ["", "", "", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa"];
+const ES_HUNDREDS = [
+  "", "ciento", "doscientos", "trescientos", "cuatrocientos", "quinientos",
+  "seiscientos", "setecientos", "ochocientos", "novecientos",
+];
+
+const ES_CURRENCY_WORDS: Record<string, { singular: string; plural: string }> = {
+  USD: { singular: "dólar", plural: "dólares" },
+  EUR: { singular: "euro", plural: "euros" },
+};
+
+function esTwoDigitsToWords(n: number): string {
+  if (n < 20) return ES_ONES[n];
+  if (n < 30) return ES_TWENTIES[n - 20];
+  const tens = Math.floor(n / 10);
+  const ones = n % 10;
+  return ones > 0 ? `${ES_TENS[tens]} y ${ES_ONES[ones]}` : ES_TENS[tens];
+}
+
+function esThreeDigitsToWords(n: number): string {
+  if (n === 100) return "cien";
+  const hundreds = Math.floor(n / 100);
+  const rest = n % 100;
+  const parts: string[] = [];
+  if (hundreds > 0) parts.push(ES_HUNDREDS[hundreds]);
+  if (rest > 0) parts.push(esTwoDigitsToWords(rest));
+  return parts.join(" ");
+}
+
+// "uno" -> "un", "veintiuno" -> "veintiún", "...y uno" -> "...y un" —
+// only ever applied to the very end of the whole spelled-out number,
+// right before the noun it modifies (dólar/euro/centavo), since every
+// larger scale word (mil/millón/millones) already bypasses "uno"
+// entirely in esIntegerToWords below.
+function esApocopeUno(words: string): string {
+  // "veintiuno" is checked first since it's one unbroken word — plain
+  // `\buno$` below has no word boundary to match inside it (no space
+  // or punctuation between "veinti" and "uno"), so it would otherwise
+  // leave "veintiuno" untouched instead of turning it into "veintiún".
+  if (/veintiuno$/.test(words)) return words.replace(/veintiuno$/, "veintiún");
+  if (/\buno$/.test(words)) return words.replace(/uno$/, "un");
+  return words;
+}
+
+function esIntegerToWords(n: number): string {
+  if (n === 0) return "cero";
+  const groups: number[] = [];
+  let remaining = n;
+  while (remaining > 0) {
+    groups.push(remaining % 1000);
+    remaining = Math.floor(remaining / 1000);
+  }
+
+  const parts: string[] = [];
+  for (let i = groups.length - 1; i >= 0; i--) {
+    const g = groups[i];
+    if (g === 0) continue;
+    if (i === 0) {
+      parts.push(esThreeDigitsToWords(g));
+    } else if (i === 1) {
+      parts.push(g === 1 ? "mil" : `${esThreeDigitsToWords(g)} mil`);
+    } else if (i === 2) {
+      parts.push(g === 1 ? "un millón" : `${esThreeDigitsToWords(g)} millones`);
+    } else {
+      // i >= 3 (thousands of millions and beyond) — a reasonable
+      // extension for very large amounts, not exhaustively verified
+      // past the low billions this app is ever likely to show.
+      parts.push(g === 1 ? "mil millones" : `${esThreeDigitsToWords(g)} mil millones`);
+    }
+  }
+  return esApocopeUno(parts.join(" "));
+}
+
+// True only when the number is an exact, round million (or mil
+// millones, …) with nothing smaller attached — the one case Spanish
+// inserts "de" before the currency noun.
+function esNeedsDe(n: number): boolean {
+  const groups: number[] = [];
+  let remaining = n;
+  while (remaining > 0) {
+    groups.push(remaining % 1000);
+    remaining = Math.floor(remaining / 1000);
+  }
+  const nonZero = groups.map((g, i) => ({ g, i })).filter(({ g }) => g > 0);
+  return nonZero.length === 1 && nonZero[0].i >= 2;
+}
+
+function amountInWordsEs(amount: number, currency: string): string {
+  const words = ES_CURRENCY_WORDS[currency];
+  if (!words) return "";
+
+  const rounded = Math.round(amount * 100) / 100;
+  const dollars = Math.floor(rounded);
+  const cents = Math.round((rounded - dollars) * 100);
+
+  const currencyWord = dollars === 1 ? words.singular : words.plural;
+  const connector = esNeedsDe(dollars) ? " de " : " ";
+  let result = `${esIntegerToWords(dollars)}${connector}${currencyWord}`;
+
+  if (cents > 0) {
+    const centsWords = esApocopeUno(esIntegerToWords(cents));
+    result += ` con ${centsWords} ${cents === 1 ? "centavo" : "centavos"}`;
+  }
+
+  return result.charAt(0).toUpperCase() + result.slice(1);
+}
+
+export function amountInWords(
+  amount: number | null | undefined,
+  currency: string,
+  lang: "en" | "es" = "en"
+): string {
+  if (amount == null || !Number.isFinite(amount) || amount < 0) return "";
+  return lang === "es" ? amountInWordsEs(amount, currency) : amountInWordsEn(amount, currency);
 }

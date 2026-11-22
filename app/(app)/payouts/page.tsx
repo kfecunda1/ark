@@ -3,6 +3,8 @@ import { isCurrentUserAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getAllPayoutGroups } from "@/lib/payout-groups";
 import { PayoutsList } from "@/components/payouts/payouts-list";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { Project, ProjectTranche, TranchePayout, TranchePayoutShare } from "@/lib/types";
 
 type ProjectSummary = Pick<Project, "id" | "name" | "currency" | "is_recovery">;
@@ -15,6 +17,9 @@ export default async function PayoutsPage() {
   if (!(await isCurrentUserAdmin())) {
     redirect("/dashboard");
   }
+
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
 
   const supabase = await createClient();
 
@@ -53,11 +58,11 @@ export default async function PayoutsPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Payouts</h1>
-        <p className="mt-1 text-sm text-white/45">Commission on paid-out tranches.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">{t.payouts.title}</h1>
+        <p className="mt-1 text-sm text-white/45">{t.payouts.subtitle}</p>
       </div>
 
-      <PayoutsList tranches={tranches} projects={projects} groups={groups} payouts={payouts} shares={shares} />
+      <PayoutsList tranches={tranches} projects={projects} groups={groups} payouts={payouts} shares={shares} lang={lang} />
     </div>
   );
 }

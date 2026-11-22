@@ -5,7 +5,39 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
+}
+
+// Settings → My Profile's "Language / Idioma" selector — same "own row
+// only" scope as updateOwnTelegramId below, and likewise never
+// activity-logged (a personal preference, not shared/auditable data).
+// The check constraint (supabase/migrations/031_spanish.sql) is the
+// real guard against anything but 'en'/'es'; this just returns a clean
+// message instead of a raw constraint-violation error for a stray value.
+export async function updateOwnLanguage(language: "en" | "es"): Promise<{ error: string | null }> {
+  if (language !== "en" && language !== "es") {
+    return { error: "invalidLanguage" };
+  }
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return { error: "notSignedIn" };
+    }
+
+    const { error } = await supabase.from("profiles").update({ language }).eq("id", user.id);
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/", "layout");
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
 }
 
 // Only ever sends { full_name } — profiles_update_self already confines
@@ -16,7 +48,7 @@ function unexpectedErrorMessage(err: unknown): string {
 export async function updateOwnFullName(fullName: string): Promise<{ error: string | null }> {
   const trimmed = fullName.trim();
   if (!trimmed) {
-    return { error: "Display name is required." };
+    return { error: "displayNameRequired" };
   }
 
   try {
@@ -25,7 +57,7 @@ export async function updateOwnFullName(fullName: string): Promise<{ error: stri
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      return { error: "Not signed in." };
+      return { error: "notSignedIn" };
     }
 
     const { error } = await supabase.from("profiles").update({ full_name: trimmed }).eq("id", user.id);
@@ -51,7 +83,7 @@ export async function updateOwnTelegramId(value: string): Promise<{ error: strin
   let telegramUserId: number | null = null;
   if (trimmed) {
     if (!/^\d+$/.test(trimmed)) {
-      return { error: "Telegram Id must be numbers only — get it from @userinfobot." };
+      return { error: "telegramIdNumbersOnly" };
     }
     telegramUserId = Number(trimmed);
   }
@@ -62,13 +94,13 @@ export async function updateOwnTelegramId(value: string): Promise<{ error: strin
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      return { error: "Not signed in." };
+      return { error: "notSignedIn" };
     }
 
     const { error } = await supabase.from("profiles").update({ telegram_user_id: telegramUserId }).eq("id", user.id);
     if (error) {
       return {
-        error: error.code === "23505" ? "That Telegram Id is already linked to another ARK user." : error.message,
+        error: error.code === "23505" ? "telegramIdAlreadyLinked" : error.message,
       };
     }
 
@@ -93,7 +125,7 @@ export async function updateOwnBriefingPrefs(
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      return { error: "Not signed in." };
+      return { error: "notSignedIn" };
     }
 
     const { error } = await supabase
@@ -136,7 +168,7 @@ export async function confirmPasswordChanged(newPassword: string): Promise<{ err
       data: { user },
     } = await supabase.auth.getUser();
     if (!user?.email) {
-      return { error: "Not signed in." };
+      return { error: "notSignedIn" };
     }
 
     const { error: verifyError } = await supabase.auth.signInWithPassword({
@@ -144,7 +176,7 @@ export async function confirmPasswordChanged(newPassword: string): Promise<{ err
       password: newPassword,
     });
     if (verifyError) {
-      return { error: "Could not confirm the password change. Please try again." };
+      return { error: "couldNotConfirmPasswordChange" };
     }
 
     const service = createServiceClient();

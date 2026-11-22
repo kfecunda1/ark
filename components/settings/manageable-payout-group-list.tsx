@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowDown, ArrowUp, Check, Pencil, Plus, X } from "lucide-react";
 import { moveCatalogItem, setCatalogItemActive } from "@/lib/actions/catalog";
 import { addPayoutGroup, updatePayoutGroup } from "@/lib/actions/payout-groups";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { PayoutGroup } from "@/lib/types";
 
 interface ManageablePayoutGroupListProps {
   groups: PayoutGroup[];
+  lang?: Lang;
 }
 
 const fieldClass =
@@ -20,8 +22,9 @@ const shareFieldClass =
 // hide/show, reorder. Same add/hide/reorder shape as ManageableList
 // (products/document types) and ManageableStatusList, but with its own
 // numeric field (default_share_pct) neither of those has.
-export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListProps) {
+export function ManageablePayoutGroupList({ groups, lang = "en" }: ManageablePayoutGroupListProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -46,14 +49,14 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
       try {
         const result = await addPayoutGroup(trimmed, share);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setNewName("");
         setNewShare("20");
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -77,13 +80,13 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
       try {
         const result = await updatePayoutGroup(id, trimmed, share);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setEditingId(null);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setBusyId(null);
       }
@@ -97,12 +100,12 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
       try {
         const result = await setCatalogItemActive("payout_groups", group.id, !group.active);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setBusyId(null);
       }
@@ -116,12 +119,12 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
       try {
         const result = await moveCatalogItem("payout_groups", sorted, group.id, direction);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setBusyId(null);
       }
@@ -133,12 +136,13 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
       {totalIsOff && (
         <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          Visible groups&apos; default shares total {activeDefaultTotal}%, not 100% — a new split pre-filled from
-          these won&apos;t add up either.
+          {t.payoutGroups.totalWarning(activeDefaultTotal)}
         </p>
       )}
 
-      {sorted.length === 0 && <p className="text-sm text-white/35">No groups yet.</p>}
+      {sorted.length === 0 && (
+        <p className="text-sm text-white/35">{t.settings.noItemsYet(lang === "es" ? "grupos" : "groups")}</p>
+      )}
 
       {sorted.map((group, index) => (
         <div
@@ -152,7 +156,7 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
               type="button"
               onClick={() => handleMove(group, "up")}
               disabled={index === 0 || isPending}
-              aria-label={`Move ${group.name} up`}
+              aria-label={t.settingsCatalog.moveUp(group.name)}
               className="rounded p-0.5 text-white/40 transition-colors duration-150 ease-out hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-30"
             >
               <ArrowUp className="h-3.5 w-3.5" />
@@ -161,7 +165,7 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
               type="button"
               onClick={() => handleMove(group, "down")}
               disabled={index === sorted.length - 1 || isPending}
-              aria-label={`Move ${group.name} down`}
+              aria-label={t.settingsCatalog.moveDown(group.name)}
               className="rounded p-0.5 text-white/40 transition-colors duration-150 ease-out hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-30"
             >
               <ArrowDown className="h-3.5 w-3.5" />
@@ -192,7 +196,7 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
                 type="button"
                 onClick={handleSaveEdit}
                 disabled={isPending && busyId === group.id}
-                aria-label="Save"
+                aria-label={t.common.save}
                 className="rounded-md p-1.5 text-emerald-300 transition-colors duration-150 ease-out hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Check className="h-4 w-4" />
@@ -201,7 +205,7 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
                 type="button"
                 onClick={() => setEditingId(null)}
                 disabled={isPending}
-                aria-label="Cancel"
+                aria-label={t.common.cancel}
                 className="rounded-md p-1.5 text-white/40 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
               >
                 <X className="h-4 w-4" />
@@ -211,17 +215,17 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
             <>
               <span className="min-w-[6rem] flex-1 text-sm text-white/85">{group.name}</span>
               <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/50">
-                {group.default_share_pct}% default
+                {t.settingsCatalog.defaultSuffix(group.default_share_pct)}
               </span>
               {!group.active && (
                 <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] text-white/50">
-                  Hidden
+                  {t.common.hidden}
                 </span>
               )}
               <button
                 type="button"
                 onClick={() => startEditing(group)}
-                aria-label={`Edit ${group.name}`}
+                aria-label={t.settingsCatalog.edit(group.name)}
                 className="shrink-0 rounded-md p-1.5 text-white/40 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white/80"
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -232,7 +236,7 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
                 disabled={isPending && busyId === group.id}
                 className="shrink-0 rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {group.active ? "Hide" : "Show"}
+                {group.active ? t.common.hide : t.common.show}
               </button>
             </>
           )}
@@ -243,7 +247,7 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
         <input
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          placeholder="Add a group…"
+          placeholder={t.settings.addPlaceholder(lang === "es" ? "grupo" : "group")}
           className={`${fieldClass} min-w-[8rem] flex-1`}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -271,7 +275,7 @@ export function ManageablePayoutGroupList({ groups }: ManageablePayoutGroupListP
           className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Plus className="h-4 w-4" />
-          Add
+          {t.common.add}
         </button>
       </div>
 

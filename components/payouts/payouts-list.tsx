@@ -7,6 +7,7 @@ import { PayoutRow } from "@/components/payouts/payout-row";
 import { toCsv } from "@/lib/csv";
 import { formatMoney } from "@/lib/money";
 import { CURRENCIES } from "@/lib/projects";
+import { getDictionary, type Lang } from "@/lib/i18n";
 import type { PayoutGroup, Project, ProjectTranche, TranchePayout, TranchePayoutShare } from "@/lib/types";
 
 type ProjectSummary = Pick<Project, "id" | "name" | "currency" | "is_recovery">;
@@ -17,12 +18,8 @@ interface PayoutsListProps {
   groups: PayoutGroup[];
   payouts: TranchePayout[];
   shares: TranchePayoutShare[];
+  lang?: Lang;
 }
-
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 
 const selectClass =
   "rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40";
@@ -31,7 +28,9 @@ function hasCommission(payout: TranchePayout | undefined): boolean {
   return payout != null && payout.our_pct != null;
 }
 
-export function PayoutsList({ tranches, projects, groups, payouts, shares }: PayoutsListProps) {
+export function PayoutsList({ tranches, projects, groups, payouts, shares, lang = "en" }: PayoutsListProps) {
+  const t = getDictionary(lang);
+  const MONTHS = t.common.monthNames;
   const [year, setYear] = useState("all");
   const [month, setMonth] = useState("all");
 
@@ -97,29 +96,29 @@ export function PayoutsList({ tranches, projects, groups, payouts, shares }: Pay
   function downloadCsv() {
     const groupColumns = groups.filter((g) => g.active || shares.some((s) => s.group_id === g.id));
 
-    const rows = sorted.map((t) => {
-      const project = projectById.get(t.project_id);
-      const payout = payoutByTrancheId.get(t.id);
+    const rows = sorted.map((tranche) => {
+      const project = projectById.get(tranche.project_id);
+      const payout = payoutByTrancheId.get(tranche.id);
       const ourPct = payout?.our_pct ?? null;
-      const ourCommission = ourPct != null ? (t.amount ?? 0) * (ourPct / 100) : null;
+      const ourCommission = ourPct != null ? (tranche.amount ?? 0) * (ourPct / 100) : null;
       const trancheShares = payout ? sharesByPayoutId.get(payout.id) ?? [] : [];
       const shareByGroupId = new Map(trancheShares.map((s) => [s.group_id, s.share_pct]));
 
       const row: Record<string, unknown> = {
-        Project: project?.name ?? "Unknown project",
-        Tranche: t.tranche_number,
-        Amount: t.amount,
-        Currency: project?.currency ?? "",
-        "Paid Out On": t.paid_out_on,
-        "Our %": ourPct,
-        "Our Commission": ourCommission,
+        [t.payoutsCsv.project]: project?.name ?? t.payoutsCsv.unknownProject,
+        [t.payoutsCsv.tranche]: tranche.tranche_number,
+        [t.payoutsCsv.amount]: tranche.amount,
+        [t.payoutsCsv.currency]: project?.currency ?? "",
+        [t.payoutsCsv.paidOutOn]: tranche.paid_out_on,
+        [t.payoutsCsv.ourPct]: ourPct,
+        [t.payoutsCsv.ourCommission]: ourCommission,
       };
 
       for (const group of groupColumns) {
         const sharePct = shareByGroupId.get(group.id) ?? null;
-        row[`${group.name} Share %`] = sharePct;
-        row[`${group.name} % of Deal`] = ourPct != null && sharePct != null ? (ourPct * sharePct) / 100 : null;
-        row[`${group.name} Amount`] =
+        row[t.payoutsCsv.shareCol(group.name)] = sharePct;
+        row[t.payoutsCsv.dealCol(group.name)] = ourPct != null && sharePct != null ? (ourPct * sharePct) / 100 : null;
+        row[t.payoutsCsv.amountCol(group.name)] =
           ourCommission != null && sharePct != null ? ourCommission * (sharePct / 100) : null;
       }
 
@@ -130,7 +129,7 @@ export function PayoutsList({ tranches, projects, groups, payouts, shares }: Pay
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    const periodLabel = year === "all" ? "all-time" : month === "all" ? year : `${year}-${month}`;
+    const periodLabel = year === "all" ? t.payoutsCsv.allTime : month === "all" ? year : `${year}-${month}`;
     link.href = url;
     link.download = `ARK-payouts-${periodLabel}.csv`;
     document.body.appendChild(link);
@@ -144,7 +143,7 @@ export function PayoutsList({ tranches, projects, groups, payouts, shares }: Pay
       <div className="flex flex-wrap items-center gap-3">
         <select value={year} onChange={(e) => setYear(e.target.value)} className={selectClass}>
           <option value="all" className="bg-[#0a0e17]">
-            All years
+            {t.payouts.allYears}
           </option>
           {years.map((y) => (
             <option key={y} value={y} className="bg-[#0a0e17]">
@@ -154,7 +153,7 @@ export function PayoutsList({ tranches, projects, groups, payouts, shares }: Pay
         </select>
         <select value={month} onChange={(e) => setMonth(e.target.value)} className={selectClass}>
           <option value="all" className="bg-[#0a0e17]">
-            All months
+            {t.payouts.allMonths}
           </option>
           {MONTHS.map((label, i) => (
             <option key={label} value={String(i + 1).padStart(2, "0")} className="bg-[#0a0e17]">
@@ -170,20 +169,20 @@ export function PayoutsList({ tranches, projects, groups, payouts, shares }: Pay
           className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Download className="h-4 w-4" />
-          Download CSV
+          {t.payouts.downloadCsv}
         </button>
       </div>
 
       <GlassCard interactive={false} className="p-6">
-        <h2 className="mb-4 text-sm font-medium text-white/70">Totals</h2>
+        <h2 className="mb-4 text-sm font-medium text-white/70">{t.payouts.totalsHeading}</h2>
         {groupsInTotals.length === 0 ? (
-          <p className="text-sm text-white/35">No commission recorded yet for this period.</p>
+          <p className="text-sm text-white/35">{t.payouts.noCommissionRecorded}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[320px] text-left text-sm">
               <thead>
                 <tr className="border-b border-white/[0.06] text-xs tracking-wide text-white/40 uppercase">
-                  <th className="py-2 pr-4 font-medium">Group</th>
+                  <th className="py-2 pr-4 font-medium">{t.payouts.groupColumn}</th>
                   {CURRENCIES.map((c) => (
                     <th key={c} className="py-2 pr-4 font-medium">
                       {c}
@@ -196,7 +195,7 @@ export function PayoutsList({ tranches, projects, groups, payouts, shares }: Pay
                   <tr key={group.id} className="border-b border-white/[0.04] last:border-0">
                     <td className="py-2 pr-4 text-white/80">
                       {group.name}
-                      {!group.active && <span className="ml-1 text-xs text-white/35">(hidden)</span>}
+                      {!group.active && <span className="ml-1 text-xs text-white/35">{t.dashboard.hiddenSuffix}</span>}
                     </td>
                     {CURRENCIES.map((c) => (
                       <td key={c} className="py-2 pr-4 text-white/70">
@@ -213,7 +212,7 @@ export function PayoutsList({ tranches, projects, groups, payouts, shares }: Pay
 
       <div className="flex flex-col gap-3">
         {sorted.length === 0 ? (
-          <p className="text-sm text-white/35">No paid-out tranches for this period.</p>
+          <p className="text-sm text-white/35">{t.payouts.noPaidOutTranches}</p>
         ) : (
           sorted.map((tranche) => (
             <PayoutRow
@@ -223,6 +222,7 @@ export function PayoutsList({ tranches, projects, groups, payouts, shares }: Pay
               allGroups={groups}
               payout={payoutByTrancheId.get(tranche.id)}
               shares={payoutByTrancheId.get(tranche.id) ? sharesByPayoutId.get(payoutByTrancheId.get(tranche.id)!.id) ?? [] : []}
+              lang={lang}
             />
           ))
         )}

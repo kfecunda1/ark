@@ -19,6 +19,8 @@ import { getProjectProductsByProjectIds, displayProduct } from "@/lib/project-pr
 import { getReceiverIntermediaries } from "@/lib/intermediaries";
 import { findProjectsNeedingReceiver } from "@/lib/actions/matching";
 import { personLabel } from "@/lib/people";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { Contact, ContactDocument, ContactProduct, Note, Person, Project } from "@/lib/types";
 
 interface ReceiverDetailPageProps {
@@ -32,6 +34,8 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
   const { id } = await params;
   const { failedDocs } = await searchParams;
   const failedDocNames = failedDocs ? failedDocs.split(",").filter(Boolean) : [];
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
   const supabase = await createClient();
 
   const { data } = await supabase.from("contacts").select("*").eq("id", id).maybeSingle();
@@ -68,7 +72,7 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
     getActiveProducts(),
     getActiveDocumentTypes(),
     isCurrentUserAdmin(),
-    getReceiverIntermediaries(id),
+    getReceiverIntermediaries(id, lang),
   ]);
 
   const { projects: projectsNeedingReceiver } = await findProjectsNeedingReceiver(id);
@@ -112,11 +116,11 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link href="/receivers" className="text-xs font-medium text-white/40 hover:text-white/70">
-            ← Back to receivers
+            {t.receivers.backToReceivers}
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-tight text-white">{contact.full_name}</h1>
-            {contact.archived_at && <ArchivedBadge />}
+            {contact.archived_at && <ArchivedBadge lang={lang} />}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -125,9 +129,14 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
             className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
           >
             <Pencil className="h-4 w-4" />
-            Edit
+            {t.common.edit}
           </Link>
-          <ArchiveToggleButton entityType="receiver" entityId={contact.id} archived={Boolean(contact.archived_at)} />
+          <ArchiveToggleButton
+            entityType="receiver"
+            entityId={contact.id}
+            archived={Boolean(contact.archived_at)}
+            lang={lang}
+          />
           {isAdmin && (
             <DeleteReceiverButton
               contactId={contact.id}
@@ -135,6 +144,7 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
               productCount={products.length}
               documentCount={documents.length}
               noteCount={notes.length}
+              lang={lang}
             />
           )}
         </div>
@@ -144,64 +154,74 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
         <GlassCard interactive={false} className="mb-6 border-red-500/20 bg-red-500/10 p-4">
           <p className="text-sm font-medium text-red-300">
             {failedDocNames.length === 1
-              ? "1 document failed to attach during receiver creation:"
-              : `${failedDocNames.length} documents failed to attach during receiver creation:`}
+              ? t.receivers.failedDocsSingular
+              : t.receivers.failedDocsPlural(failedDocNames.length)}
           </p>
           <ul className="mt-1.5 list-inside list-disc text-sm text-red-300/80">
             {failedDocNames.map((name) => (
               <li key={name}>{name}</li>
             ))}
           </ul>
-          <p className="mt-1.5 text-xs text-red-300/60">
-            You can add them again using the Documents section below.
-          </p>
+          <p className="mt-1.5 text-xs text-red-300/60">{t.receivers.addDocsAgainHint}</p>
         </GlassCard>
       )}
 
       <GlassCard interactive={false} className="p-6">
-        <dt className="text-xs font-medium tracking-wide text-white/35 uppercase">About</dt>
+        <dt className="text-xs font-medium tracking-wide text-white/35 uppercase">{t.receivers.aboutLabel}</dt>
         <dd className="mt-1 text-sm whitespace-pre-wrap text-white/85">{contact.notes || "—"}</dd>
       </GlassCard>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Contact Person</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.receivers.contactPersonHeading}</h2>
         <GlassCard interactive={false} className="p-6">
           <ContactPersonSelect
             entityType="receiver"
             entityId={contact.id}
             people={allPeople}
             currentPerson={contactPerson}
+            lang={lang}
           />
         </GlassCard>
       </div>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Products & Ratios</h2>
-        <ReceiverProductsSection contactId={contact.id} products={products} availableProducts={availableProducts} />
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.receivers.productsRatiosHeading}</h2>
+        <ReceiverProductsSection
+          contactId={contact.id}
+          products={products}
+          availableProducts={availableProducts}
+          lang={lang}
+        />
       </div>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Intermediaries</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.receivers.intermediariesHeading}</h2>
         <GlassCard interactive={false} className="p-6">
           <ReceiverIntermediariesSection
             receiverId={contact.id}
             intermediaries={intermediaries}
             pickerOptions={intermediaryPickerOptions}
+            lang={lang}
           />
         </GlassCard>
       </div>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Documents</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.common.documents}</h2>
         <GlassCard interactive={false} className="p-6">
-          <ReceiverDocuments contactId={contact.id} documents={documentsWithUrls} documentTypes={documentTypes} />
+          <ReceiverDocuments
+            contactId={contact.id}
+            documents={documentsWithUrls}
+            documentTypes={documentTypes}
+            lang={lang}
+          />
         </GlassCard>
       </div>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Matched Projects</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.receivers.matchedProjectsHeading}</h2>
         {matchedProjects.length === 0 ? (
-          <p className="text-sm text-white/35">Not yet matched with any projects.</p>
+          <p className="text-sm text-white/35">{t.receivers.notMatchedYet}</p>
         ) : (
           <div className="flex flex-col gap-2">
             {matchedProjects.map((project) => (
@@ -221,18 +241,21 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
       </div>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Projects Needing This Receiver</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">
+          {t.receivers.projectsNeedingReceiverHeading}
+        </h2>
         <ReceiverMatchProjectsSection
           receiverId={contact.id}
           receiverLabel={contact.full_name}
           projects={projectsNeedingReceiver}
+          lang={lang}
         />
       </div>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Notes</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.common.notes}</h2>
         <GlassCard interactive={false} className="p-6">
-          <ReceiverNotesSection contactId={contact.id} notes={notes} />
+          <ReceiverNotesSection contactId={contact.id} notes={notes} lang={lang} />
         </GlassCard>
       </div>
     </div>

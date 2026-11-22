@@ -15,7 +15,7 @@ const BAN_DURATION = "87600h";
 const MIN_TEMP_PASSWORD_LENGTH = 12;
 
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 // ----------------------------------------------------------------------------
@@ -38,7 +38,7 @@ async function requireActiveAdmin(): Promise<CallingAdmin | { error: string }> {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      return { error: "Not signed in." };
+      return { error: "notSignedIn" };
     }
 
     const { data: profile } = await supabase
@@ -53,7 +53,7 @@ async function requireActiveAdmin(): Promise<CallingAdmin | { error: string }> {
     // admin's own session can't even read this far, so `row` being null
     // covers that case too, not just "never had a profile".
     if (!row || row.role !== "admin" || row.active !== true) {
-      return { error: "You must be an active admin to do this." };
+      return { error: "notActiveAdmin" };
     }
 
     return { id: user.id, label: row.full_name?.trim() || row.email || "Admin" };
@@ -161,11 +161,11 @@ export async function addUser(
 
   const trimmedName = fullName.trim();
   const trimmedEmail = email.trim();
-  if (!trimmedName) return { error: "Full name is required." };
-  if (!trimmedEmail) return { error: "Email is required." };
-  if (role !== "admin" && role !== "member") return { error: "Invalid role." };
+  if (!trimmedName) return { error: "fullNameRequired" };
+  if (!trimmedEmail) return { error: "emailRequired" };
+  if (role !== "admin" && role !== "member") return { error: "invalidRole" };
   if (temporaryPassword.length < MIN_TEMP_PASSWORD_LENGTH) {
-    return { error: `Password must be at least ${MIN_TEMP_PASSWORD_LENGTH} characters.` };
+    return { error: "passwordTooShort" };
   }
 
   const service = createServiceClient();
@@ -177,7 +177,7 @@ export async function addUser(
       email_confirm: true,
     });
     if (createError || !created.user) {
-      return { error: createError?.message ?? "Failed to create the user." };
+      return { error: createError?.message ?? "failedToCreateUser" };
     }
 
     const newUserId = created.user.id;
@@ -225,7 +225,7 @@ export async function resetUserPassword(
   }
 
   if (temporaryPassword.length < MIN_TEMP_PASSWORD_LENGTH) {
-    return { error: `Password must be at least ${MIN_TEMP_PASSWORD_LENGTH} characters.` };
+    return { error: "passwordTooShort" };
   }
 
   const service = createServiceClient();
@@ -274,7 +274,7 @@ export async function setUserActive(userId: string, active: boolean): Promise<{ 
   }
 
   if (userId === admin.id && !active) {
-    return { error: "You can't deactivate your own account." };
+    return { error: "cannotDeactivateSelf" };
   }
 
   const service = createServiceClient();
@@ -287,7 +287,7 @@ export async function setUserActive(userId: string, active: boolean): Promise<{ 
       .maybeSingle();
     const target = targetProfile as { full_name: string | null; email: string | null; active: boolean } | null;
     if (!target) {
-      return { error: "User not found." };
+      return { error: "userNotFound" };
     }
     const targetLabel = target.full_name?.trim() || target.email || "User";
 
@@ -327,10 +327,10 @@ export async function setUserRole(userId: string, role: UserRole): Promise<{ err
   }
 
   if (userId === admin.id) {
-    return { error: "You can't change your own role." };
+    return { error: "cannotChangeOwnRole" };
   }
   if (role !== "admin" && role !== "member") {
-    return { error: "Invalid role." };
+    return { error: "invalidRole" };
   }
 
   const service = createServiceClient();
@@ -343,7 +343,7 @@ export async function setUserRole(userId: string, role: UserRole): Promise<{ err
       .maybeSingle();
     const target = targetProfile as { full_name: string | null; email: string | null; role: string | null } | null;
     if (!target) {
-      return { error: "User not found." };
+      return { error: "userNotFound" };
     }
     const targetLabel = target.full_name?.trim() || target.email || "User";
 

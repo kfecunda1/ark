@@ -10,12 +10,14 @@ import {
   type IntermediaryChainEntry,
   type IntermediaryPickerOption,
 } from "@/components/projects/intermediary-chain-editor";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 
 interface ProjectIntermediariesSectionProps {
   projectId: string;
   entries: IntermediaryChainEntry[];
   receiverLabel: string | null;
   pickerOptions: IntermediaryPickerOption[];
+  lang?: Lang;
 }
 
 // The detail page's own immediate add/remove/reorder for a project's
@@ -28,8 +30,10 @@ export function ProjectIntermediariesSection({
   entries,
   receiverLabel,
   pickerOptions,
+  lang = "en",
 }: ProjectIntermediariesSectionProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -39,12 +43,12 @@ export function ProjectIntermediariesSection({
       try {
         const result = await action();
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -56,10 +60,11 @@ export function ProjectIntermediariesSection({
       pickerOptions={pickerOptions}
       disabled={isPending}
       error={error}
+      lang={lang}
       onQuickCreate={async (name) => {
         const result = await quickCreatePerson({ name });
         if (result.error || !result.person) {
-          return { option: null, error: result.error ?? "Could not create contact." };
+          return { option: null, error: result.error ?? t.common.couldNotCreate(lang === "es" ? "contacto" : "contact") };
         }
         return { option: { id: result.person.id, label: personLabel(result.person) }, error: null };
       }}

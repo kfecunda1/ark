@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { deleteContact } from "@/lib/actions/contacts";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 
 interface DeleteReceiverButtonProps {
   contactId: string;
@@ -15,6 +16,7 @@ interface DeleteReceiverButtonProps {
   productCount: number;
   documentCount: number;
   noteCount: number;
+  lang?: Lang;
 }
 
 // Rendered only for admins — see app/(app)/receivers/[id]/page.tsx,
@@ -28,8 +30,10 @@ export function DeleteReceiverButton({
   productCount,
   documentCount,
   noteCount,
+  lang = "en",
 }: DeleteReceiverButtonProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [confirming, setConfirming] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -40,14 +44,14 @@ export function DeleteReceiverButton({
     setError(null);
     startTransition(async () => {
       try {
-        const result = await deleteContact(contactId);
+        const result = await deleteContact(contactId, lang);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.push("/receivers");
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -59,34 +63,25 @@ export function DeleteReceiverButton({
           <div className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
             <div>
-              <p className="text-sm text-amber-200">
-                Linked to {linkedProjectCount} project{linkedProjectCount === 1 ? "" : "s"}. Archive instead, or
-                unlink first.
-              </p>
+              <p className="text-sm text-amber-200">{t.receiverDialogs.linkedToProjects(linkedProjectCount)}</p>
               <button
                 type="button"
                 onClick={() => setConfirming(false)}
                 className="mt-2 text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
               >
-                Cancel
+                {t.common.cancel}
               </button>
             </div>
           </div>
         ) : (
           <div className="rounded-lg border border-rose-500/25 bg-rose-500/10 p-3">
-            <p className="text-sm text-rose-200">This permanently deletes this receiver, including:</p>
+            <p className="text-sm text-rose-200">{t.receiverDialogs.deletePermanentIntro}</p>
             <ul className="mt-1.5 list-inside list-disc text-sm text-rose-200/80">
-              <li>
-                {productCount} product{productCount === 1 ? "" : "s"} & ratio{productCount === 1 ? "" : "s"}
-              </li>
-              <li>
-                {documentCount} document{documentCount === 1 ? "" : "s"} (also removed from storage)
-              </li>
-              <li>
-                {noteCount} note{noteCount === 1 ? "" : "s"}
-              </li>
+              <li>{t.receiverDialogs.productsAndRatiosCount(productCount)}</li>
+              <li>{t.receiverDialogs.documentsCountAlsoRemoved(documentCount)}</li>
+              <li>{t.receiverDialogs.notesCount(noteCount)}</li>
             </ul>
-            <p className="mt-1.5 text-xs text-rose-200/60">This cannot be undone.</p>
+            <p className="mt-1.5 text-xs text-rose-200/60">{t.receiverDialogs.cannotBeUndone}</p>
             <div className="mt-2 flex items-center gap-3">
               <button
                 type="button"
@@ -95,7 +90,7 @@ export function DeleteReceiverButton({
                 className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500 px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Trash2 className="h-4 w-4" />
-                {isPending ? "Deleting…" : "Confirm delete"}
+                {isPending ? t.common.deleting : t.receiverDialogs.confirmDelete}
               </button>
               <button
                 type="button"
@@ -103,7 +98,7 @@ export function DeleteReceiverButton({
                 disabled={isPending}
                 className="text-sm font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
               >
-                Cancel
+                {t.common.cancel}
               </button>
             </div>
           </div>
@@ -120,7 +115,7 @@ export function DeleteReceiverButton({
       className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/25 bg-rose-500/10 px-3.5 py-2 text-sm font-medium text-rose-300 transition-colors duration-150 ease-out hover:bg-rose-500/20"
     >
       <Trash2 className="h-4 w-4" />
-      Delete
+      {t.common.delete}
     </button>
   );
 }

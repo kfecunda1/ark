@@ -23,6 +23,7 @@ import { dismissInboxItem, deleteInboxItem, renameInboxItem } from "@/lib/action
 import { getDocumentKind } from "@/lib/storage";
 import { isTooLargeForTelegram } from "@/lib/inbox";
 import { formatDateTime, relativeTime, truncate } from "@/lib/format";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { DocumentTypeRecord, InboxItem } from "@/lib/types";
 
 interface InboxTabsProps {
@@ -39,52 +40,51 @@ interface InboxTabsProps {
   isAdmin: boolean;
   suggestionsByItemId: Record<string, FileIntoDestination[]>;
   suggestedDocTypeByItemId: Record<string, string>;
+  lang?: Lang;
 }
 
 type Tab = "to_file" | "filed" | "dismissed";
 
-const KIND_LABELS: Record<InboxItem["kind"], string> = {
-  text: "Text",
-  document: "Document",
-  photo: "Photo",
-  video: "Video",
-};
-
 // A filed item's own "title" for the Filed/Dismissed lists — its file
 // name, or (filed as a Note) a snippet of the text it was.
-function itemLabel(item: InboxItem): string {
+function itemLabel(item: InboxItem, t: ReturnType<typeof getDictionary>): string {
   if (item.file_name) return item.file_name;
   if (item.text_or_caption) return truncate(item.text_or_caption, 60);
-  return "(no content)";
+  return t.inbox.noContent;
 }
 
 function destinationLabel(
   item: InboxItem,
   projectNameById: Record<string, string>,
   contactNameById: Record<string, string>,
-  trancheNumber: number | undefined
+  trancheNumber: number | undefined,
+  t: ReturnType<typeof getDictionary>
 ): { label: string; href: string } | null {
   if (!item.filed_to_type || !item.filed_to_id) return null;
   if (item.filed_to_type === "project") {
-    const name = projectNameById[item.filed_to_id] ?? "Project";
+    const name = projectNameById[item.filed_to_id] ?? t.inbox.projectFallback;
     return {
-      label: trancheNumber != null ? `${name} · Tranche ${trancheNumber}` : name,
+      label: trancheNumber != null ? t.inbox.trancheLabel(name, trancheNumber) : name,
       href: `/projects/${item.filed_to_id}`,
     };
   }
-  const name = contactNameById[item.filed_to_id] ?? "Receiver";
+  const name = contactNameById[item.filed_to_id] ?? t.inbox.receiverFallback;
   return { label: name, href: `/receivers/${item.filed_to_id}` };
 }
 
-function FilePreview({ item, signedUrl }: { item: InboxItem; signedUrl: string | null }) {
+function FilePreview({
+  item,
+  signedUrl,
+  t,
+}: {
+  item: InboxItem;
+  signedUrl: string | null;
+  t: ReturnType<typeof getDictionary>;
+}) {
   const [playing, setPlaying] = useState(false);
 
   if (isTooLargeForTelegram(item)) {
-    return (
-      <p className="mt-1.5 text-xs text-amber-300">
-        Too large for Telegram — upload it in ARK directly{item.file_name ? ` (${item.file_name})` : ""}.
-      </p>
-    );
+    return <p className="mt-1.5 text-xs text-amber-300">{t.inbox.tooLargeUpload(item.file_name ?? "")}</p>;
   }
 
   if (!item.storage_path) {
@@ -92,7 +92,7 @@ function FilePreview({ item, signedUrl }: { item: InboxItem; signedUrl: string |
     // (nothing to preview, expected) or a genuine download failure
     // (rare; say so rather than showing nothing).
     if (item.kind === "text") return null;
-    return <p className="mt-1.5 text-xs text-white/35">File unavailable.</p>;
+    return <p className="mt-1.5 text-xs text-white/35">{t.inbox.fileUnavailable}</p>;
   }
 
   const kind = getDocumentKind(item.file_name ?? "");
@@ -111,7 +111,7 @@ function FilePreview({ item, signedUrl }: { item: InboxItem; signedUrl: string |
           className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
         >
           {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-          {playing ? "Hide" : "Play"} video
+          {playing ? t.inbox.hideVideo : t.inbox.playVideo}
         </button>
         {playing && <video controls autoPlay src={signedUrl} className="mt-2 max-h-72 w-full rounded-lg bg-black" />}
       </div>
@@ -129,18 +129,12 @@ function FilePreview({ item, signedUrl }: { item: InboxItem; signedUrl: string |
           className="inline-flex items-center gap-1 text-accent-soft hover:underline"
         >
           <ExternalLink className="h-3 w-3" />
-          View
+          {t.inbox.viewFile}
         </a>
       )}
     </p>
   );
 }
-
-const TABS: { value: Tab; label: string }[] = [
-  { value: "to_file", label: "To file" },
-  { value: "filed", label: "Filed" },
-  { value: "dismissed", label: "Dismissed" },
-];
 
 export function InboxTabs({
   items,
@@ -156,8 +150,21 @@ export function InboxTabs({
   isAdmin,
   suggestionsByItemId,
   suggestedDocTypeByItemId,
+  lang = "en",
 }: InboxTabsProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
+  const KIND_LABELS: Record<InboxItem["kind"], string> = {
+    text: t.inbox.kindText,
+    document: t.inbox.kindDocument,
+    photo: t.inbox.kindPhoto,
+    video: t.inbox.kindVideo,
+  };
+  const TABS: { value: Tab; label: string }[] = [
+    { value: "to_file", label: t.inbox.tabToFile },
+    { value: "filed", label: t.inbox.tabFiled },
+    { value: "dismissed", label: t.inbox.tabDismissed },
+  ];
   const [isPending, startTransition] = useTransition();
   const [tab, setTab] = useState<Tab>("to_file");
   const [filingId, setFilingId] = useState<string | null>(null);
@@ -220,14 +227,14 @@ export function InboxTabs({
     for (const item of targets) {
       const result = await dismissInboxItem(item.id, true);
       if (result.error) {
-        failures.push(`${itemLabel(item)}: ${result.error}`);
+        failures.push(`${itemLabel(item, t)}: ${resolveError(result.error, lang)}`);
       }
     }
     setIsBulkDismissing(false);
     setBulkDismissConfirm(false);
     setSelectedIds(new Set());
     if (failures.length > 0) {
-      setBulkError(`${failures.length} item(s) failed to dismiss:\n${failures.join("\n")}`);
+      setBulkError(t.inbox.bulkDismissFailed(failures.length, failures.join("\n")));
     }
     router.refresh();
   }
@@ -249,9 +256,9 @@ export function InboxTabs({
     searchLower === ""
       ? filedItems
       : filedItems.filter((item) => {
-          const dest = destinationLabel(item, projectNameById, contactNameById, filedTrancheNumberByItemId[item.id]);
+          const dest = destinationLabel(item, projectNameById, contactNameById, filedTrancheNumberByItemId[item.id], t);
           return (
-            itemLabel(item).toLowerCase().includes(searchLower) ||
+            itemLabel(item, t).toLowerCase().includes(searchLower) ||
             (dest?.label.toLowerCase().includes(searchLower) ?? false)
           );
         });
@@ -261,7 +268,7 @@ export function InboxTabs({
     startTransition(async () => {
       const result = await dismissInboxItem(itemId, dismissed);
       if (result.error) {
-        setError(result.error);
+        setError(resolveError(result.error, lang));
         return;
       }
       router.refresh();
@@ -273,7 +280,7 @@ export function InboxTabs({
     startTransition(async () => {
       const result = await deleteInboxItem(itemId);
       if (result.error) {
-        setError(result.error);
+        setError(resolveError(result.error, lang));
         return;
       }
       setConfirmingDeleteId(null);
@@ -283,7 +290,7 @@ export function InboxTabs({
 
   function handleFiled(destination: string) {
     setFilingId(null);
-    setFiledConfirmation(`Filed to ${destination}`);
+    setFiledConfirmation(t.inbox.filedTo(destination));
     router.refresh();
   }
 
@@ -291,14 +298,14 @@ export function InboxTabs({
     if (confirmingDeleteId === itemId) {
       return (
         <span className="inline-flex items-center gap-2">
-          <span className="text-xs text-amber-300">Delete?</span>
+          <span className="text-xs text-amber-300">{t.inbox.deleteQuestion}</span>
           <button
             type="button"
             onClick={() => handleDelete(itemId)}
             disabled={isPending}
             className="rounded-md bg-rose-500 px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isPending ? "Deleting…" : "Confirm"}
+            {isPending ? t.inbox.deleting : t.common.confirm}
           </button>
           <button
             type="button"
@@ -306,7 +313,7 @@ export function InboxTabs({
             disabled={isPending}
             className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
           >
-            Cancel
+            {t.common.cancel}
           </button>
         </span>
       );
@@ -315,11 +322,11 @@ export function InboxTabs({
       <button
         type="button"
         onClick={() => setConfirmingDeleteId(itemId)}
-        aria-label="Delete item"
+        aria-label={t.inbox.deleteItemAria}
         className="inline-flex items-center gap-1 text-xs font-medium text-rose-300 transition-colors duration-150 ease-out hover:text-rose-200"
       >
         <Trash2 className="h-3.5 w-3.5" />
-        Delete
+        {t.common.delete}
       </button>
     );
   }
@@ -344,13 +351,13 @@ export function InboxTabs({
       try {
         const result = await renameInboxItem(item.id, value);
         if (result.error) {
-          setLocalError(result.error);
+          setLocalError(resolveError(result.error, lang));
           return;
         }
         setEditing(false);
         router.refresh();
       } catch (err) {
-        setLocalError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setLocalError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setIsSaving(false);
       }
@@ -368,7 +375,7 @@ export function InboxTabs({
           className="inline-flex items-center gap-1 text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
         >
           <Pencil className="h-3.5 w-3.5" />
-          Rename
+          {t.common.rename}
         </button>
       );
     }
@@ -386,7 +393,7 @@ export function InboxTabs({
           type="button"
           onClick={save}
           disabled={isSaving}
-          aria-label="Save name"
+          aria-label={t.inbox.saveNameAria}
           className="inline-flex items-center rounded-md bg-accent px-1.5 py-1 text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Check className="h-3.5 w-3.5" />
@@ -395,7 +402,7 @@ export function InboxTabs({
           type="button"
           onClick={() => setEditing(false)}
           disabled={isSaving}
-          aria-label="Cancel rename"
+          aria-label={t.inbox.cancelRenameAria}
           className="inline-flex items-center rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-1 text-white/60 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <X className="h-3.5 w-3.5" />
@@ -408,21 +415,22 @@ export function InboxTabs({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.02] p-1">
-        {TABS.map((t) => {
-          const count = t.value === "to_file" ? toFileItems.length : t.value === "filed" ? filedItems.length : dismissedItems.length;
+        {TABS.map((tabDef) => {
+          const count =
+            tabDef.value === "to_file" ? toFileItems.length : tabDef.value === "filed" ? filedItems.length : dismissedItems.length;
           return (
             <button
-              key={t.value}
+              key={tabDef.value}
               type="button"
               onClick={() => {
-                setTab(t.value);
+                setTab(tabDef.value);
                 setError(null);
               }}
               className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-150 ease-out ${
-                tab === t.value ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
+                tab === tabDef.value ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
               }`}
             >
-              {t.label} ({count})
+              {tabDef.label} ({count})
             </button>
           );
         })}
@@ -446,7 +454,7 @@ export function InboxTabs({
                 onChange={toggleSelectAll}
                 className="h-3.5 w-3.5 rounded border-white/20 bg-white/[0.04] accent-accent"
               />
-              Select all
+              {t.inbox.selectAll}
             </label>
           )}
 
@@ -465,27 +473,28 @@ export function InboxTabs({
                   setSelectedIds(new Set());
                 }}
                 onCancel={() => setBulkFiling(false)}
+                lang={lang}
               />
             ) : (
               <div className="flex flex-wrap items-center gap-3 rounded-lg border border-accent/25 bg-accent/10 px-3.5 py-2.5">
-                <span className="text-xs font-medium text-white/80">{selectedItems.length} selected</span>
+                <span className="text-xs font-medium text-white/80">{t.inbox.selectedCount(selectedItems.length)}</span>
                 <button
                   type="button"
                   onClick={() => setBulkFiling(true)}
                   className="rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover"
                 >
-                  File {selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} into…
+                  {t.inbox.fileItemsInto(selectedItems.length)}
                 </button>
                 {bulkDismissConfirm ? (
                   <span className="inline-flex items-center gap-2">
-                    <span className="text-xs text-amber-300">Dismiss {selectedItems.length}?</span>
+                    <span className="text-xs text-amber-300">{t.inbox.dismissCount(selectedItems.length)}</span>
                     <button
                       type="button"
                       onClick={handleBulkDismiss}
                       disabled={isBulkDismissing}
                       className="rounded-md bg-rose-500 px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {isBulkDismissing ? "Dismissing…" : "Confirm"}
+                      {isBulkDismissing ? t.inbox.dismissing : t.common.confirm}
                     </button>
                     <button
                       type="button"
@@ -493,7 +502,7 @@ export function InboxTabs({
                       disabled={isBulkDismissing}
                       className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
                     >
-                      Cancel
+                      {t.common.cancel}
                     </button>
                   </span>
                 ) : (
@@ -502,7 +511,7 @@ export function InboxTabs({
                     onClick={() => setBulkDismissConfirm(true)}
                     className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
                   >
-                    Dismiss {selectedItems.length}
+                    {t.inbox.dismissCountAction(selectedItems.length)}
                   </button>
                 )}
                 <button
@@ -510,16 +519,16 @@ export function InboxTabs({
                   onClick={() => setSelectedIds(new Set())}
                   className="ml-auto text-xs font-medium text-white/40 transition-colors duration-150 ease-out hover:text-white/70"
                 >
-                  Clear selection
+                  {t.inbox.clearSelection}
                 </button>
               </div>
             ))}
 
           {toFileItems.length === 0 ? (
-            <p className="text-sm text-white/35">Nothing to file.</p>
+            <p className="text-sm text-white/35">{t.inbox.nothingToFile}</p>
           ) : (
             toFileItems.map((item) => {
-              const senderName = item.profile_id ? userNameById[item.profile_id] ?? "Unknown user" : "Unknown user";
+              const senderName = item.profile_id ? userNameById[item.profile_id] ?? t.inbox.unknownUser : t.inbox.unknownUser;
               const signedUrl = item.storage_path ? signedUrlByPath[item.storage_path] ?? null : null;
               const suggestions = suggestionsByItemId[item.id] ?? [];
               const prefill = prefillByItemId[item.id] ?? null;
@@ -532,18 +541,18 @@ export function InboxTabs({
                         type="checkbox"
                         checked={selectedIds.has(item.id)}
                         onChange={() => toggleSelected(item.id)}
-                        aria-label="Select item"
+                        aria-label={t.inbox.selectItemAria}
                         className="h-3.5 w-3.5 rounded border-white/20 bg-white/[0.04] accent-accent"
                       />
                       <span className="font-medium text-white/70">{senderName}</span>
-                      <span title={formatDateTime(item.received_at)}>{relativeTime(item.received_at)}</span>
+                      <span title={formatDateTime(item.received_at, lang)}>{relativeTime(item.received_at)}</span>
                       <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-white/50">
                         {KIND_LABELS[item.kind]}
                       </span>
                       {item.forwarded_from && (
                         <span className="inline-flex items-center gap-1">
                           <Forward className="h-3 w-3" />
-                          Forwarded from {item.forwarded_from}
+                          {t.inbox.forwardedFrom(item.forwarded_from)}
                         </span>
                       )}
                     </div>
@@ -552,7 +561,7 @@ export function InboxTabs({
                   {item.text_or_caption && (
                     <p className="mt-2 text-sm whitespace-pre-wrap text-white/85">{item.text_or_caption}</p>
                   )}
-                  <FilePreview item={item} signedUrl={signedUrl} />
+                  <FilePreview item={item} signedUrl={signedUrl} t={t} />
 
                   {suggestions.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -563,7 +572,7 @@ export function InboxTabs({
                           onClick={() => openSuggestion(item.id, s)}
                           className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent-soft transition-colors duration-150 ease-out hover:bg-accent/20"
                         >
-                          Suggested: {s.label} — File here
+                          {t.inbox.suggestedFileHere(s.label)}
                         </button>
                       ))}
                     </div>
@@ -575,7 +584,7 @@ export function InboxTabs({
                       onClick={() => setFilingId(filingId === item.id ? null : item.id)}
                       className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
                     >
-                      {filingId === item.id ? "Close" : "File into…"}
+                      {filingId === item.id ? t.inbox.close : t.inbox.fileIntoAction}
                     </button>
                     <button
                       type="button"
@@ -583,7 +592,7 @@ export function InboxTabs({
                       disabled={isPending}
                       className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Dismiss
+                      {t.inbox.dismiss}
                     </button>
                     <RenameControl item={item} />
                     <span className="ml-auto">
@@ -604,6 +613,7 @@ export function InboxTabs({
                         initialDocumentType={suggestedDocTypeByItemId[item.id] ?? null}
                         onFiled={handleFiled}
                         onCancel={() => setFilingId(null)}
+                        lang={lang}
                       />
                     </div>
                   )}
@@ -621,27 +631,27 @@ export function InboxTabs({
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by file name or destination…"
+              placeholder={t.inbox.searchByFileOrDestination}
               className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-9 py-2 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40"
             />
           </div>
 
           {filteredFiledItems.length === 0 ? (
             <p className="text-sm text-white/35">
-              {filedItems.length === 0 ? "Nothing filed yet." : "No filed items match that search."}
+              {filedItems.length === 0 ? t.inbox.nothingFiledYet : t.inbox.noFiledMatch}
             </p>
           ) : (
             <div className="flex flex-col gap-2">
               {filteredFiledItems.map((item) => {
-                const dest = destinationLabel(item, projectNameById, contactNameById, filedTrancheNumberByItemId[item.id]);
+                const dest = destinationLabel(item, projectNameById, contactNameById, filedTrancheNumberByItemId[item.id], t);
                 const openUrl = filedOpenUrlByItemId[item.id];
-                const filedByName = item.filed_by ? userNameById[item.filed_by] ?? "Unknown user" : "Unknown user";
+                const filedByName = item.filed_by ? userNameById[item.filed_by] ?? t.inbox.unknownUser : t.inbox.unknownUser;
                 return (
                   <div
                     key={item.id}
                     className="flex flex-wrap items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5"
                   >
-                    <span className="min-w-0 flex-1 truncate text-sm text-white/80">{itemLabel(item)}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-white/80">{itemLabel(item, t)}</span>
                     {dest ? (
                       <Link href={dest.href} className="shrink-0 text-xs text-accent-soft hover:underline">
                         {dest.label}
@@ -649,9 +659,9 @@ export function InboxTabs({
                     ) : (
                       <span className="shrink-0 text-xs text-white/35">—</span>
                     )}
-                    <span className="shrink-0 text-xs text-white/40">by {filedByName}</span>
+                    <span className="shrink-0 text-xs text-white/40">{t.inbox.byUser(filedByName)}</span>
                     <span className="shrink-0 text-xs text-white/40">
-                      {item.filed_at ? formatDateTime(item.filed_at) : "—"}
+                      {item.filed_at ? formatDateTime(item.filed_at, lang) : "—"}
                     </span>
                     {openUrl ? (
                       <a
@@ -661,7 +671,7 @@ export function InboxTabs({
                         className="inline-flex shrink-0 items-center gap-1 text-xs text-accent-soft hover:underline"
                       >
                         <ExternalLink className="h-3 w-3" />
-                        Open
+                        {t.inbox.open}
                       </a>
                     ) : (
                       <span className="shrink-0 text-xs text-white/35">—</span>
@@ -682,18 +692,18 @@ export function InboxTabs({
       {tab === "dismissed" && (
         <div className="flex flex-col gap-2">
           {dismissedItems.length === 0 ? (
-            <p className="text-sm text-white/35">Nothing dismissed.</p>
+            <p className="text-sm text-white/35">{t.inbox.nothingDismissed}</p>
           ) : (
             dismissedItems.map((item) => {
-              const senderName = item.profile_id ? userNameById[item.profile_id] ?? "Unknown user" : "Unknown user";
+              const senderName = item.profile_id ? userNameById[item.profile_id] ?? t.inbox.unknownUser : t.inbox.unknownUser;
               return (
                 <div
                   key={item.id}
                   className="flex flex-wrap items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5"
                 >
-                  <span className="min-w-0 flex-1 truncate text-sm text-white/80">{itemLabel(item)}</span>
-                  <span className="shrink-0 text-xs text-white/40">from {senderName}</span>
-                  <span className="shrink-0 text-xs text-white/40">{formatDateTime(item.received_at)}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-white/80">{itemLabel(item, t)}</span>
+                  <span className="shrink-0 text-xs text-white/40">{t.inbox.fromUser(senderName)}</span>
+                  <span className="shrink-0 text-xs text-white/40">{formatDateTime(item.received_at, lang)}</span>
                   <button
                     type="button"
                     onClick={() => handleDismiss(item.id, false)}
@@ -701,7 +711,7 @@ export function InboxTabs({
                     className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-white/60 transition-colors duration-150 ease-out hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <RotateCcw className="h-3.5 w-3.5" />
-                    Restore to To file
+                    {t.inbox.restoreToFile}
                   </button>
                   <span className="shrink-0">
                     <DeleteButton itemId={item.id} />

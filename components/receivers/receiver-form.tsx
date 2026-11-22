@@ -17,6 +17,7 @@ import { quickCreatePerson } from "@/lib/actions/people";
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { Contact, ContactProduct, DocumentTypeRecord, Product } from "@/lib/types";
 
 interface ReceiverFormProps {
@@ -28,6 +29,7 @@ interface ReceiverFormProps {
   // The "Contact person" field's options — the People ("Contacts" tab)
   // list, wholly separate from this Receiver.
   people: EntityOption[];
+  lang?: Lang;
 }
 
 const initialState: ContactFormState = { error: null };
@@ -40,8 +42,17 @@ type CreateStatus = "idle" | "creating" | "uploading";
 
 // UI: Receiver. The underlying table/type stays `contacts`/`Contact` —
 // see AGENTS.md's UI-naming-vs-database-naming note.
-export function ReceiverForm({ mode, contact, products = [], allProducts, documentTypes, people }: ReceiverFormProps) {
+export function ReceiverForm({
+  mode,
+  contact,
+  products = [],
+  allProducts,
+  documentTypes,
+  people,
+  lang = "en",
+}: ReceiverFormProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
 
   // Edit mode keeps the existing server-action/useActionState flow — it
   // redirects to the receiver on success, same as before.
@@ -76,7 +87,7 @@ export function ReceiverForm({ mode, contact, products = [], allProducts, docume
     const result = await createContactWithId(formData);
 
     if (result.error || !result.id) {
-      setCreateError(result.error ?? "Failed to create receiver.");
+      setCreateError(resolveError(result.error, lang) ?? t.errors.receiverCreateFailed);
       setCreateStatus("idle");
       return;
     }
@@ -121,7 +132,7 @@ export function ReceiverForm({ mode, contact, products = [], allProducts, docume
     mode === "edit"
       ? { action: editFormAction, onSubmit: () => disableSubmitButton(submitButtonRef) }
       : { onSubmit: handleCreateSubmit };
-  const error = mode === "edit" ? editState?.error : createError;
+  const error = mode === "edit" ? resolveError(editState?.error ?? null, lang) : createError;
   const isPending = mode === "edit" ? isEditPending : createStatus !== "idle";
 
   return (
@@ -129,7 +140,7 @@ export function ReceiverForm({ mode, contact, products = [], allProducts, docume
       <GlassCard interactive={false} className="flex flex-col gap-5 p-6">
         <div>
           <label className={labelClass} htmlFor="full_name">
-            Full Name *
+            {t.receiverForm.fullNameLabel}
           </label>
           <input
             id="full_name"
@@ -142,48 +153,51 @@ export function ReceiverForm({ mode, contact, products = [], allProducts, docume
 
         <div>
           <label className={labelClass} htmlFor="notes">
-            About
+            {t.receiverForm.aboutLabel}
           </label>
           <textarea
             id="notes"
             name="notes"
             rows={3}
             defaultValue={contact?.notes ?? ""}
-            placeholder='Free-text detail, e.g. "Prefers 30-day settlement, EU banks only"'
+            placeholder={t.receiverForm.aboutPlaceholder}
             className={fieldClass}
           />
         </div>
 
         <EntityPicker
           name="contact_person_id"
-          label="Contact Person"
+          label={t.receiverForm.contactPersonLabel}
           options={people}
           defaultId={contact?.contact_person_id}
-          entityNoun="contact"
+          entityNoun={lang === "es" ? "contacto" : "contact"}
+          entityNounPlural={lang === "es" ? "contactos" : "contacts"}
+          lang={lang}
           onQuickCreate={async (name) => {
             const result = await quickCreatePerson({ name });
             return {
               option: result.person
                 ? { id: result.person.id, label: [result.person.first_name, result.person.last_name].filter(Boolean).join(" ") }
                 : null,
-              error: result.error,
+              error: resolveError(result.error, lang),
             };
           }}
         />
       </GlassCard>
 
       <GlassCard interactive={false} className="p-6">
-        <p className={labelClass}>Products & Ratios</p>
-        <ProductFields initialProducts={products} products={allProducts} />
+        <p className={labelClass}>{t.receiverForm.productsRatiosLabel}</p>
+        <ProductFields initialProducts={products} products={allProducts} lang={lang} />
       </GlassCard>
 
       {mode === "create" && (
         <GlassCard interactive={false} className="p-6">
-          <p className={labelClass}>Documents</p>
+          <p className={labelClass}>{t.receiverForm.documentsLabel}</p>
           <StagedDocumentPicker
             documents={stagedDocuments}
             onChange={setStagedDocuments}
             documentTypes={documentTypes}
+            lang={lang}
           />
         </GlassCard>
       )}
@@ -204,21 +218,21 @@ export function ReceiverForm({ mode, contact, products = [], allProducts, docume
           >
             {mode === "edit"
               ? isEditPending
-                ? "Saving…"
-                : "Save changes"
+                ? t.receiverForm.saving
+                : t.receiverForm.saveChanges
               : createStatus === "uploading"
                 ? uploadProgress
-                  ? `Uploading ${uploadProgress.index} of ${uploadProgress.total} (${uploadProgress.percent}%)…`
-                  : "Uploading documents…"
+                  ? t.receiverForm.uploadingProgress(uploadProgress.index, uploadProgress.total, uploadProgress.percent)
+                  : t.receiverForm.uploadingDocuments
                 : createStatus === "creating"
-                  ? "Creating…"
-                  : "Create receiver"}
+                  ? t.receiverForm.creating
+                  : t.receiverForm.createReceiver}
           </button>
           <Link
             href={mode === "edit" && contact ? `/receivers/${contact.id}` : "/receivers"}
             className="text-sm font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
           >
-            Cancel
+            {t.receiverForm.cancel}
           </Link>
         </div>
         {uploadProgress && (

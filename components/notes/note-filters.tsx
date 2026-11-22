@@ -1,14 +1,16 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 const selectClass =
   "rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 
-export function NoteFilters() {
+export function NoteFilters({ lang = "en" }: { lang?: Lang } = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const t = getDictionary(lang);
 
   function setParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -28,13 +30,13 @@ export function NoteFilters() {
         className={selectClass}
       >
         <option value="" className="bg-[#0a0e17]">
-          All types
+          {t.notes.allTypes}
         </option>
         <option value="project" className="bg-[#0a0e17]">
-          Projects
+          {t.searchGroups.project}
         </option>
         <option value="contact" className="bg-[#0a0e17]">
-          Receivers
+          {t.searchGroups.contact}
         </option>
       </select>
 
@@ -45,7 +47,7 @@ export function NoteFilters() {
           onChange={(e) => setParam("reminders", e.target.checked ? "true" : "")}
           className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
         />
-        Reminders only
+        {t.notes.remindersOnly}
       </label>
     </div>
   );

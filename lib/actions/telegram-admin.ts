@@ -5,7 +5,7 @@ import { isCurrentUserAdmin } from "@/lib/auth";
 import { telegramGetWebhookInfo, telegramSetWebhook } from "@/lib/telegram";
 
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 // Points Telegram at this exact deployment's own webhook URL —
@@ -16,24 +16,28 @@ function unexpectedErrorMessage(err: unknown): string {
 // is sent to Telegram (that's its job) but never echoed back here.
 export async function connectTelegramWebhook(): Promise<{ error: string | null }> {
   if (!(await isCurrentUserAdmin())) {
-    return { error: "Only admins can manage the Telegram bot." };
+    return { error: "onlyAdminsTelegram" };
   }
 
   const secret = process.env.ARK_TELEGRAM_WEBHOOK_SECRET;
   if (!secret) {
-    return { error: "ARK_TELEGRAM_WEBHOOK_SECRET is not set." };
+    return { error: "webhookSecretNotSet" };
   }
 
   try {
     const headerList = await headers();
     const host = headerList.get("host");
     if (!host) {
-      return { error: "Could not determine the current site's address." };
+      return { error: "couldNotDetermineHost" };
     }
 
     const result = await telegramSetWebhook(`https://${host}/api/telegram/inbox`, secret);
     if (!result.ok) {
-      return { error: result.description ?? "setWebhook failed." };
+      // Telegram's own description, when present, is already specific
+      // and can't be meaningfully pre-translated — passes through
+      // resolveError untouched, same as every other raw external-API
+      // message in this app.
+      return { error: result.description ?? "setWebhookFailed" };
     }
     return { error: null };
   } catch (err) {
@@ -52,13 +56,13 @@ export async function getTelegramWebhookStatus(): Promise<{
   error: string | null;
 }> {
   if (!(await isCurrentUserAdmin())) {
-    return { status: null, error: "Only admins can manage the Telegram bot." };
+    return { status: null, error: "onlyAdminsTelegram" };
   }
 
   try {
     const info = await telegramGetWebhookInfo();
     if (!info) {
-      return { status: null, error: "Could not read webhook status." };
+      return { status: null, error: "couldNotReadWebhookStatus" };
     }
     return {
       status: {

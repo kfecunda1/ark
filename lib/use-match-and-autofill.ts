@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { updateProjectMatchedContact, updateProjectRatioReal } from "@/lib/actions/projects";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 
 // Shared "Match" action for the two new find-receivers UIs
 // (components/projects/find-receivers-panel.tsx, components/
@@ -20,7 +21,8 @@ export interface DiffersState {
   currentRatio: string;
 }
 
-export function useMatchAndAutoFill(onMatched: (receiverLabel: string) => void) {
+export function useMatchAndAutoFill(onMatched: (receiverLabel: string) => void, lang: Lang = "en") {
+  const t = getDictionary(lang);
   const [isPending, startTransition] = useTransition();
   const [matchingProjectId, setMatchingProjectId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export function useMatchAndAutoFill(onMatched: (receiverLabel: string) => void) 
       try {
         const result = await updateProjectMatchedContact(projectId, receiverId);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         if (result.autoFill?.differs) {
@@ -51,7 +53,7 @@ export function useMatchAndAutoFill(onMatched: (receiverLabel: string) => void) 
         }
         onMatched(receiverLabel);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setMatchingProjectId(null);
       }
@@ -75,13 +77,13 @@ export function useMatchAndAutoFill(onMatched: (receiverLabel: string) => void) 
       try {
         const result = await updateProjectRatioReal(projectId, theirRatio);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setDiffers(null);
         onMatched(receiverLabel);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }

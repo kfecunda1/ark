@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Archive, Search } from "lucide-react";
+import { getDictionary, type Lang } from "@/lib/i18n";
 import type { Product } from "@/lib/types";
 
 const selectClass =
@@ -12,9 +13,11 @@ interface ReceiverFiltersProps {
   // Every product, active or not — a receiver already tagged with a
   // since-hidden product must still be findable by filtering on it.
   products: Product[];
+  lang?: Lang;
 }
 
-export function ReceiverFilters({ products }: ReceiverFiltersProps) {
+export function ReceiverFilters({ products, lang = "en" }: ReceiverFiltersProps) {
+  const t = getDictionary(lang);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -54,22 +57,22 @@ export function ReceiverFilters({ products }: ReceiverFiltersProps) {
         <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/30" />
         <input
           type="text"
-          aria-label="Search receivers"
+          aria-label={t.receivers.searchReceivers}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search name or notes…"
+          placeholder={t.receivers.searchNameOrNotes}
           className="w-72 rounded-lg border border-white/[0.06] bg-white/[0.03] py-2 pr-3 pl-9 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]"
         />
       </div>
 
       <select
-        aria-label="Filter by product"
+        aria-label={t.receivers.filterByProduct}
         value={searchParams.get("product_type") ?? ""}
         onChange={(e) => setParam("product_type", e.target.value)}
         className={selectClass}
       >
         <option value="" className="bg-[#0a0e17]">
-          All products
+          {t.receivers.allProducts}
         </option>
         {products.map((product) => (
           <option key={product.id} value={product.name} className="bg-[#0a0e17]">
@@ -89,7 +92,7 @@ export function ReceiverFilters({ products }: ReceiverFiltersProps) {
         }`}
       >
         <Archive className="h-3.5 w-3.5" />
-        {showArchived ? "Showing Archived" : "Show Archived"}
+        {showArchived ? t.common.showingArchived : t.common.showArchived}
       </button>
     </div>
   );

@@ -5,6 +5,7 @@ import JSZip from "jszip";
 import { createClient } from "@/lib/supabase/client";
 import { dateKeyInTimeZone } from "@/lib/format";
 import { toCsv } from "@/lib/csv";
+import { getDictionary, type Lang } from "@/lib/i18n";
 import type { Contact, ContactDocument, Project, ProjectDocument, ProjectTranche } from "@/lib/types";
 
 // One CSV per table — every table in the schema except profiles (an
@@ -44,7 +45,8 @@ function folderName(name: string, id: string): string {
 const buttonClass =
   "inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50";
 
-export function ExportBackupButton() {
+export function ExportBackupButton({ lang = "en" }: { lang?: Lang } = {}) {
+  const t = getDictionary(lang);
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +69,7 @@ export function ExportBackupButton() {
       for (const table of TABLES) {
         const { data, error: queryError } = await supabase.from(table).select("*");
         if (queryError) {
-          throw new Error(`Failed to read "${table}": ${queryError.message}`);
+          throw new Error(t.settingsBackup.failedToRead(table, queryError.message));
         }
         rowsByTable[table] = (data as Record<string, unknown>[] | null) ?? [];
       }
@@ -131,7 +133,7 @@ export function ExportBackupButton() {
 
         const { data: signed, error: signError } = await supabase.storage.from(bucket).createSignedUrls(paths, 3600);
         if (signError) {
-          throw new Error(`Failed to sign download URLs for ${bucket}: ${signError.message}`);
+          throw new Error(t.settingsBackup.failedToSign(bucket, signError.message));
         }
         for (const entry of signed ?? []) {
           if (entry.path && entry.signedUrl) {
@@ -147,9 +149,9 @@ export function ExportBackupButton() {
         const job = jobs[i];
         try {
           const url = signedUrlByBucketAndPath.get(`${job.bucket}/${job.path}`);
-          if (!url) throw new Error("No signed URL was returned for this file.");
+          if (!url) throw new Error(t.settingsBackup.noSignedUrl);
           const response = await fetch(url);
-          if (!response.ok) throw new Error(`Download failed (${response.status}).`);
+          if (!response.ok) throw new Error(t.settingsBackup.downloadFailed(response.status));
           zip.file(job.zipPath, await response.blob());
         } catch {
           failed.push(job.zipPath);
@@ -179,7 +181,7 @@ export function ExportBackupButton() {
       document.body.removeChild(link);
       URL.revokeObjectURL(objectUrl);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
       setIsExporting(false);
       setProgress(null);
@@ -192,13 +194,11 @@ export function ExportBackupButton() {
         <button type="button" onClick={handleExport} disabled={isExporting} className={buttonClass}>
           {isExporting
             ? progress
-              ? `Exporting ${progress.current} of ${progress.total} files…`
-              : "Preparing export…"
-            : "Export everything"}
+              ? t.settingsBackup.exportingProgress(progress.current, progress.total)
+              : t.settingsBackup.preparing
+            : t.settingsBackup.exportButton}
         </button>
-        <p className="mt-2 text-xs text-white/35">
-          Downloads a ZIP with one CSV per table plus every file in Documents, as a backup you keep yourself.
-        </p>
+        <p className="mt-2 text-xs text-white/35">{t.settingsBackup.hint}</p>
       </div>
 
       {error && (
@@ -208,9 +208,7 @@ export function ExportBackupButton() {
       {skipped.length > 0 && (
         <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
           <p className="text-sm font-medium text-red-300">
-            {skipped.length === 1
-              ? "1 file was skipped (the rest of the export still downloaded):"
-              : `${skipped.length} files were skipped (the rest of the export still downloaded):`}
+            {skipped.length === 1 ? t.settingsBackup.skippedOne : t.settingsBackup.skippedMany(skipped.length)}
           </p>
           <ul className="mt-1.5 list-inside list-disc text-sm text-red-300/80">
             {skipped.map((name) => (

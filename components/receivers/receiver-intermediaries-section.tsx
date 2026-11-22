@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, UserPlus, X } from "lucide-react";
 import { addReceiverIntermediary, removeReceiverIntermediary } from "@/lib/actions/intermediaries";
 import { quickCreatePerson } from "@/lib/actions/people";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { ReceiverIntermediaryRow } from "@/lib/intermediaries";
 
 interface ReceiverIntermediariesSectionProps {
@@ -13,6 +14,7 @@ interface ReceiverIntermediariesSectionProps {
   // Active contacts only, already excluding archived people — same
   // convention as every other picker.
   pickerOptions: { id: string; label: string }[];
+  lang?: Lang;
 }
 
 // A receiver's own intermediaries — an unordered set (unlike a
@@ -23,8 +25,10 @@ export function ReceiverIntermediariesSection({
   receiverId,
   intermediaries,
   pickerOptions,
+  lang = "en",
 }: ReceiverIntermediariesSectionProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -48,12 +52,12 @@ export function ReceiverIntermediariesSection({
       try {
         const result = await addReceiverIntermediary(receiverId, personId);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -64,19 +68,19 @@ export function ReceiverIntermediariesSection({
       try {
         const result = await removeReceiverIntermediary(receiverId, personId);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
 
   function handleCreate() {
     if (!newName.trim()) {
-      setError("Name is required.");
+      setError(t.common.nameRequired);
       return;
     }
     setError(null);
@@ -84,19 +88,19 @@ export function ReceiverIntermediariesSection({
       try {
         const result = await quickCreatePerson({ name: newName.trim() });
         if (result.error || !result.person) {
-          setError(result.error ?? "Could not create contact.");
+          setError(result.error ?? t.common.couldNotCreate(lang === "es" ? "contacto" : "contact"));
           return;
         }
         setCreating(false);
         setQuery("");
         const addResult = await addReceiverIntermediary(receiverId, result.person.id);
         if (addResult.error) {
-          setError(addResult.error);
+          setError(resolveError(addResult.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -104,7 +108,7 @@ export function ReceiverIntermediariesSection({
   return (
     <div className="flex flex-col gap-3">
       {intermediaries.length === 0 ? (
-        <p className="text-sm text-white/35">No intermediaries yet.</p>
+        <p className="text-sm text-white/35">{t.receiverDialogs.noIntermediariesYet}</p>
       ) : (
         <div className="flex flex-col gap-2">
           {intermediaries.map((item) => (
@@ -114,16 +118,14 @@ export function ReceiverIntermediariesSection({
             >
               <span className="min-w-0 flex-1 truncate text-sm text-white/80">
                 {item.label}
-                {item.archived && <span className="ml-1.5 text-xs text-white/40">(Archived)</span>}
+                {item.archived && <span className="ml-1.5 text-xs text-white/40">({t.common.archived})</span>}
               </span>
-              <span className="shrink-0 text-xs text-white/40">
-                {item.projectCount} project{item.projectCount === 1 ? "" : "s"}
-              </span>
+              <span className="shrink-0 text-xs text-white/40">{t.receiverDialogs.projectCount(item.projectCount)}</span>
               <button
                 type="button"
                 onClick={() => handleRemove(item.personId)}
                 disabled={isPending}
-                aria-label={`Remove ${item.label}`}
+                aria-label={t.receiverDialogs.removeIntermediary(item.label)}
                 className="shrink-0 text-white/30 transition-colors duration-150 ease-out hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <X className="h-3.5 w-3.5" />
@@ -145,12 +147,12 @@ export function ReceiverIntermediariesSection({
             onFocus={() => setOpen(true)}
             onBlur={() => setTimeout(() => setOpen(false), 120)}
             disabled={isPending}
-            placeholder="Add intermediary…"
+            placeholder={t.receiverDialogs.addIntermediary}
             className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-1.5 pr-3 pl-8 text-xs text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06] disabled:opacity-50"
           />
           {open && (
             <ul className="absolute z-10 mt-1.5 max-h-56 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0f1420] py-1 shadow-xl">
-              {filtered.length === 0 && <li className="px-3 py-2 text-xs text-white/35">No matching contacts.</li>}
+              {filtered.length === 0 && <li className="px-3 py-2 text-xs text-white/35">{t.common.noMatchingContacts}</li>}
               {filtered.map((option) => (
                 <li
                   key={option.id}
@@ -173,7 +175,8 @@ export function ReceiverIntermediariesSection({
                 className="flex items-center gap-1.5 border-t border-white/[0.06] px-3 py-1.5 text-xs font-medium text-accent-soft transition-colors duration-100 ease-out hover:bg-white/[0.06]"
               >
                 <UserPlus className="h-3 w-3" />
-                New contact{query.trim() ? ` "${query.trim()}"` : ""}
+                {t.common.newContact}
+                {query.trim() ? ` "${query.trim()}"` : ""}
               </li>
             </ul>
           )}
@@ -182,7 +185,7 @@ export function ReceiverIntermediariesSection({
         <div className="w-64 rounded-lg border border-white/[0.08] bg-white/[0.03] p-2.5">
           <input
             autoFocus
-            placeholder="Name *"
+            placeholder={t.common.namePlaceholder}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             disabled={isPending}
@@ -195,7 +198,7 @@ export function ReceiverIntermediariesSection({
               onClick={handleCreate}
               className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isPending ? "Creating…" : "Create & Add"}
+              {isPending ? t.common.creating : t.receiverDialogs.createAndAdd}
             </button>
             <button
               type="button"
@@ -206,7 +209,7 @@ export function ReceiverIntermediariesSection({
               disabled={isPending}
               className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
             >
-              Cancel
+              {t.common.cancel}
             </button>
           </div>
         </div>

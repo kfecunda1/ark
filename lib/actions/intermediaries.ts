@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 // genuinely unexpected exception into the same returned-error shape
 // every normal Supabase-error path already uses.
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 // ----------------------------------------------------------------------------
@@ -182,7 +182,7 @@ export async function moveProjectIntermediary(
     const rows = (data as { id: string; person_id: string; position: number }[] | null) ?? [];
     const index = rows.findIndex((r) => r.person_id === personId);
     if (index === -1) {
-      return { error: "That person is no longer in this project's intermediary chain." };
+      return { error: "personNoLongerInChain" };
     }
 
     const swapWith = direction === "up" ? index - 1 : index + 1;

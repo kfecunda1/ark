@@ -22,6 +22,8 @@ import { formatDateTime } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { STAGES } from "@/lib/projects";
 import { personLabel } from "@/lib/people";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { Person, Project, ProjectStep } from "@/lib/types";
 
 const PROJECT_SORT_KEYS = [
@@ -40,16 +42,18 @@ function isProjectSortKey(value: string | undefined): value is ProjectSortKey {
   return (PROJECT_SORT_KEYS as readonly string[]).includes(value ?? "");
 }
 
-const SORT_OPTIONS: SortOption[] = [
-  { value: "name", label: "Name" },
-  { value: "product", label: "Product" },
-  { value: "stage", label: "Stage" },
-  { value: "status", label: "Status" },
-  { value: "total_face_value", label: "Total face value" },
-  { value: "next_step_due", label: "Next step due" },
-  { value: "last_activity_at", label: "Last activity" },
-  { value: "created_at", label: "Created" },
-];
+function sortOptions(t: ReturnType<typeof getDictionary>): SortOption[] {
+  return [
+    { value: "name", label: t.projectsList.colName },
+    { value: "product", label: t.projectsList.colProduct },
+    { value: "stage", label: t.projectsList.colStage },
+    { value: "status", label: t.projectsList.colStatus },
+    { value: "total_face_value", label: t.projectsList.colTotalFaceValue },
+    { value: "next_step_due", label: t.projectsList.colNextStep },
+    { value: "last_activity_at", label: t.projectsList.colLastActivity },
+    { value: "created_at", label: t.projectsList.colCreated },
+  ];
+}
 
 export interface ProjectsListSearchParams {
   product_type?: string;
@@ -82,6 +86,9 @@ interface ProjectsListViewProps {
 // no "All / Recovery only / Exclude recovery" filter here anymore —
 // which tab you're on *is* that filter now.
 export async function ProjectsListView({ searchParams: params, isRecovery }: ProjectsListViewProps) {
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
+  const SORT_OPTIONS = sortOptions(t);
   const sort: ProjectSortKey = isProjectSortKey(params.sort) ? params.sort : "next_step_due";
   const dir = parseSortDirection(params.dir);
   const showArchived = params.archived === "true";
@@ -121,7 +128,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
   const contactPersonNameById = new Map(
     ((contactPeopleData as Pick<Person, "id" | "first_name" | "last_name" | "archived_at">[] | null) ?? []).map((p) => [
       p.id,
-      personLabel(p) + (p.archived_at ? " (Archived)" : ""),
+      personLabel(p) + (p.archived_at ? ` (${t.common.archived})` : ""),
     ])
   );
 
@@ -160,7 +167,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
   const intermediaryFilterOptions = (
     (intermediaryPeopleData as Pick<Person, "id" | "first_name" | "last_name" | "archived_at">[] | null) ?? []
   )
-    .map((p) => ({ id: p.id, label: personLabel(p) + (p.archived_at ? " (Archived)" : "") }))
+    .map((p) => ({ id: p.id, label: personLabel(p) + (p.archived_at ? ` (${t.common.archived})` : "") }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
   if (params.intermediary) {
@@ -336,20 +343,27 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
         })
       : [];
 
-  const noun = isRecovery ? "recovery projects" : "projects";
+  const noun = isRecovery ? t.projectsList.recoveryProjectsNoun : t.projectsList.projectsNoun;
+  const singularNoun = lang === "es" ? (isRecovery ? "proyecto de recuperación" : "proyecto") : noun;
   const title = showArchived
     ? isRecovery
-      ? "Archived Recovery Projects"
-      : "Archived Projects"
+      ? t.projectsList.archivedRecoveryTitle
+      : t.projectsList.archivedTitle
     : isRecovery
-      ? "Recovery Projects"
-      : "Projects";
+      ? t.projectsList.recoveryTitle
+      : t.projectsList.title;
   const subtitle = showArchived
-    ? `${isRecovery ? "Recovery projects" : "Projects"} that have been archived.`
+    ? isRecovery
+      ? t.projectsList.subtitleArchivedRecovery
+      : t.projectsList.subtitleArchivedProjects
     : isRecovery
-      ? "Track and manage recovery projects."
-      : "Track and manage incoming projects.";
-  const emptyTitle = showArchived ? `No archived ${noun}` : isRecovery ? "No recovery projects yet" : "No projects yet";
+      ? t.projectsList.subtitleRecovery
+      : t.projectsList.subtitleProjects;
+  const emptyTitle = showArchived
+    ? t.projectsList.noArchivedProjects(noun)
+    : isRecovery
+      ? t.projectsList.noRecoveryProjectsYet
+      : t.projectsList.noProjectsYet;
   const filtered = Boolean(
     params.product_type ||
       params.stage ||
@@ -373,23 +387,25 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
           className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover"
         >
           <Plus className="h-4 w-4" />
-          New Project
+          {t.projectsList.newProject}
         </Link>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Suspense>
           <div className="flex flex-wrap items-center gap-3">
-            <ProjectFilters products={products} statuses={statuses} intermediaries={intermediaryFilterOptions} />
-            {view !== "board" && <MobileSortControl options={SORT_OPTIONS} currentSort={sort} currentDir={dir} />}
+            <ProjectFilters products={products} statuses={statuses} intermediaries={intermediaryFilterOptions} lang={lang} />
+            {view !== "board" && (
+              <MobileSortControl options={SORT_OPTIONS} currentSort={sort} currentDir={dir} lang={lang} />
+            )}
           </div>
-          {showViewToggle && <ViewToggle />}
+          {showViewToggle && <ViewToggle lang={lang} />}
         </Suspense>
       </div>
 
       {error && (
         <GlassCard interactive={false} className="p-6 text-sm text-rose-300">
-          Failed to load {noun}: {error.message}
+          {t.projectsList.failedToLoad(noun, error.message)}
         </GlassCard>
       )}
 
@@ -404,17 +420,21 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
           <p className="text-sm font-medium text-white/70">{emptyTitle}</p>
           <p className="max-w-xs text-xs text-white/35">
             {filtered
-              ? `No ${noun} match the current filters.`
+              ? t.projectsList.noMatchFiltered(lang === "es" ? singularNoun : noun)
               : showArchived
-                ? `${isRecovery ? "Recovery projects" : "Projects"} you archive will show up here.`
+                ? isRecovery
+                  ? t.projectsList.archivedWillShowHereRecovery
+                  : t.projectsList.archivedWillShowHereProjects
                 : isRecovery
-                  ? "Recovery projects will show up here once you have one."
-                  : "New projects will show up here once your pipeline is connected."}
+                  ? t.projectsList.recoveryWillShowHere
+                  : t.projectsList.newWillShowHere}
           </p>
         </GlassCard>
       )}
 
-      {!error && projects.length > 0 && view === "board" && <ProjectsBoard projects={boardProjects} statuses={statuses} />}
+      {!error && projects.length > 0 && view === "board" && (
+        <ProjectsBoard projects={boardProjects} statuses={statuses} lang={lang} />
+      )}
 
       {!error && projects.length > 0 && view !== "board" && (
         <>
@@ -422,30 +442,30 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
             <table className="w-full min-w-[1040px] text-left text-sm">
               <thead>
                 <tr className="border-b border-white/[0.06] text-xs tracking-wide text-white/40 uppercase">
-                  <SortableHeader sortKey="name" label="Name" currentSort={sort} currentDir={dir} />
-                  <SortableHeader sortKey="product" label="Product" currentSort={sort} currentDir={dir} />
-                  <SortableHeader sortKey="stage" label="Stage" currentSort={sort} currentDir={dir} />
-                  <SortableHeader sortKey="status" label="Status" currentSort={sort} currentDir={dir} />
-                  <th className="px-4 py-3 font-medium">Docs</th>
-                  <th className="px-4 py-3 font-medium">Contact Person Project</th>
+                  <SortableHeader sortKey="name" label={t.projectsList.colName} currentSort={sort} currentDir={dir} />
+                  <SortableHeader sortKey="product" label={t.projectsList.colProduct} currentSort={sort} currentDir={dir} />
+                  <SortableHeader sortKey="stage" label={t.projectsList.colStage} currentSort={sort} currentDir={dir} />
+                  <SortableHeader sortKey="status" label={t.projectsList.colStatus} currentSort={sort} currentDir={dir} />
+                  <th className="px-4 py-3 font-medium">{t.projectsList.colDocs}</th>
+                  <th className="px-4 py-3 font-medium">{t.projectsList.colContactPersonProject}</th>
                   <SortableHeader
                     sortKey="total_face_value"
-                    label="Total Face Value"
+                    label={t.projectsList.colTotalFaceValue}
                     currentSort={sort}
                     currentDir={dir}
                     defaultDir="desc"
                   />
-                  <SortableHeader sortKey="next_step_due" label="Next Step" currentSort={sort} currentDir={dir} />
+                  <SortableHeader sortKey="next_step_due" label={t.projectsList.colNextStep} currentSort={sort} currentDir={dir} />
                   <SortableHeader
                     sortKey="last_activity_at"
-                    label="Last Activity"
+                    label={t.projectsList.colLastActivity}
                     currentSort={sort}
                     currentDir={dir}
                     defaultDir="desc"
                   />
                   <SortableHeader
                     sortKey="created_at"
-                    label="Created"
+                    label={t.projectsList.colCreated}
                     currentSort={sort}
                     currentDir={dir}
                     defaultDir="desc"
@@ -466,7 +486,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                       <td className="px-4 py-3 text-white/80 group-hover:text-white">{project.name}</td>
                       <td className="px-4 py-3 text-white/70 group-hover:text-white">
                         <span className="flex flex-wrap items-center gap-1.5">
-                          {project.is_recovery && <RecoveryBadge />}
+                          {project.is_recovery && <RecoveryBadge lang={lang} />}
                           <span>
                             {productLabel ?? "—"}
                             {!project.final_product && options.length > 1 && (
@@ -476,7 +496,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <StageBadge stage={project.stage} />
+                        <StageBadge stage={project.stage} lang={lang} />
                       </td>
                       <td className="px-4 py-3">
                         <StatusSelect projectId={project.id} currentStatus={project.status} statuses={statuses} />
@@ -490,8 +510,8 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                             <span
                               title={
                                 checklist.missingTypes.length > 0
-                                  ? `Missing: ${checklist.missingTypes.join(", ")}`
-                                  : "Complete"
+                                  ? t.projectsList.missingLabel(checklist.missingTypes.join(", "))
+                                  : t.projectsList.complete
                               }
                               className={`font-medium ${checklist.isComplete ? "text-emerald-300" : "text-white/60"}`}
                             >
@@ -513,15 +533,15 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                               {nextStepByProjectId.get(project.id)!.body}
                             </span>
                             {nextStepByProjectId.get(project.id)!.due_date && (
-                              <DueDateBadge dueDate={nextStepByProjectId.get(project.id)!.due_date!} />
+                              <DueDateBadge dueDate={nextStepByProjectId.get(project.id)!.due_date!} lang={lang} />
                             )}
                           </div>
                         ) : (
                           <span className="text-white/30">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-white/50">{formatDateTime(project.last_activity_at)}</td>
-                      <td className="px-4 py-3 text-white/50">{formatDateTime(project.created_at)}</td>
+                      <td className="px-4 py-3 text-white/50">{formatDateTime(project.last_activity_at, lang)}</td>
+                      <td className="px-4 py-3 text-white/50">{formatDateTime(project.created_at, lang)}</td>
                       <td className="px-4 py-3">
                         {!project.matched_contact_id && (
                           <Link
@@ -529,7 +549,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                             className="inline-flex items-center gap-1 text-xs font-medium text-accent-soft hover:underline"
                           >
                             <Users className="h-3.5 w-3.5" />
-                            Find receivers
+                            {t.projectsList.findReceivers}
                           </Link>
                         )}
                       </td>
@@ -548,14 +568,14 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                 <ClickableCard key={project.id} href={`/projects/${project.id}`}>
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <span className="text-sm font-medium text-white/85">{project.name}</span>
-                    <StageBadge stage={project.stage} />
+                    <StageBadge stage={project.stage} lang={lang} />
                   </div>
 
                   <dl className="flex flex-col gap-2 text-sm">
                     <div>
-                      <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Product</dt>
+                      <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">{t.projectsList.colProduct}</dt>
                       <dd className="mt-0.5 flex flex-wrap items-center gap-1.5 text-white/70">
-                        {project.is_recovery && <RecoveryBadge />}
+                        {project.is_recovery && <RecoveryBadge lang={lang} />}
                         <span>
                           {productLabel ?? "—"}
                           {!project.final_product && options.length > 1 && (
@@ -565,14 +585,14 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Status</dt>
+                      <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">{t.projectsList.colStatus}</dt>
                       <dd className="mt-0.5">
                         <StatusSelect projectId={project.id} currentStatus={project.status} statuses={statuses} />
                       </dd>
                     </div>
                     {checklistStatusByProjectId.get(project.id)?.hasChecklist && (
                       <div>
-                        <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Docs</dt>
+                        <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">{t.projectsList.colDocs}</dt>
                         <dd className="mt-0.5">
                           {(() => {
                             const checklist = checklistStatusByProjectId.get(project.id)!;
@@ -581,8 +601,8 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                               <span
                                 title={
                                   checklist.missingTypes.length > 0
-                                    ? `Missing: ${checklist.missingTypes.join(", ")}`
-                                    : "Complete"
+                                    ? t.projectsList.missingLabel(checklist.missingTypes.join(", "))
+                                    : t.projectsList.complete
                                 }
                                 className={`font-medium ${checklist.isComplete ? "text-emerald-300" : "text-white/70"}`}
                               >
@@ -596,7 +616,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                     {project.contact_person_id && (
                       <div>
                         <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
-                          Contact Person Project
+                          {t.projectsList.colContactPersonProject}
                         </dt>
                         <dd className="mt-0.5 text-white/70">
                           {contactPersonNameById.get(project.contact_person_id) ?? "—"}
@@ -606,7 +626,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                     {project.total_face_value != null && (
                       <div>
                         <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
-                          Total Face Value
+                          {t.projectsList.colTotalFaceValue}
                         </dt>
                         <dd className="mt-0.5 text-white/70">
                           {formatMoney(project.total_face_value, project.currency)}
@@ -615,20 +635,20 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                     )}
                     {nextStepByProjectId.has(project.id) && (
                       <div>
-                        <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">Next Step</dt>
+                        <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">{t.projectsList.colNextStep}</dt>
                         <dd className="mt-0.5 flex flex-col gap-1">
                           <span className="text-white/70">{nextStepByProjectId.get(project.id)!.body}</span>
                           {nextStepByProjectId.get(project.id)!.due_date && (
-                            <DueDateBadge dueDate={nextStepByProjectId.get(project.id)!.due_date!} />
+                            <DueDateBadge dueDate={nextStepByProjectId.get(project.id)!.due_date!} lang={lang} />
                           )}
                         </dd>
                       </div>
                     )}
                     <div>
                       <dt className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
-                        Last Activity
+                        {t.projectsList.colLastActivity}
                       </dt>
-                      <dd className="mt-0.5 text-white/50">{formatDateTime(project.last_activity_at)}</dd>
+                      <dd className="mt-0.5 text-white/50">{formatDateTime(project.last_activity_at, lang)}</dd>
                     </div>
                   </dl>
 
@@ -638,7 +658,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                       className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-accent-soft hover:underline"
                     >
                       <Users className="h-3.5 w-3.5" />
-                      Find receivers
+                      {t.projectsList.findReceivers}
                     </Link>
                   )}
                 </ClickableCard>

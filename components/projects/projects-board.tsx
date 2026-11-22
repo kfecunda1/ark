@@ -19,7 +19,8 @@ import { StatusBadge, RecoveryBadge } from "@/components/projects/badges";
 import { DueDateBadge } from "@/components/projects/due-date-badge";
 import { useClickableNavigate } from "@/lib/use-clickable-navigate";
 import { updateProjectStage } from "@/lib/actions/projects";
-import { STAGES, STAGE_LABELS } from "@/lib/projects";
+import { STAGES, stageLabel } from "@/lib/projects";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { ProjectStage, StatusColor, StatusRecord } from "@/lib/types";
 
 export interface BoardProject {
@@ -39,6 +40,7 @@ export interface BoardProject {
 interface ProjectsBoardProps {
   projects: BoardProject[];
   statuses: StatusRecord[];
+  lang?: Lang;
 }
 
 // Duplicated from lib/statuses.ts rather than imported: that module
@@ -83,12 +85,15 @@ function MoveToMenu({
   projectId,
   currentStage,
   onMove,
+  lang,
 }: {
   projectId: string;
   currentStage: ProjectStage;
   onMove: (projectId: string, stage: ProjectStage) => void;
+  lang: Lang;
 }) {
   const [open, setOpen] = useState(false);
+  const t = getDictionary(lang);
 
   return (
     <div className="relative">
@@ -98,7 +103,7 @@ function MoveToMenu({
         onBlur={() => setTimeout(() => setOpen(false), 120)}
         className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-white/60 transition-colors duration-150 ease-out hover:bg-white/[0.08] hover:text-white"
       >
-        Move to…
+        {t.projectsBoard.moveTo}
         <ChevronDown className="h-3 w-3" />
       </button>
       {open && (
@@ -113,7 +118,7 @@ function MoveToMenu({
               }}
               className="cursor-pointer px-3 py-1.5 text-xs text-white/75 transition-colors duration-100 ease-out hover:bg-white/[0.06] hover:text-white"
             >
-              {STAGE_LABELS[s]}
+              {stageLabel(s, lang)}
             </li>
           ))}
         </ul>
@@ -128,13 +133,16 @@ function ProjectBoardCard({
   dragEnabled,
   statusColor,
   onMove,
+  lang,
 }: {
   project: BoardProject;
   currentStage: ProjectStage;
   dragEnabled: boolean;
   statusColor: StatusColor | null;
   onMove: (projectId: string, stage: ProjectStage) => void;
+  lang: Lang;
 }) {
+  const t = getDictionary(lang);
   const handleClick = useClickableNavigate(`/projects/${project.id}`);
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
     id: project.id,
@@ -153,7 +161,7 @@ function ProjectBoardCard({
     >
       <div className="flex items-start justify-between gap-2">
         <p className="min-w-0 truncate text-sm font-medium text-white/85">{project.name}</p>
-        {project.isRecovery && <RecoveryBadge />}
+        {project.isRecovery && <RecoveryBadge lang={lang} />}
       </div>
       <p className="mt-0.5 truncate text-xs text-white/45">{project.productLabel}</p>
 
@@ -167,18 +175,18 @@ function ProjectBoardCard({
 
       <p className="mt-1 text-xs">
         {project.matchedReceiver ? (
-          <span className="text-white/50">Matched with {project.matchedReceiver.label}</span>
+          <span className="text-white/50">{t.projectsBoard.matchedWith(project.matchedReceiver.label)}</span>
         ) : (
-          <span className="font-medium text-amber-300">Not matched</span>
+          <span className="font-medium text-amber-300">{t.dashboard.notMatched}</span>
         )}
       </p>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {project.nextStep ? (
-          <DueDateBadge dueDate={project.nextStep.dueDate} />
+          <DueDateBadge dueDate={project.nextStep.dueDate} lang={lang} />
         ) : (
           <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[11px] text-white/30">
-            No next step
+            {t.projectsBoard.noNextStep}
           </span>
         )}
         {project.checklist && (
@@ -196,13 +204,13 @@ function ProjectBoardCard({
         {project.activeTrancheCount > 0 && (
           <span className="inline-flex items-center gap-1 rounded-full border border-teal-500/25 bg-teal-500/10 px-2 py-0.5 text-[11px] font-medium text-teal-300">
             <Landmark className="h-3 w-3" />
-            {project.activeTrancheCount} active
+            {t.projectsBoard.activeCount(project.activeTrancheCount)}
           </span>
         )}
       </div>
 
       <div className="mt-2.5 flex justify-end" onClick={(e) => e.stopPropagation()}>
-        <MoveToMenu projectId={project.id} currentStage={currentStage} onMove={onMove} />
+        <MoveToMenu projectId={project.id} currentStage={currentStage} onMove={onMove} lang={lang} />
       </div>
     </div>
   );
@@ -215,6 +223,7 @@ function ProjectBoardColumn({
   statusColorByName,
   onMove,
   extraHeader,
+  lang,
 }: {
   stage: ProjectStage;
   // Already grouped by their *displayed* stage (prop stage, overridden
@@ -225,8 +234,10 @@ function ProjectBoardColumn({
   statusColorByName: Map<string, StatusColor>;
   onMove: (projectId: string, stage: ProjectStage) => void;
   extraHeader?: React.ReactNode;
+  lang: Lang;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage, disabled: !dragEnabled });
+  const t = getDictionary(lang);
 
   return (
     <div
@@ -236,7 +247,7 @@ function ProjectBoardColumn({
       }`}
     >
       <div className="flex items-center justify-between gap-2 px-1">
-        <h3 className="text-xs font-medium tracking-wide text-white/50 uppercase">{STAGE_LABELS[stage]}</h3>
+        <h3 className="text-xs font-medium tracking-wide text-white/50 uppercase">{stageLabel(stage, lang)}</h3>
         <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-white/50">
           {projects.length}
         </span>
@@ -244,7 +255,7 @@ function ProjectBoardColumn({
       {extraHeader}
       <div className="flex min-h-[60px] flex-col gap-2">
         {projects.length === 0 ? (
-          <p className="px-1 text-xs text-white/30">No projects.</p>
+          <p className="px-1 text-xs text-white/30">{t.projectsBoard.noProjectsInColumn}</p>
         ) : (
           projects.map((project) => (
             <ProjectBoardCard
@@ -254,6 +265,7 @@ function ProjectBoardColumn({
               dragEnabled={dragEnabled}
               statusColor={project.status ? statusColorByName.get(project.status) ?? null : null}
               onMove={onMove}
+              lang={lang}
             />
           ))
         )}
@@ -262,8 +274,9 @@ function ProjectBoardColumn({
   );
 }
 
-export function ProjectsBoard({ projects, statuses }: ProjectsBoardProps) {
+export function ProjectsBoard({ projects, statuses, lang = "en" }: ProjectsBoardProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const isCoarsePointer = useCoarsePointer();
   const dragEnabled = !isCoarsePointer;
 
@@ -298,7 +311,7 @@ export function ProjectsBoard({ projects, statuses }: ProjectsBoardProps) {
 
     updateProjectStage(projectId, targetStage).then((result) => {
       if (result.error) {
-        setError(result.error);
+        setError(resolveError(result.error, lang));
         setPendingMoves((prev) => {
           const next = new Map(prev);
           next.delete(projectId);
@@ -345,6 +358,7 @@ export function ProjectsBoard({ projects, statuses }: ProjectsBoardProps) {
       dragEnabled={dragEnabled}
       statusColorByName={statusColorByName}
       onMove={handleMove}
+      lang={lang}
       extraHeader={
         stage === "status" ? (
           <label className="flex items-center gap-1.5 px-1 text-[11px] text-white/40">
@@ -354,7 +368,7 @@ export function ProjectsBoard({ projects, statuses }: ProjectsBoardProps) {
               onChange={(e) => setHideClosed(e.target.checked)}
               className="h-3 w-3 rounded border-white/20 bg-white/[0.03] accent-accent"
             />
-            Hide completed/lost{hiddenClosedCount > 0 ? ` (${hiddenClosedCount})` : ""}
+            {t.projectsBoard.hideCompletedLost(hiddenClosedCount)}
           </label>
         ) : undefined
       }

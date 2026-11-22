@@ -1,4 +1,4 @@
-import { LOCALE } from "@/lib/format";
+import { formatDateParts, type Lang } from "@/lib/format";
 import type { Currency, ProjectPriority, ProjectStage, ProjectTranche } from "@/lib/types";
 
 // Kept in sync by hand with the CHECK constraint added by
@@ -14,6 +14,17 @@ export const STAGE_LABELS: Record<ProjectStage, string> = {
   match: "Match",
   status: "Status",
 };
+
+const STAGE_LABELS_ES: Record<ProjectStage, string> = {
+  new: "Nuevo",
+  documents_received: "Documentos recibidos",
+  match: "Coincidencia",
+  status: "Estado",
+};
+
+export function stageLabel(stage: ProjectStage, lang: Lang = "en"): string {
+  return lang === "es" ? STAGE_LABELS_ES[stage] : STAGE_LABELS[stage];
+}
 
 // Tranche 1 and 2 are permanent slots the detail page always shows,
 // even with no project_tranches row behind them yet; 3+ only show up
@@ -39,6 +50,17 @@ export const PRIORITY_LABELS: Record<ProjectPriority, string> = {
   urgent: "Urgent",
 };
 
+const PRIORITY_LABELS_ES: Record<ProjectPriority, string> = {
+  low: "Baja",
+  medium: "Media",
+  high: "Alta",
+  urgent: "Urgente",
+};
+
+export function priorityLabel(priority: ProjectPriority, lang: Lang = "en"): string {
+  return lang === "es" ? PRIORITY_LABELS_ES[priority] : PRIORITY_LABELS[priority];
+}
+
 // Date-only Postgres columns (e.g. "2026-09-10") must not be parsed with
 // `new Date(str)`, which treats them as UTC midnight and can shift a day
 // in local timezones behind UTC. Shared by tranche sent_on display and
@@ -55,12 +77,9 @@ export function parseDateOnly(value: string): Date {
 // *different* fixed timezone when formatting could shift the displayed
 // day backwards or forwards. Locale is still pinned, since that only
 // affects word choice/ordering, never the underlying date value.
-export function formatDateOnly(value: string): string {
-  return parseDateOnly(value).toLocaleDateString(LOCALE, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+export function formatDateOnly(value: string, lang: Lang = "en"): string {
+  const d = parseDateOnly(value);
+  return formatDateParts(d.getDate(), d.getMonth() + 1, d.getFullYear(), lang);
 }
 
 // Note reminders only below — a project itself has no follow-up/due-date
@@ -74,10 +93,14 @@ export function isFollowUpDue(dueDate: string | null): boolean {
   return parseDateOnly(dueDate).getTime() <= today.getTime();
 }
 
-export function followUpLabel(dueDate: string): string {
+export function followUpLabel(dueDate: string, lang: Lang = "en"): string {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diffDays = Math.round((today.getTime() - parseDateOnly(dueDate).getTime()) / 86_400_000);
+  if (lang === "es") {
+    if (diffDays <= 0) return "Vence hoy";
+    return diffDays === 1 ? "Vencido hace 1 día" : `Vencido hace ${diffDays} días`;
+  }
   if (diffDays <= 0) return "Due today";
   if (diffDays === 1) return "1 day overdue";
   return `${diffDays} days overdue`;
@@ -120,14 +143,15 @@ export function daysSinceInstant(isoString: string): number {
   return Math.floor((Date.now() - new Date(isoString).getTime()) / 86_400_000);
 }
 
-export function dueDateLabel(dueDate: string): string {
+export function dueDateLabel(dueDate: string, lang: Lang = "en"): string {
   const tone = dueDateTone(dueDate);
-  if (tone === "today") return "Due today";
+  if (tone === "today") return lang === "es" ? "Vence hoy" : "Due today";
   if (tone === "overdue") {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const diffDays = Math.round((today.getTime() - parseDateOnly(dueDate).getTime()) / 86_400_000);
+    if (lang === "es") return diffDays === 1 ? "Vencido hace 1 día" : `Vencido hace ${diffDays} días`;
     return diffDays === 1 ? "1 day overdue" : `${diffDays} days overdue`;
   }
-  return `Due ${formatDateOnly(dueDate)}`;
+  return lang === "es" ? `Vence el ${formatDateOnly(dueDate, lang)}` : `Due ${formatDateOnly(dueDate)}`;
 }

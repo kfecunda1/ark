@@ -19,12 +19,16 @@ import { getAppSettings } from "@/lib/app-settings";
 import { getStorageUsedBytes } from "@/lib/storage-usage";
 import { getRequiredDocumentsByProduct } from "@/lib/checklists";
 import { listUsers } from "@/lib/actions/users";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary, resolveError } from "@/lib/i18n";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
 
   let isAdmin = false;
   let fullName: string | null = null;
@@ -80,107 +84,115 @@ export default async function SettingsPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Settings</h1>
-        <p className="mt-1 text-sm text-white/45">Workspace and account preferences.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">{t.settings.title}</h1>
+        <p className="mt-1 text-sm text-white/45">{t.settings.subtitle}</p>
       </div>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">My Profile</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.settings.myProfile}</h2>
         <GlassCard interactive={false} className="p-6">
           <MyProfileForm
             fullName={fullName}
             telegramUserId={telegramUserId}
             briefingEnabled={briefingEnabled}
             briefingWeekdaysOnly={briefingWeekdaysOnly}
+            language={lang}
           />
         </GlassCard>
       </div>
 
       <div className="mt-6 max-w-sm">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Change Password</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.settings.changePassword}</h2>
         <GlassCard interactive={false} className="p-6">
-          <ChangePasswordForm />
+          <ChangePasswordForm lang={lang} />
         </GlassCard>
       </div>
 
       {isAdmin && (
         <>
           <div className="mt-6">
-            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Products</h2>
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.settings.products}</h2>
             <GlassCard interactive={false} className="p-6">
-              <ManageableList table="products" items={products} itemLabel="product" />
+              <ManageableList table="products" items={products} itemLabel="product" lang={lang} />
             </GlassCard>
           </div>
 
           <div className="mt-6">
-            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Document Types</h2>
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">
+              {t.settings.documentTypes}
+            </h2>
             <GlassCard interactive={false} className="p-6">
-              <ManageableList table="document_types" items={documentTypes} itemLabel="document type" />
+              <ManageableList table="document_types" items={documentTypes} itemLabel="document type" withSpanishName lang={lang} />
             </GlassCard>
           </div>
 
           <div id="document-checklists" className="mt-6">
-            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Document Checklists</h2>
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">
+              {t.settings.documentChecklists}
+            </h2>
             <GlassCard interactive={false} className="p-6">
               <DocumentChecklistGrid
                 products={activeProducts}
                 documentTypes={activeDocumentTypes}
                 requiredByProduct={requiredByProduct}
                 autoAdvanceOnDocuments={appSettings?.auto_advance_on_documents ?? true}
+                lang={lang}
               />
             </GlassCard>
           </div>
 
           <div className="mt-6">
-            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Statuses</h2>
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.settings.statuses}</h2>
             <GlassCard interactive={false} className="p-6">
-              <ManageableStatusList statuses={statuses} />
+              <ManageableStatusList statuses={statuses} lang={lang} />
             </GlassCard>
           </div>
 
           <div className="mt-6">
-            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Groups</h2>
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.settings.groups}</h2>
             <GlassCard interactive={false} className="p-6">
-              <ManageablePayoutGroupList groups={payoutGroups} />
+              <ManageablePayoutGroupList groups={payoutGroups} lang={lang} />
             </GlassCard>
           </div>
 
           <div className="mt-6">
-            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Defaults</h2>
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.settings.defaults}</h2>
             <GlassCard interactive={false} className="p-6">
-              {appSettings && <DefaultsForm settings={appSettings} />}
+              {appSettings && <DefaultsForm settings={appSettings} lang={lang} />}
             </GlassCard>
           </div>
 
           <div className="mt-6">
-            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Users</h2>
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.settings.users}</h2>
             <GlassCard interactive={false} className="p-6">
               {usersResult.error ? (
-                <p className="text-sm text-red-300">Failed to load users: {usersResult.error}</p>
+                <p className="text-sm text-red-300">{t.settingsUsers.failedToLoadUsers(resolveError(usersResult.error, lang) ?? usersResult.error)}</p>
               ) : (
-                user && <UsersSection users={usersResult.users} currentUserId={user.id} />
+                user && <UsersSection users={usersResult.users} currentUserId={user.id} lang={lang} />
               )}
             </GlassCard>
           </div>
 
           <div className="mt-6">
-            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Storage</h2>
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.settings.storage}</h2>
             <GlassCard interactive={false} className="p-6">
-              <StorageMeter usedBytes={storageUsedBytes} />
+              <StorageMeter usedBytes={storageUsedBytes} lang={lang} />
             </GlassCard>
           </div>
 
           <div className="mt-6">
-            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Telegram bot</h2>
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">
+              {t.settings.telegramBot}
+            </h2>
             <GlassCard interactive={false} className="p-6">
-              <TelegramBotPanel />
+              <TelegramBotPanel lang={lang} />
             </GlassCard>
           </div>
 
           <div className="mt-6">
-            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Backup</h2>
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.settings.backup}</h2>
             <GlassCard interactive={false} className="p-6">
-              <ExportBackupButton />
+              <ExportBackupButton lang={lang} />
             </GlassCard>
           </div>
         </>

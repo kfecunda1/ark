@@ -28,8 +28,9 @@ import { getReceiverIntermediaryPersonIds } from "@/lib/actions/intermediaries";
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
-import { CURRENCIES, STAGES, STAGE_LABELS, PRIORITIES, PRIORITY_LABELS } from "@/lib/projects";
+import { CURRENCIES, STAGES, stageLabel, PRIORITIES, priorityLabel } from "@/lib/projects";
 import { amountInWords } from "@/lib/money";
+import { catalogLabel, getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { Currency, DocumentTypeRecord, Product, Project, ProjectProduct, ProjectStage, StatusRecord } from "@/lib/types";
 
 interface ProjectFormProps {
@@ -67,6 +68,7 @@ interface ProjectFormProps {
   // value untouched either way; there's just no control to change it
   // while this is off.
   showRecovery: boolean;
+  lang?: Lang;
 }
 
 const initialState: ProjectFormState = { error: null };
@@ -90,8 +92,10 @@ export function ProjectForm({
   defaultCurrency,
   defaultRecovery,
   showRecovery,
+  lang = "en",
 }: ProjectFormProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
 
   // Edit mode keeps the existing server-action/useActionState flow — it
   // redirects to the project on success, same as before.
@@ -246,7 +250,7 @@ export function ProjectForm({
       const current = ratioRealRef.current.trim();
       if (!current) {
         setRatioReal(ratio);
-        setAutoFillMessage({ tone: "filled", text: `Real ratio filled from ${contactName} (${product}).` });
+        setAutoFillMessage({ tone: "filled", text: t.matchedReceiver.ratioFilled(contactName, product) });
       } else if (current !== ratio) {
         // Never overwritten automatically — only the "Use <theirRatio>"
         // button below ever changes ratioReal from here.
@@ -260,6 +264,7 @@ export function ProjectForm({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t is a stable lookup derived from lang, which this form never changes after mount
   }, [matchedContactId, chosenProductsKey, isRecovery]);
 
   async function handleCreateSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -285,6 +290,7 @@ export function ProjectForm({
         const matches = await findDuplicateProjects({
           matchedContactId: matchedContact,
           productOptions: chosenProducts,
+          lang,
         });
         if (matches.length > 0) {
           setDuplicateMatches(matches);
@@ -297,7 +303,7 @@ export function ProjectForm({
     const result = await createProjectWithId(formData);
 
     if (result.error || !result.id) {
-      setCreateError(result.error ?? "Failed to create project.");
+      setCreateError(result.error ? resolveError(result.error, lang) : t.projectForm.failedToCreate);
       setCreateStatus("idle");
       return;
     }
@@ -343,7 +349,7 @@ export function ProjectForm({
     mode === "edit"
       ? { action: editFormAction, onSubmit: () => disableSubmitButton(submitButtonRef) }
       : { onSubmit: handleCreateSubmit };
-  const error = mode === "edit" ? editState?.error : createError;
+  const error = mode === "edit" ? resolveError(editState?.error ?? null, lang) : createError;
   const isPending = mode === "edit" ? isEditPending : createStatus !== "idle";
 
   return (
@@ -351,7 +357,7 @@ export function ProjectForm({
       <GlassCard interactive={false} className="grid grid-cols-1 gap-5 p-6 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label className={labelClass} htmlFor="name">
-            Name *
+            {t.projectForm.nameLabel}
           </label>
           <input
             id="name"
@@ -363,8 +369,8 @@ export function ProjectForm({
         </div>
 
         <div className="sm:col-span-2">
-          <label className={labelClass}>Products *</label>
-          <ProductOptionsPicker products={products} value={productOptions} onChange={setProductOptions} />
+          <label className={labelClass}>{t.projectForm.productsLabel}</label>
+          <ProductOptionsPicker products={products} value={productOptions} onChange={setProductOptions} lang={lang} />
         </div>
 
         {showRecovery ? (
@@ -377,7 +383,7 @@ export function ProjectForm({
                 onChange={(e) => setIsRecovery(e.target.checked)}
                 className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
               />
-              Recovery
+              {t.recoveryToggle.label}
             </label>
           </div>
         ) : (
@@ -392,12 +398,12 @@ export function ProjectForm({
 
         <div>
           <label className={labelClass} htmlFor="priority">
-            Priority
+            {t.projectForm.priorityLabel}
           </label>
           <select id="priority" name="priority" defaultValue={project?.priority ?? "medium"} className={fieldClass}>
             {PRIORITIES.map((priority) => (
               <option key={priority} value={priority} className="bg-[#0a0e17]">
-                {PRIORITY_LABELS[priority]}
+                {priorityLabel(priority, lang)}
               </option>
             ))}
           </select>
@@ -405,7 +411,7 @@ export function ProjectForm({
 
         <div>
           <label className={labelClass} htmlFor="stage">
-            Stage
+            {t.projectForm.stageLabel}
           </label>
           <select
             id="stage"
@@ -416,7 +422,7 @@ export function ProjectForm({
           >
             {STAGES.map((s) => (
               <option key={s} value={s} className="bg-[#0a0e17]">
-                {STAGE_LABELS[s]}
+                {stageLabel(s, lang)}
               </option>
             ))}
           </select>
@@ -425,7 +431,7 @@ export function ProjectForm({
         {stage === "status" && (
           <div>
             <label className={labelClass} htmlFor="status">
-              Status *
+              {t.projectForm.statusLabel}
             </label>
             <select
               id="status"
@@ -444,7 +450,7 @@ export function ProjectForm({
                 .sort((a, b) => a.sort_order - b.sort_order)
                 .map((s) => (
                   <option key={s.id} value={s.name} className="bg-[#0a0e17]">
-                    {s.name}
+                    {catalogLabel(s, lang)}
                   </option>
                 ))}
             </select>
@@ -454,16 +460,18 @@ export function ProjectForm({
         <div className="sm:col-span-2">
           <EntityPicker
             name="matched_contact_id"
-            label="Matched With"
+            label={t.projectForm.matchedWithLabel}
             options={receivers}
             defaultId={project?.matched_contact_id}
-            entityNoun="receiver"
+            entityNoun={lang === "es" ? "receptor" : "receiver"}
+            entityNounPlural={lang === "es" ? "receptores" : "receivers"}
+            lang={lang}
             onSelect={(receiver) => setMatchedContactId(receiver?.id ?? null)}
             onQuickCreate={async (name) => {
               const result = await quickCreateContact({ full_name: name });
               return {
                 option: result.contact ? { id: result.contact.id, label: result.contact.full_name } : null,
-                error: result.error,
+                error: result.error ? resolveError(result.error, lang) : null,
               };
             }}
           />
@@ -477,13 +485,14 @@ export function ProjectForm({
               onMoveUp={(personId) => moveIntermediary(personId, "up")}
               onMoveDown={(personId) => moveIntermediary(personId, "down")}
               submitAsHiddenFields
+              lang={lang}
               onQuickCreate={async (name) => {
                 const result = await quickCreatePerson({ name });
                 return {
                   option: result.person
                     ? { id: result.person.id, label: [result.person.first_name, result.person.last_name].filter(Boolean).join(" ") }
                     : null,
-                  error: result.error,
+                  error: result.error ? resolveError(result.error, lang) : null,
                 };
               }}
             />
@@ -493,17 +502,19 @@ export function ProjectForm({
         <div>
           <EntityPicker
             name="contact_person_id"
-            label="Contact Person Project"
+            label={t.projectForm.contactPersonProjectLabel}
             options={people}
             defaultId={project?.contact_person_id}
-            entityNoun="contact"
+            entityNoun={lang === "es" ? "contacto" : "contact"}
+            entityNounPlural={lang === "es" ? "contactos" : "contacts"}
+            lang={lang}
             onQuickCreate={async (name) => {
               const result = await quickCreatePerson({ name });
               return {
                 option: result.person
                   ? { id: result.person.id, label: [result.person.first_name, result.person.last_name].filter(Boolean).join(" ") }
                   : null,
-                error: result.error,
+                error: result.error ? resolveError(result.error, lang) : null,
               };
             }}
           />
@@ -511,12 +522,12 @@ export function ProjectForm({
 
         <div>
           <label className={labelClass} htmlFor="ratio_presented">
-            Ratio Presented
+            {t.projectForm.ratioPresentedLabel}
           </label>
           <input
             id="ratio_presented"
             name="ratio_presented"
-            placeholder="e.g. 70/30"
+            placeholder={t.projectForm.ratioPlaceholder}
             defaultValue={project?.ratio_presented ?? ""}
             className={fieldClass}
           />
@@ -524,12 +535,12 @@ export function ProjectForm({
 
         <div>
           <label className={labelClass} htmlFor="ratio_real">
-            Ratio Real
+            {t.projectForm.ratioRealLabel}
           </label>
           <input
             id="ratio_real"
             name="ratio_real"
-            placeholder="e.g. 70/30"
+            placeholder={t.projectForm.ratioPlaceholder}
             value={ratioReal}
             onChange={(e) => setRatioReal(e.target.value)}
             className={fieldClass}
@@ -540,8 +551,12 @@ export function ProjectForm({
           {autoFillMessage?.tone === "differs" && (
             <div className="mt-1.5 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5">
               <p className="text-xs text-amber-200">
-                {autoFillMessage.contactName}&apos;s ratio for {autoFillMessage.productType} is{" "}
-                {autoFillMessage.theirRatio}. Current real ratio is {autoFillMessage.currentRatio}.
+                {t.matchedReceiver.ratioDiffers(
+                  autoFillMessage.contactName,
+                  autoFillMessage.productType,
+                  autoFillMessage.theirRatio,
+                  autoFillMessage.currentRatio
+                )}
               </p>
               <div className="mt-2 flex gap-2">
                 <button
@@ -552,28 +567,33 @@ export function ProjectForm({
                   }}
                   className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover"
                 >
-                  Use {autoFillMessage.theirRatio}
+                  {t.matchedReceiver.useRatio(autoFillMessage.theirRatio)}
                 </button>
                 <button
                   type="button"
                   onClick={() => setAutoFillMessage(null)}
                   className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-white/80 transition-colors duration-150 ease-out hover:bg-white/[0.08]"
                 >
-                  Keep {autoFillMessage.currentRatio}
+                  {t.matchedReceiver.keepRatio(autoFillMessage.currentRatio)}
                 </button>
               </div>
             </div>
           )}
           {autoFillMessage?.tone === "missing" && (
             <p className="mt-1.5 text-xs text-amber-300">
-              {autoFillMessage.contactName} has no {autoFillMessage.isRecovery ? "recovery ratio" : "ratio"} set for{" "}
-              {autoFillMessage.productType}.
+              {t.matchedReceiver.noRatioSet(
+                autoFillMessage.contactName,
+                autoFillMessage.isRecovery ? t.matchedReceiver.recoveryRatioNoun : t.matchedReceiver.ratioNoun,
+                autoFillMessage.productType
+              )}
             </p>
           )}
           {infoRatios && (
             <div className="mt-1.5 rounded-lg border border-white/10 bg-white/[0.04] p-2.5">
               <p className="text-xs text-white/50">
-                Matched contact&apos;s {isRecovery ? "recovery ratio" : "ratio"} on record, per option (not filled yet):
+                {t.productOptions.infoRatiosHint(
+                  isRecovery ? t.matchedReceiver.recoveryRatioNoun : t.matchedReceiver.ratioNoun
+                )}
               </p>
               <ul className="mt-1 flex flex-col gap-0.5">
                 {Object.entries(infoRatios).map(([product, ratio]) => (
@@ -588,7 +608,7 @@ export function ProjectForm({
 
         <div>
           <label className={labelClass} htmlFor="total_face_value">
-            Total Face Value
+            {t.projectForm.totalFaceValueLabel}
           </label>
           <MoneyInput
             id="total_face_value"
@@ -602,7 +622,7 @@ export function ProjectForm({
 
         <div>
           <label className={labelClass} htmlFor="currency">
-            Currency
+            {t.projectForm.currencyLabel}
           </label>
           <select
             id="currency"
@@ -622,20 +642,22 @@ export function ProjectForm({
 
       {mode === "create" && (
         <GlassCard interactive={false} className="p-6">
-          <p className={labelClass}>Documents</p>
+          <p className={labelClass}>{t.searchGroups.document}</p>
           <StagedDocumentPicker
             documents={stagedDocuments}
             onChange={setStagedDocuments}
             documentTypes={documentTypes}
+            lang={lang}
           />
         </GlassCard>
       )}
 
       {duplicateMatches && duplicateMatches.length > 0 && (
         <DuplicateWarningBanner
-          heading="A project with this same matched receiver and an overlapping product already exists:"
+          heading={t.projectForm.duplicateHeading}
           matches={duplicateMatches.map((m) => ({ id: m.id, href: `/projects/${m.id}`, label: m.label, meta: m.meta }))}
           onAddAnyway={handleAddAnyway}
+          lang={lang}
         />
       )}
 
@@ -654,19 +676,19 @@ export function ProjectForm({
         >
           {mode === "edit"
             ? isEditPending
-              ? "Saving…"
-              : "Save changes"
+              ? t.common.saving
+              : t.projectForm.saveChanges
             : createStatus === "uploading"
-              ? "Uploading documents…"
+              ? t.projectForm.uploadingDocuments
               : createStatus === "creating"
-                ? "Creating…"
-                : "Create project"}
+                ? t.common.creating
+                : t.projectForm.createProject}
         </button>
         <Link
           href={mode === "edit" && project ? `/projects/${project.id}` : "/projects"}
           className="text-sm font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
         >
-          Cancel
+          {t.common.cancel}
         </Link>
       </div>
     </form>

@@ -12,6 +12,7 @@ import {
 import { addProjectNote, deleteProjectNote, setNoteReminderDone, updateProjectNote } from "@/lib/actions/notes";
 import { DueDateBadge } from "@/components/projects/due-date-badge";
 import { formatDateTime } from "@/lib/format";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { Note, ProjectStep, ProjectStepKind } from "@/lib/types";
 
 // A project's timeline is step_taken/next_step entries (project_steps)
@@ -38,6 +39,7 @@ interface ProjectTimelineProps {
   // pattern components/projects/project-documents.tsx's
   // initialDocumentType uses.
   initialComposerKind?: ComposerKind | null;
+  lang?: Lang;
 }
 
 const KIND_ICON: Record<ComposerKind, typeof CalendarClock> = {
@@ -46,11 +48,13 @@ const KIND_ICON: Record<ComposerKind, typeof CalendarClock> = {
   note: StickyNote,
 };
 
-const KIND_LABEL: Record<ComposerKind, string> = {
-  step_taken: "Step taken",
-  next_step: "Next step",
-  note: "Note",
-};
+function kindLabel(t: ReturnType<typeof getDictionary>): Record<ComposerKind, string> {
+  return {
+    step_taken: t.projectTimeline.stepTaken,
+    next_step: t.projectTimeline.nextStep,
+    note: t.projectTimeline.note,
+  };
+}
 
 const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
@@ -60,9 +64,12 @@ interface TimelineRowProps {
   projectId: string;
   authorName: string;
   onRefresh: () => void;
+  lang: Lang;
 }
 
-function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowProps) {
+function TimelineRow({ entry, projectId, authorName, onRefresh, lang }: TimelineRowProps) {
+  const t = getDictionary(lang);
+  const KIND_LABEL = kindLabel(t);
   const isNote = entry.kind === "note";
   const step = entry.kind === "step" ? entry.data : null;
   const note = entry.kind === "note" ? entry.data : null;
@@ -85,13 +92,13 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
           ? await updateProjectStep(step.id, projectId, body, step.kind === "next_step" ? dueDate || null : null)
           : await updateProjectNote(note!.id, projectId, body, dueDate || null);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setEditing(false);
         onRefresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -104,13 +111,13 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
           ? await deleteProjectStep(step.id, projectId)
           : await deleteProjectNote(note!.id, projectId);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           setConfirmingDelete(false);
           return;
         }
         onRefresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
         setConfirmingDelete(false);
       }
     });
@@ -124,12 +131,12 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
           ? await setProjectStepDone(step.id, projectId, done)
           : await setNoteReminderDone(note!.id, done);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         onRefresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -152,7 +159,11 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
         />
         {(step ? step.kind === "next_step" : true) && (
           <div className="mt-2">
-            {isNote && <label className="mb-1 block text-xs font-medium text-white/55">Reminder date (optional)</label>}
+            {isNote && (
+              <label className="mb-1 block text-xs font-medium text-white/55">
+                {t.projectTimeline.reminderDateOptional}
+              </label>
+            )}
             <input
               type="date"
               value={dueDate}
@@ -170,7 +181,7 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
             disabled={isPending}
             className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isPending ? "Saving…" : "Save"}
+            {isPending ? t.common.saving : t.common.save}
           </button>
           <button
             type="button"
@@ -183,7 +194,7 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
             disabled={isPending}
             className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
           >
-            Cancel
+            {t.common.cancel}
           </button>
         </div>
       </div>
@@ -198,7 +209,7 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
           checked={checked}
           onChange={(e) => handleToggleDone(e.target.checked)}
           disabled={isPending}
-          aria-label={checked ? "Mark as not done" : "Mark as done"}
+          aria-label={checked ? t.projectTimeline.markAsNotDone : t.projectTimeline.markAsDone}
           className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
         />
       ) : (
@@ -216,9 +227,9 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
           {body}
         </p>
         <p className="mt-1 text-xs text-white/35">
-          {authorName} · {formatDateTime(createdAt)}
-          {step && step.done && doneAt && <> · Done {formatDateTime(doneAt)}</>}
-          {note && note.is_reminder && note.reminder_done && <> · Reminder done</>}
+          {authorName} · {formatDateTime(createdAt, lang)}
+          {step && step.done && doneAt && <> · {t.projectTimeline.doneAt(formatDateTime(doneAt, lang))}</>}
+          {note && note.is_reminder && note.reminder_done && <> · {t.projectTimeline.reminderDone}</>}
         </p>
         {error && <p className="mt-1 text-xs text-red-300">{error}</p>}
       </div>
@@ -232,7 +243,7 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
               disabled={isPending}
               className="rounded-md bg-red-500 px-2.5 py-1 text-xs font-medium whitespace-nowrap text-white transition-colors duration-150 ease-out hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isPending ? "Deleting…" : "Confirm"}
+              {isPending ? t.common.deleting : t.projectTimeline.confirm}
             </button>
             <button
               type="button"
@@ -240,7 +251,7 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
               disabled={isPending}
               className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
             >
-              Cancel
+              {t.common.cancel}
             </button>
           </>
         ) : (
@@ -248,7 +259,7 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
             <button
               type="button"
               onClick={() => setEditing(true)}
-              aria-label="Edit entry"
+              aria-label={t.projectTimeline.editEntry}
               className="rounded-md p-1.5 text-white/30 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white/70"
             >
               <Pencil className="h-3.5 w-3.5" />
@@ -256,7 +267,7 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
             <button
               type="button"
               onClick={() => setConfirmingDelete(true)}
-              aria-label="Delete entry"
+              aria-label={t.projectTimeline.deleteEntry}
               className="rounded-md p-1.5 text-white/30 transition-colors duration-150 ease-out hover:bg-red-500/10 hover:text-red-300"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -270,8 +281,17 @@ function TimelineRow({ entry, projectId, authorName, onRefresh }: TimelineRowPro
 
 const QUICK_ADD_KINDS: ComposerKind[] = ["step_taken", "next_step", "note"];
 
-export function ProjectTimeline({ projectId, steps, notes, authorNameById, initialComposerKind }: ProjectTimelineProps) {
+export function ProjectTimeline({
+  projectId,
+  steps,
+  notes,
+  authorNameById,
+  initialComposerKind,
+  lang = "en",
+}: ProjectTimelineProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
+  const KIND_LABEL = kindLabel(t);
   const [composerKind, setComposerKind] = useState<ComposerKind | null>(initialComposerKind ?? null);
   const [body, setBody] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -297,7 +317,7 @@ export function ProjectTimeline({ projectId, steps, notes, authorNameById, initi
             ? await addProjectNote(projectId, body, dueDate || null)
             : await createProjectStep(projectId, composerKind, body, composerKind === "next_step" ? dueDate || null : null);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setComposerKind(null);
@@ -305,14 +325,14 @@ export function ProjectTimeline({ projectId, steps, notes, authorNameById, initi
         setDueDate("");
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
 
   function authorNameFor(entry: TimelineEntry): string {
     const authorId = entry.kind === "step" ? entry.data.author_id : entry.data.created_by;
-    return (authorId && authorNameById[authorId]) || "Unknown user";
+    return (authorId && authorNameById[authorId]) || t.projectTimeline.unknownUser;
   }
 
   // Pinned: still-open next steps, earliest due date first. Everything
@@ -357,17 +377,17 @@ export function ProjectTimeline({ projectId, steps, notes, authorNameById, initi
             rows={2}
             placeholder={
               composerKind === "next_step"
-                ? "What's the next step?"
+                ? t.projectTimeline.nextStepPlaceholder
                 : composerKind === "step_taken"
-                  ? "What step was taken?"
-                  : "Note…"
+                  ? t.projectTimeline.stepTakenPlaceholder
+                  : t.projectTimeline.notePlaceholder
             }
             className={fieldClass}
             disabled={isPending}
           />
           {composerKind === "next_step" && (
             <div className="mt-2">
-              <label className="mb-1 block text-xs font-medium text-white/55">Due date *</label>
+              <label className="mb-1 block text-xs font-medium text-white/55">{t.projectTimeline.dueDateRequired}</label>
               <input
                 type="date"
                 value={dueDate}
@@ -379,7 +399,9 @@ export function ProjectTimeline({ projectId, steps, notes, authorNameById, initi
           )}
           {composerKind === "note" && (
             <div className="mt-2">
-              <label className="mb-1 block text-xs font-medium text-white/55">Reminder date (optional)</label>
+              <label className="mb-1 block text-xs font-medium text-white/55">
+                {t.projectTimeline.reminderDateOptional}
+              </label>
               <input
                 type="date"
                 value={dueDate}
@@ -397,7 +419,7 @@ export function ProjectTimeline({ projectId, steps, notes, authorNameById, initi
               disabled={isPending}
               className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isPending ? "Saving…" : "Save"}
+              {isPending ? t.common.saving : t.common.save}
             </button>
             <button
               type="button"
@@ -405,7 +427,7 @@ export function ProjectTimeline({ projectId, steps, notes, authorNameById, initi
               disabled={isPending}
               className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
             >
-              Cancel
+              {t.common.cancel}
             </button>
           </div>
         </div>
@@ -413,7 +435,7 @@ export function ProjectTimeline({ projectId, steps, notes, authorNameById, initi
 
       {openNextSteps.length > 0 && (
         <div>
-          <p className="mb-2 text-[11px] font-medium tracking-wide text-white/35 uppercase">Open Next Steps</p>
+          <p className="mb-2 text-[11px] font-medium tracking-wide text-white/35 uppercase">{t.projectTimeline.openNextSteps}</p>
           <div className="flex flex-col gap-2">
             {openNextSteps.map((entry) => (
               <TimelineRow
@@ -422,6 +444,7 @@ export function ProjectTimeline({ projectId, steps, notes, authorNameById, initi
                 projectId={projectId}
                 authorName={authorNameFor(entry)}
                 onRefresh={() => router.refresh()}
+                lang={lang}
               />
             ))}
           </div>
@@ -429,9 +452,9 @@ export function ProjectTimeline({ projectId, steps, notes, authorNameById, initi
       )}
 
       <div>
-        <p className="mb-2 text-[11px] font-medium tracking-wide text-white/35 uppercase">History</p>
+        <p className="mb-2 text-[11px] font-medium tracking-wide text-white/35 uppercase">{t.projectTimeline.history}</p>
         {historyEntries.length === 0 ? (
-          <p className="text-sm text-white/35">No timeline entries yet.</p>
+          <p className="text-sm text-white/35">{t.projectTimeline.noEntriesYet}</p>
         ) : (
           <div className="flex flex-col gap-2">
             {historyEntries.map((entry) => (
@@ -441,6 +464,7 @@ export function ProjectTimeline({ projectId, steps, notes, authorNameById, initi
                 projectId={projectId}
                 authorName={authorNameFor(entry)}
                 onRefresh={() => router.refresh()}
+                lang={lang}
               />
             ))}
           </div>

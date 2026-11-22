@@ -5,6 +5,7 @@ import { EntityPicker, type EntityOption } from "@/components/entity-picker";
 import { DuplicateWarningBanner } from "@/components/duplicate-warning-banner";
 import { fileInboxItemAsDocument, fileInboxItemAsNote, type InboxDuplicateMatch } from "@/lib/actions/inbox";
 import { createClient } from "@/lib/supabase/client";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { DocumentTypeRecord, ProjectTranche } from "@/lib/types";
 
 export interface FileIntoDestination {
@@ -31,6 +32,7 @@ interface FileIntoPanelProps {
   // the moment filing actually succeeds.
   onFiled: (destinationLabel: string) => void;
   onCancel: () => void;
+  lang?: Lang;
 }
 
 const TRANCHE_GENERAL = "general";
@@ -45,7 +47,9 @@ export function FileIntoPanel({
   initialDocumentType,
   onFiled,
   onCancel,
+  lang = "en",
 }: FileIntoPanelProps) {
+  const t = getDictionary(lang);
   const [destinationType, setDestinationType] = useState<"project" | "contact">(initialDestination?.type ?? "project");
   const [selectedProject, setSelectedProject] = useState<EntityOption | null>(
     initialDestination?.type === "project" ? { id: initialDestination.id, label: initialDestination.label } : null
@@ -98,7 +102,7 @@ export function FileIntoPanel({
   async function handleFile(confirmDuplicate: boolean) {
     const target = currentTarget();
     if (!target) {
-      setError(destinationType === "project" ? "Pick a project first." : "Pick a receiver first.");
+      setError(destinationType === "project" ? t.inboxFile.pickProjectFirst : t.inboxFile.pickReceiverFirst);
       return;
     }
 
@@ -115,7 +119,11 @@ export function FileIntoPanel({
           confirmDuplicate
         );
         if (result.error) {
-          setError(result.error);
+          setError(
+            result.error === "duplicateSameTarget"
+              ? t.inboxFile.duplicateSameTarget(result.duplicateFileName ?? "")
+              : resolveError(result.error, lang)
+          );
           return;
         }
         if (result.needsConfirm) {
@@ -125,7 +133,7 @@ export function FileIntoPanel({
       } else {
         const result = await fileInboxItemAsNote(itemId, { type: target.type, id: target.id });
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
       }
@@ -134,7 +142,7 @@ export function FileIntoPanel({
         (target.type === "project" ? selectedProject?.label : selectedContact?.label) ?? "destination";
       onFiled(destinationLabel);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
       setIsSubmitting(false);
     }
@@ -150,7 +158,7 @@ export function FileIntoPanel({
             destinationType === "project" ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
           }`}
         >
-          Project
+          {t.inboxFile.tabProject}
         </button>
         <button
           type="button"
@@ -159,7 +167,7 @@ export function FileIntoPanel({
             destinationType === "contact" ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
           }`}
         >
-          Receiver
+          {t.inboxFile.tabReceiver}
         </button>
       </div>
 
@@ -174,20 +182,24 @@ export function FileIntoPanel({
           // options/placeholder for the newly selected tab.
           key="project"
           name="inbox_target_project"
-          label="Project"
+          label={t.inboxFile.projectLabel}
           options={projectOptions}
           defaultId={initialDestination?.type === "project" ? initialDestination.id : undefined}
-          entityNoun="project"
+          entityNoun={lang === "es" ? "proyecto" : "project"}
+          entityNounPlural={lang === "es" ? "proyectos" : "projects"}
+          lang={lang}
           onSelect={selectProject}
         />
       ) : (
         <EntityPicker
           key="contact"
           name="inbox_target_contact"
-          label="Receiver"
+          label={t.inboxFile.receiverLabel}
           options={contactOptions}
           defaultId={initialDestination?.type === "contact" ? initialDestination.id : undefined}
-          entityNoun="receiver"
+          entityNoun={lang === "es" ? "receptor" : "receiver"}
+          entityNounPlural={lang === "es" ? "receptores" : "receivers"}
+          lang={lang}
           onSelect={setSelectedContact}
         />
       )}
@@ -195,7 +207,7 @@ export function FileIntoPanel({
       {hasFile && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-white/55">Document type</label>
+            <label className="mb-1.5 block text-xs font-medium text-white/55">{t.inboxFile.documentTypeLabel}</label>
             <select
               value={documentType}
               onChange={(e) => setDocumentType(e.target.value)}
@@ -210,21 +222,21 @@ export function FileIntoPanel({
           </div>
           {destinationType === "project" && selectedProject && (
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-white/55">Tranche</label>
+              <label className="mb-1.5 block text-xs font-medium text-white/55">{t.inboxFile.trancheFieldLabel}</label>
               <select
                 value={trancheValue}
                 onChange={(e) => setTrancheValue(e.target.value)}
                 className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40"
               >
                 <option value={TRANCHE_GENERAL} className="bg-[#0a0e17]">
-                  General
+                  {t.inboxFile.generalTrancheOption}
                 </option>
-                {[1, 2, ...tranches.map((t) => t.tranche_number).filter((n) => n > 2)]
+                {[1, 2, ...tranches.map((tr) => tr.tranche_number).filter((n) => n > 2)]
                   .filter((n, i, arr) => arr.indexOf(n) === i)
                   .sort((a, b) => a - b)
                   .map((n) => (
                     <option key={n} value={n} className="bg-[#0a0e17]">
-                      Tranche {n}
+                      {t.inboxFile.trancheOption(n)}
                     </option>
                   ))}
               </select>
@@ -236,11 +248,12 @@ export function FileIntoPanel({
       {pendingMatches && (
         <div className="mt-3">
           <DuplicateWarningBanner
-            heading="This exact file matches one already attached elsewhere:"
+            heading={t.inboxFile.duplicateHeading}
             matches={pendingMatches.map((m, i) => ({ id: String(i), href: m.href, label: m.label, meta: m.fileName }))}
             onAddAnyway={() => handleFile(true)}
-            addAnywayLabel="File anyway"
+            addAnywayLabel={t.inboxFile.fileAnyway}
             disabled={isSubmitting}
+            lang={lang}
           />
         </div>
       )}
@@ -254,7 +267,7 @@ export function FileIntoPanel({
           disabled={isSubmitting}
           className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isSubmitting ? "Filing…" : hasFile ? "File as Document" : "File as Note"}
+          {isSubmitting ? t.inboxFile.filing : hasFile ? t.inboxFile.fileAsDocument : t.inboxFile.fileAsNote}
         </button>
         <button
           type="button"
@@ -262,7 +275,7 @@ export function FileIntoPanel({
           disabled={isSubmitting}
           className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
         >
-          Cancel
+          {t.common.cancel}
         </button>
       </div>
     </div>

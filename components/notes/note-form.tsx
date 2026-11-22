@@ -5,6 +5,7 @@ import Link from "next/link";
 import { GlassCard } from "@/components/glass-card";
 import { NoteLinkPicker, type LinkOption } from "@/components/notes/note-link-picker";
 import { createNote, updateNote, type NoteFormState } from "@/lib/actions/notes";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { Note } from "@/lib/types";
 
 interface NoteFormProps {
@@ -14,6 +15,7 @@ interface NoteFormProps {
   contacts: LinkOption[];
   defaultLinkType?: "none" | "project" | "contact";
   defaultLinkId?: string | null;
+  lang?: Lang;
 }
 
 const initialState: NoteFormState = { error: null };
@@ -22,7 +24,8 @@ const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
-export function NoteForm({ mode, note, projects, contacts, defaultLinkType, defaultLinkId }: NoteFormProps) {
+export function NoteForm({ mode, note, projects, contacts, defaultLinkType, defaultLinkId, lang = "en" }: NoteFormProps) {
+  const t = getDictionary(lang);
   const resolvedLinkType = defaultLinkType ?? (note?.project_id ? "project" : note?.contact_id ? "contact" : "none");
   const resolvedLinkId = defaultLinkId ?? note?.project_id ?? note?.contact_id ?? null;
   const action = mode === "edit" && note ? updateNote.bind(null, note.id) : createNote;
@@ -34,14 +37,14 @@ export function NoteForm({ mode, note, projects, contacts, defaultLinkType, defa
       <GlassCard interactive={false} className="flex flex-col gap-5 p-6">
         <div>
           <label className={labelClass} htmlFor="title">
-            Title
+            {t.noteForm.titleLabel}
           </label>
           <input id="title" name="title" defaultValue={note?.title ?? ""} className={fieldClass} />
         </div>
 
         <div>
           <label className={labelClass} htmlFor="content">
-            Content *
+            {t.noteForm.contentLabel}
           </label>
           <textarea
             id="content"
@@ -62,14 +65,14 @@ export function NoteForm({ mode, note, projects, contacts, defaultLinkType, defa
               onChange={(e) => setIsReminder(e.target.checked)}
               className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
             />
-            This is a reminder
+            {t.noteForm.isReminderLabel}
           </label>
         </div>
 
         {isReminder && (
           <div>
             <label className={labelClass} htmlFor="due_date">
-              Due date *
+              {t.noteForm.dueDateLabel}
             </label>
             <input
               id="due_date"
@@ -87,12 +90,13 @@ export function NoteForm({ mode, note, projects, contacts, defaultLinkType, defa
           contacts={contacts}
           defaultLinkType={resolvedLinkType}
           defaultLinkId={resolvedLinkId}
+          lang={lang}
         />
       </GlassCard>
 
       {state?.error && (
         <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-          {state.error}
+          {resolveError(state.error, lang)}
         </p>
       )}
 
@@ -102,13 +106,13 @@ export function NoteForm({ mode, note, projects, contacts, defaultLinkType, defa
           disabled={isPending}
           className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isPending ? "Saving…" : mode === "edit" ? "Save changes" : "Create note"}
+          {isPending ? t.common.saving : mode === "edit" ? t.noteForm.saveChanges : t.noteForm.createNote}
         </button>
         <Link
           href="/notes"
           className="text-sm font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
         >
-          Cancel
+          {t.common.cancel}
         </Link>
       </div>
     </form>

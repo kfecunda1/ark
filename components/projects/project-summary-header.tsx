@@ -9,6 +9,7 @@ import { StageBadge, StatusBadge, RecoveryBadge } from "@/components/projects/ba
 import { DueDateBadge } from "@/components/projects/due-date-badge";
 import { setProjectStepDone } from "@/lib/actions/project-steps";
 import { truncate } from "@/lib/format";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { ChecklistStatus } from "@/lib/checklists";
 import type { ProjectStage, StatusColor } from "@/lib/types";
 
@@ -46,6 +47,7 @@ interface ProjectSummaryHeaderProps {
   tranches: SummaryTrancheStats;
   lastActivityDaysAgo: number;
   stuckAfterDays: number;
+  lang?: Lang;
 }
 
 function Chip({ tone, children }: { tone?: "amber" | "emerald" | "grey"; children: ReactNode }) {
@@ -64,9 +66,9 @@ function Chip({ tone, children }: { tone?: "amber" | "emerald" | "grey"; childre
   );
 }
 
-function lastActivityLabel(days: number): string {
-  if (days <= 0) return "today";
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+function lastActivityLabel(days: number, t: ReturnType<typeof getDictionary>): string {
+  if (days <= 0) return t.projectSummary.today;
+  return t.projectSummary.daysAgo(days);
 }
 
 // Near the very top of a project's own page (app/(app)/projects/[id]/
@@ -96,8 +98,10 @@ export function ProjectSummaryHeader({
   tranches,
   lastActivityDaysAgo,
   stuckAfterDays,
+  lang = "en",
 }: ProjectSummaryHeaderProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [pastHeader, setPastHeader] = useState(false);
   const [isMarkingDone, startMarkingDone] = useTransition();
@@ -118,12 +122,12 @@ export function ProjectSummaryHeader({
       try {
         const result = await setProjectStepDone(nextStep.id, projectId, true);
         if (result.error) {
-          setMarkDoneError(result.error);
+          setMarkDoneError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setMarkDoneError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setMarkDoneError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -141,7 +145,7 @@ export function ProjectSummaryHeader({
           <p className="min-w-0 truncate text-lg font-semibold text-white sm:text-xl">{projectName}</p>
           <span className="text-sm text-white/50">{productLabel}</span>
           {showRecoveryBadge && <RecoveryBadge />}
-          <StageBadge stage={stage} />
+          <StageBadge stage={stage} lang={lang} />
           {statusLabel && statusColor && <StatusBadge label={statusLabel} color={statusColor} />}
         </div>
 
@@ -150,26 +154,26 @@ export function ProjectSummaryHeader({
           <Chip>{totalFaceValueLabel}</Chip>
           {matchedReceiver ? (
             <Chip>
-              Matched with{" "}
+              {t.projectSummary.matchedWithPrefix}{" "}
               <Link href={`/receivers/${matchedReceiver.id}`} className="font-semibold hover:underline">
                 {matchedReceiver.label}
               </Link>
             </Chip>
           ) : (
             <Chip tone="amber">
-              Not matched ·{" "}
+              {t.dashboard.notMatched} ·{" "}
               <Link
                 href={`/projects/${projectId}?findReceivers=true#matched-with`}
                 className="font-semibold underline underline-offset-2 hover:text-white"
               >
-                Find receivers
+                {t.projectsList.findReceivers}
               </Link>
             </Chip>
           )}
-          <Chip>Contact Person: {contactPersonLabel ?? "—"}</Chip>
+          <Chip>{t.projectSummary.contactPerson(contactPersonLabel ?? "—")}</Chip>
           {docsVisible && (
             <Chip tone={checklist.isComplete ? "emerald" : undefined}>
-              Docs {completeCount}/{checklist.requiredTypes.length}
+              {t.projectSummary.docsCount(completeCount, checklist.requiredTypes.length)}
             </Chip>
           )}
         </div>
@@ -180,18 +184,22 @@ export function ProjectSummaryHeader({
             <Chip>
               <CalendarClock className="h-3.5 w-3.5 text-white/40" />
               <span className="max-w-[220px] truncate">{nextStep.body}</span>
-              {nextStep.dueDate && <DueDateBadge dueDate={nextStep.dueDate} />}
+              {nextStep.dueDate && <DueDateBadge dueDate={nextStep.dueDate} lang={lang} />}
             </Chip>
           ) : (
-            <Chip tone="grey">No next step</Chip>
+            <Chip tone="grey">{t.projectsBoard.noNextStep}</Chip>
           )}
           <Chip>
             <Landmark className="h-3.5 w-3.5 text-white/40" />
-            {tranches.sentCount} sent · {tranches.confirmedCount} confirmed · {tranches.paidOutCount} paid out
-            {tranches.activeAmountLabel ? ` · ${tranches.activeAmountLabel} active` : ""}
+            {t.projectSummary.tranchesSummary(
+              tranches.sentCount,
+              tranches.confirmedCount,
+              tranches.paidOutCount,
+              tranches.activeAmountLabel ? t.projectSummary.activeSuffix(tranches.activeAmountLabel) : ""
+            )}
           </Chip>
           <Chip tone={lastActivityDaysAgo >= stuckAfterDays ? "amber" : undefined}>
-            Last activity {lastActivityLabel(lastActivityDaysAgo)}
+            {t.projectSummary.lastActivity(lastActivityLabel(lastActivityDaysAgo, t))}
           </Chip>
         </div>
 
@@ -202,21 +210,21 @@ export function ProjectSummaryHeader({
             className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white"
           >
             <Plus className="h-3.5 w-3.5" />
-            Next step
+            {t.projectSummary.nextStepAction}
           </Link>
           <Link
             href={`/projects/${projectId}?composer=note#project-timeline`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white"
           >
             <StickyNote className="h-3.5 w-3.5" />
-            Note
+            {t.projectSummary.noteAction}
           </Link>
           <Link
             href="#project-documents"
             className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white"
           >
             <Upload className="h-3.5 w-3.5" />
-            Upload
+            {t.projectSummary.upload}
           </Link>
           {nextStep && (
             <button
@@ -226,7 +234,7 @@ export function ProjectSummaryHeader({
               className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-colors duration-150 ease-out hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
-              {isMarkingDone ? "Marking…" : "Mark done"}
+              {isMarkingDone ? t.projectSummary.marking : t.projectSummary.markDone}
             </button>
           )}
         </div>
@@ -245,17 +253,17 @@ export function ProjectSummaryHeader({
       >
         <div className="mx-auto flex max-w-4xl items-center gap-3 px-1 py-2.5">
           <span className="min-w-0 truncate text-sm font-medium text-white">{projectName}</span>
-          <StageBadge stage={stage} />
+          <StageBadge stage={stage} lang={lang} />
           {statusLabel && statusColor && <StatusBadge label={statusLabel} color={statusColor} />}
           <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-white/60">
             {nextStep ? (
               <>
                 <CalendarClock className="h-3.5 w-3.5 text-white/40" />
                 {truncate(nextStep.body, 32)}
-                {nextStep.dueDate && <DueDateBadge dueDate={nextStep.dueDate} />}
+                {nextStep.dueDate && <DueDateBadge dueDate={nextStep.dueDate} lang={lang} />}
               </>
             ) : (
-              <span className="text-white/35">No next step</span>
+              <span className="text-white/35">{t.projectsBoard.noNextStep}</span>
             )}
           </span>
         </div>

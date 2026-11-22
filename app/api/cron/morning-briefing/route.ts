@@ -6,7 +6,9 @@ import {
   currentWeekdayInTimeZone,
   getBriefingSnapshot,
   todayDateKey,
+  type BriefingSnapshot,
 } from "@/lib/morning-briefing";
+import { isLang, type Lang } from "@/lib/i18n";
 
 // Vercel Cron's own target (vercel.json's "0 11 * * *" = 07:00 America/
 // Curacao, a fixed UTC-4 offset with no DST). Needs the full Node
@@ -21,6 +23,7 @@ interface BriefingProfile {
   role: string | null;
   telegram_user_id: number;
   briefing_weekdays_only: boolean;
+  language: string | null;
 }
 
 export async function GET(request: Request) {
@@ -38,7 +41,7 @@ export async function GET(request: Request) {
 
   const { data: profilesData, error: profilesError } = await supabase
     .from("profiles")
-    .select("id, role, telegram_user_id, briefing_weekdays_only")
+    .select("id, role, telegram_user_id, briefing_weekdays_only, language")
     .eq("active", true)
     .eq("briefing_enabled", true)
     .not("telegram_user_id", "is", null);
@@ -70,11 +73,20 @@ export async function GET(request: Request) {
   const skipped = candidates.length - toSend.length;
 
   if (toSend.length > 0) {
-    const snapshot = await getBriefingSnapshot(supabase);
+    // One snapshot per language actually needed among this run's
+    // recipients (at most "en" and "es") — every recipient within a
+    // language shares it, same as before this was per-user at all.
+    const snapshotsByLang = new Map<Lang, BriefingSnapshot>();
 
     for (const profile of toSend) {
       try {
-        const text = buildBriefingText(snapshot, profile.role === "admin");
+        const lang: Lang = isLang(profile.language) ? profile.language : "en";
+        let snapshot = snapshotsByLang.get(lang);
+        if (!snapshot) {
+          snapshot = await getBriefingSnapshot(supabase, lang);
+          snapshotsByLang.set(lang, snapshot);
+        }
+        const text = buildBriefingText(snapshot, profile.role === "admin", lang);
         await telegramSendMessage(profile.telegram_user_id, text, {
           parseMode: "HTML",
           disableWebPagePreview: true,

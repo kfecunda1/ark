@@ -12,8 +12,13 @@ export interface NoteFormState {
 // genuinely unexpected exception (network failure, …) into the same
 // returned-error shape every normal Supabase-error path already uses,
 // so callers never see a save silently fail.
+// Returns a KEY (one of Dictionary["errors"]'s own property names),
+// never an already-translated sentence — see lib/i18n/index.ts's
+// resolveError. Our own thrown Errors below carry a key as their
+// message; anything else (a genuinely unexpected exception) falls back
+// to the generic "somethingWentWrong" key.
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 interface NoteLinks {
@@ -39,13 +44,13 @@ function buildNotePayload(formData: FormData) {
   const title = formData.get("title")?.toString().trim() || null;
   const content = formData.get("content")?.toString().trim();
   if (!content) {
-    throw new Error('"Content" is required.');
+    throw new Error("noteContentRequired");
   }
 
   const isReminder = formData.get("is_reminder") === "on";
   const dueDate = formData.get("due_date")?.toString().trim() || null;
   if (isReminder && !dueDate) {
-    throw new Error('"Due date" is required for a reminder.');
+    throw new Error("noteDueDateRequired");
   }
 
   return {
@@ -71,7 +76,7 @@ export async function createNote(_prevState: NoteFormState, formData: FormData):
   try {
     payload = buildNotePayload(formData);
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Invalid form data." };
+    return { error: err instanceof Error ? err.message : "invalidFormData" };
   }
 
   try {
@@ -102,7 +107,7 @@ export async function updateNote(
   try {
     payload = buildNotePayload(formData);
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Invalid form data." };
+    return { error: err instanceof Error ? err.message : "invalidFormData" };
   }
 
   try {
@@ -155,7 +160,7 @@ export async function addProjectNote(
 ): Promise<{ error: string | null }> {
   const trimmed = content.trim();
   if (!trimmed) {
-    return { error: '"Text" is required.' };
+    return { error: "noteTextRequired" };
   }
 
   try {
@@ -191,7 +196,7 @@ export async function updateProjectNote(
 ): Promise<{ error: string | null }> {
   const trimmed = content.trim();
   if (!trimmed) {
-    return { error: '"Text" is required.' };
+    return { error: "noteTextRequired" };
   }
 
   try {

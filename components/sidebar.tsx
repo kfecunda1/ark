@@ -4,19 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Contact, FolderKanban, History, Inbox, LayoutDashboard, RotateCcw, StickyNote, Settings, User, Wallet, X } from "lucide-react";
 import { useProjectSection } from "@/components/project-section-context";
-
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/recovery", label: "Recovery Projects", icon: RotateCcw },
-  { href: "/receivers", label: "Receivers", icon: Contact },
-  { href: "/people", label: "Contacts", icon: User },
-  { href: "/notes", label: "Notes", icon: StickyNote },
-  { href: "/activity", label: "Activity", icon: History },
-  { href: "/payouts", label: "Payouts", icon: Wallet },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 interface SidebarProps {
   open: boolean;
@@ -24,11 +12,27 @@ interface SidebarProps {
   inboxNewCount: number;
   showRecovery: boolean;
   isAdmin: boolean;
+  lang: Lang;
 }
 
-export function Sidebar({ open, onClose, inboxNewCount, showRecovery, isAdmin }: SidebarProps) {
+export function Sidebar({ open, onClose, inboxNewCount, showRecovery, isAdmin, lang }: SidebarProps) {
   const pathname = usePathname();
   const { section } = useProjectSection();
+  const t = getDictionary(lang);
+
+  const NAV_ITEMS = [
+    { href: "/dashboard", label: t.nav.dashboard, icon: LayoutDashboard },
+    { href: "/inbox", label: t.nav.inbox, icon: Inbox },
+    { href: "/projects", label: t.nav.projects, icon: FolderKanban },
+    { href: "/recovery", label: t.nav.recoveryProjects, icon: RotateCcw },
+    { href: "/receivers", label: t.nav.receivers, icon: Contact },
+    { href: "/people", label: t.nav.contacts, icon: User },
+    { href: "/notes", label: t.nav.notes, icon: StickyNote },
+    { href: "/activity", label: t.nav.activity, icon: History },
+    { href: "/payouts", label: t.nav.payouts, icon: Wallet },
+    { href: "/settings", label: t.nav.settings, icon: Settings },
+  ];
+
   const navItems = NAV_ITEMS.filter((item) => {
     if (item.href === "/recovery") return showRecovery;
     if (item.href === "/payouts") return isAdmin;
@@ -78,7 +82,7 @@ export function Sidebar({ open, onClose, inboxNewCount, showRecovery, isAdmin }:
           </span>
           <button
             onClick={onClose}
-            aria-label="Close menu"
+            aria-label={t.topbar.closeMenu}
             className="rounded-lg p-1.5 text-white/60 transition-colors duration-150 ease-out hover:bg-white/5 hover:text-white lg:hidden"
           >
             <X className="h-5 w-5" />

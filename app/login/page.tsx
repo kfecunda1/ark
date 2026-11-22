@@ -4,6 +4,8 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { GlassCard } from "@/components/glass-card";
 import { createClient } from "@/lib/supabase/client";
+import { getDictionary } from "@/lib/i18n";
+import { useBrowserLang } from "@/lib/i18n/use-browser-lang";
 
 async function ensureProfile(
   supabase: ReturnType<typeof createClient>,
@@ -28,6 +30,8 @@ async function ensureProfile(
 
 export default function LoginPage() {
   const router = useRouter();
+  const lang = useBrowserLang();
+  const t = getDictionary(lang);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +49,7 @@ export default function LoginPage() {
     });
 
     if (signInError || !data.user) {
-      setError(signInError?.message ?? "Unable to sign in.");
+      setError(signInError?.message ?? t.auth.unableToSignIn);
       setLoading(false);
       return;
     }
@@ -65,13 +69,13 @@ export default function LoginPage() {
             <img src="/brand/ark-mark.svg" alt="" width={56} height={56} className="h-14 w-14 shrink-0 rounded-[12px]" />
             <h1 className="font-wordmark text-xl font-semibold tracking-[4px] text-[#e6ebf0]">ARK</h1>
           </div>
-          <p className="text-sm text-white/45">Sign in to your account</p>
+          <p className="text-sm text-white/45">{t.auth.signInSubtitle}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="email" className="text-xs font-medium text-white/55">
-              Email
+              {t.auth.email}
             </label>
             <input
               id="email"
@@ -87,7 +91,7 @@ export default function LoginPage() {
 
           <div className="flex flex-col gap-1.5">
             <label htmlFor="password" className="text-xs font-medium text-white/55">
-              Password
+              {t.auth.password}
             </label>
             <input
               id="password"
@@ -112,7 +116,7 @@ export default function LoginPage() {
             disabled={loading}
             className="mt-2 w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? t.auth.signingIn : t.auth.signIn}
           </button>
         </form>
       </GlassCard>

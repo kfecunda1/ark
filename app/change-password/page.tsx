@@ -1,5 +1,9 @@
+"use client";
+
 import { GlassCard } from "@/components/glass-card";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
+import { getDictionary } from "@/lib/i18n";
+import { useBrowserLang } from "@/lib/i18n/use-browser-lang";
 
 // Reached only when lib/supabase/proxy.ts's middleware finds
 // profiles.must_change_password = true for the signed-in user — set by
@@ -8,6 +12,8 @@ import { ChangePasswordForm } from "@/components/settings/change-password-form";
 // middleware redirects here from every other protected route until the
 // user changes their password themselves.
 export default function ChangePasswordRequiredPage() {
+  const lang = useBrowserLang();
+  const t = getDictionary(lang);
   return (
     // Not vertically centered with items-center on a fixed min-h-screen
     // (like app/login/page.tsx, which gets away with it — two fields,
@@ -21,12 +27,10 @@ export default function ChangePasswordRequiredPage() {
     <div className="flex min-h-dvh justify-center pt-[max(2.5rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(2.5rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
       <GlassCard interactive={false} className="h-fit w-full max-w-sm p-8">
         <div className="mb-8 text-center">
-          <h1 className="text-xl font-semibold tracking-tight text-white">Change your password</h1>
-          <p className="mt-1 text-sm text-white/45">
-            You&apos;re using a temporary password. Set your own before continuing.
-          </p>
+          <h1 className="text-xl font-semibold tracking-tight text-white">{t.auth.changePasswordTitle}</h1>
+          <p className="mt-1 text-sm text-white/45">{t.auth.changePasswordSubtitle}</p>
         </div>
-        <ChangePasswordForm redirectTo="/dashboard" />
+        <ChangePasswordForm redirectTo="/dashboard" lang={lang} />
       </GlassCard>
     </div>
   );

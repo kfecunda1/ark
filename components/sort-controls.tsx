@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import type { SortDirection } from "@/lib/sort";
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 const selectClass =
   "rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
@@ -76,6 +77,7 @@ interface MobileSortControlProps {
   options: SortOption[];
   currentSort: string;
   currentDir: SortDirection;
+  lang?: Lang;
 }
 
 // The mobile equivalent of SortableHeader — there's no table to put
@@ -85,10 +87,11 @@ interface MobileSortControlProps {
 // at every width; this is the one piece that's mobile-only, since
 // desktop uses the column headers for the exact same job). Takes the
 // same page-resolved current state as props, for the same reason.
-export function MobileSortControl({ options, currentSort, currentDir }: MobileSortControlProps) {
+export function MobileSortControl({ options, currentSort, currentDir, lang = "en" }: MobileSortControlProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const t = getDictionary(lang);
 
   function setParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -99,21 +102,21 @@ export function MobileSortControl({ options, currentSort, currentDir }: MobileSo
   return (
     <div className="flex items-center gap-2 md:hidden">
       <select
-        aria-label="Sort by"
+        aria-label={t.common.sortByAriaLabel}
         value={currentSort}
         onChange={(e) => setParam("sort", e.target.value)}
         className={selectClass}
       >
         {options.map((option) => (
           <option key={option.value} value={option.value} className="bg-[#0a0e17]">
-            Sort: {option.label}
+            {t.common.sortOptionPrefix(option.label)}
           </option>
         ))}
       </select>
       <button
         type="button"
         onClick={() => setParam("dir", currentDir === "asc" ? "desc" : "asc")}
-        aria-label={currentDir === "asc" ? "Sort ascending" : "Sort descending"}
+        aria-label={currentDir === "asc" ? t.common.sortAscendingAriaLabel : t.common.sortDescendingAriaLabel}
         className="shrink-0 rounded-lg border border-white/[0.06] bg-white/[0.03] p-2 text-white/60 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
       >
         {currentDir === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}

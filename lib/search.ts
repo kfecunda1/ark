@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { personLabel } from "@/lib/people";
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 // UI: Receivers for "contact", Contacts for "person" — see AGENTS.md's
 // UI-naming-vs-database-naming note. The database's `contacts` table
@@ -65,10 +66,11 @@ async function fetchContactsByIds(supabase: SupabaseBrowserClient, ids: string[]
   return (data as ContactFields[] | null) ?? [];
 }
 
-export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]> {
+export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Promise<SearchResult[]> {
   const query = rawQuery.trim();
   if (query.length < 2) return [];
 
+  const t = getDictionary(lang);
   const supabase = createClient();
   const likePattern = `%${escapeLike(query)}%`;
   const orSafePattern = `%${escapeLike(sanitizeForOrFilter(query))}%`;
@@ -197,7 +199,7 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
     type: "project",
     id: project.id,
     title: project.name,
-    subtitle: project.final_product ?? "Product not decided",
+    subtitle: project.final_product ?? t.projectSummary.productNotDecided,
     isRecovery: project.is_recovery,
   }));
 
@@ -205,14 +207,14 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
     type: "contact",
     id: contact.id,
     title: contact.full_name,
-    subtitle: "Receiver",
+    subtitle: t.search.receiverLabel,
   }));
 
   const personResults: SearchResult[] = personMatches.map((person) => ({
     type: "person",
     id: person.id,
     title: personLabel(person),
-    subtitle: "Contact",
+    subtitle: t.search.contactLabel,
   }));
 
   const projectById = new Map(
@@ -223,12 +225,12 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
   const documentResults: SearchResult[] = projectDocMatches.map((doc) => {
     const project = projectById.get(doc.project_id);
     const trancheNumber = doc.tranche_id ? trancheNumberById.get(doc.tranche_id) : undefined;
-    const trancheLabel = trancheNumber != null ? `Tranche ${trancheNumber}` : "General";
+    const trancheLabel = trancheNumber != null ? t.dashboard.trancheNumber(trancheNumber) : t.common.general;
     return {
       type: "document",
       id: doc.id,
       title: doc.file_name,
-      subtitle: `${trancheLabel} · ${doc.document_type} · Project: ${project?.name ?? "Unknown project"}`,
+      subtitle: t.search.documentSubtitle(trancheLabel, doc.document_type, project?.name ?? t.payoutRow.unknownProject),
       parentId: doc.project_id,
       parentType: "project",
     };
@@ -242,7 +244,7 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
         type: "note",
         id: note.id,
         title,
-        subtitle: `Note on project: ${project?.name ?? "Unknown project"}`,
+        subtitle: t.search.noteOnProject(project?.name ?? t.payoutRow.unknownProject),
         parentId: note.project_id,
         parentType: "project",
       };
@@ -253,12 +255,12 @@ export async function runGlobalSearch(rawQuery: string): Promise<SearchResult[]>
         type: "note",
         id: note.id,
         title,
-        subtitle: `Note on receiver: ${contact?.full_name ?? "Unknown receiver"}`,
+        subtitle: t.search.noteOnReceiver(contact?.full_name ?? t.search.unknownReceiver),
         parentId: note.contact_id,
         parentType: "contact",
       };
     }
-    return { type: "note", id: note.id, title, subtitle: "Note" };
+    return { type: "note", id: note.id, title, subtitle: t.search.noteLabel };
   });
 
   return [...projectResults, ...contactResults, ...documentResults, ...noteResults, ...personResults];

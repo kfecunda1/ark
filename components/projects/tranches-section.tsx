@@ -8,6 +8,7 @@ import { formatDateOnly, virtualTrancheNumbers } from "@/lib/projects";
 import { dateKeyInTimeZone } from "@/lib/format";
 import { MoneyInput } from "@/components/money-input";
 import { ProjectDocuments, type ProjectDocumentWithUrl } from "@/components/projects/project-documents";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { Currency, DocumentTypeRecord, ProjectTranche } from "@/lib/types";
 
 interface TranchesSectionProps {
@@ -16,6 +17,7 @@ interface TranchesSectionProps {
   currency: Currency;
   documents: ProjectDocumentWithUrl[];
   documentTypes: DocumentTypeRecord[];
+  lang?: Lang;
 }
 
 const fieldClass =
@@ -34,6 +36,7 @@ interface RowProps {
   tranches: ProjectTranche[];
   documents: ProjectDocumentWithUrl[];
   documentTypes: DocumentTypeRecord[];
+  lang: Lang;
 }
 
 // Identifies a tranche by its actual saved values rather than object
@@ -46,31 +49,32 @@ function trancheKey(tranche: ProjectTranche | null): string {
   return `${tranche?.amount ?? ""}|${tranche?.sent_on ?? ""}|${tranche?.notes ?? ""}|${tranche?.confirmed_on ?? ""}|${tranche?.paid_out_on ?? ""}`;
 }
 
-function statusBadge(sentOn: string, confirmedOn: string, paidOutOn: string) {
+function statusBadge(sentOn: string, confirmedOn: string, paidOutOn: string, lang: Lang) {
+  const t = getDictionary(lang);
   if (paidOutOn) {
     return (
       <span className="rounded-full border border-violet-500/25 bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium text-violet-300">
-        Paid out on {formatDateOnly(paidOutOn)}
+        {t.tranches.paidOutOnBadge(formatDateOnly(paidOutOn, lang))}
       </span>
     );
   }
   if (confirmedOn) {
     return (
       <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
-        Confirmed on {formatDateOnly(confirmedOn)}
+        {t.dashboard.confirmedOn(formatDateOnly(confirmedOn, lang))}
       </span>
     );
   }
   if (sentOn) {
     return (
       <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">
-        Sent on {formatDateOnly(sentOn)} — awaiting confirmation
+        {t.tranches.sentOnAwaitingBadge(formatDateOnly(sentOn, lang))}
       </span>
     );
   }
   return (
     <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-white/45">
-      Not sent
+      {t.tranches.notSent}
     </span>
   );
 }
@@ -88,7 +92,9 @@ function TrancheRow({
   tranches,
   documents,
   documentTypes,
+  lang,
 }: RowProps) {
+  const t = getDictionary(lang);
   const [amount, setAmount] = useState(tranche?.amount != null ? String(tranche.amount) : "");
   const [sentOn, setSentOn] = useState(tranche?.sent_on ?? "");
   const [notes, setNotes] = useState(tranche?.notes ?? "");
@@ -145,7 +151,7 @@ function TrancheRow({
   // still sitting on it.
   function handleSentOnChange(value: string) {
     if (!value && confirmedOn) {
-      setBlockedMessage("Clear the confirmed date first — a sent date can't be removed while one exists.");
+      setBlockedMessage(t.tranches.clearConfirmedFirst);
       return;
     }
     setBlockedMessage(null);
@@ -154,7 +160,7 @@ function TrancheRow({
 
   function handleConfirmedOnChange(value: string) {
     if (!value && paidOutOn) {
-      setBlockedMessage("Clear the paid out date first — a confirmed date can't be removed while one exists.");
+      setBlockedMessage(t.tranches.clearPaidOutFirst);
       return;
     }
     setBlockedMessage(null);
@@ -169,8 +175,8 @@ function TrancheRow({
   return (
     <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3">
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-medium text-white/55">Tranche {number}</p>
-        {statusBadge(sentOn, confirmedOn, paidOutOn)}
+        <p className="text-xs font-medium text-white/55">{t.dashboard.trancheNumber(number)}</p>
+        {statusBadge(sentOn, confirmedOn, paidOutOn, lang)}
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <div className="relative">
@@ -178,8 +184,8 @@ function TrancheRow({
             {currency}
           </span>
           <MoneyInput
-            aria-label="Amount"
-            placeholder="Amount"
+            aria-label={t.tranches.amountAriaLabel}
+            placeholder={t.tranches.amountPlaceholder}
             value={amount}
             onChange={setAmount}
             disabled={disabled}
@@ -189,7 +195,7 @@ function TrancheRow({
         </div>
         <input
           type="date"
-          aria-label="Sent on"
+          aria-label={t.tranches.sentOnAriaLabel}
           value={sentOn}
           onChange={(e) => handleSentOnChange(e.target.value)}
           disabled={disabled}
@@ -197,7 +203,7 @@ function TrancheRow({
         />
         <input
           type="text"
-          placeholder="Notes"
+          placeholder={t.tranches.notesPlaceholder}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           disabled={disabled}
@@ -208,10 +214,10 @@ function TrancheRow({
       {sentOn && (
         <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-white/40">Confirmed on</label>
+            <label className="mb-1 block text-[11px] font-medium text-white/40">{t.tranches.confirmedOnFieldLabel}</label>
             <input
               type="date"
-              aria-label="Confirmed on"
+              aria-label={t.tranches.confirmedOnFieldLabel}
               value={confirmedOn}
               min={sentOn}
               onChange={(e) => handleConfirmedOnChange(e.target.value)}
@@ -221,10 +227,10 @@ function TrancheRow({
           </div>
           {confirmedOn && (
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-white/40">Paid out on</label>
+              <label className="mb-1 block text-[11px] font-medium text-white/40">{t.tranches.paidOutOnFieldLabel}</label>
               <input
                 type="date"
-                aria-label="Paid out on"
+                aria-label={t.tranches.paidOutOnFieldLabel}
                 value={paidOutOn}
                 min={confirmedOn}
                 onChange={(e) => handlePaidOutOnChange(e.target.value)}
@@ -245,7 +251,7 @@ function TrancheRow({
           disabled={disabled}
           className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Save
+          {t.common.save}
         </button>
         {!sentOn && (
           <button
@@ -254,7 +260,7 @@ function TrancheRow({
             disabled={disabled}
             className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/80 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Mark sent today
+            {t.tranches.markSentToday}
           </button>
         )}
         {sentOn && !confirmedOn && (
@@ -264,7 +270,7 @@ function TrancheRow({
             disabled={disabled}
             className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/80 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Mark confirmed today
+            {t.tranches.markConfirmedToday}
           </button>
         )}
         {confirmedOn && !paidOutOn && (
@@ -274,7 +280,7 @@ function TrancheRow({
             disabled={disabled}
             className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/80 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Mark paid out today
+            {t.tranches.markPaidOutToday}
           </button>
         )}
         {onCancel && (
@@ -284,7 +290,7 @@ function TrancheRow({
             disabled={disabled}
             className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
           >
-            Cancel
+            {t.common.cancel}
           </button>
         )}
         {removable && onDelete && (
@@ -292,9 +298,7 @@ function TrancheRow({
             {confirmingDelete ? (
               <>
                 <span className="text-xs text-amber-300">
-                  {docCount > 0
-                    ? `${docCount} document${docCount === 1 ? "" : "s"} will move to General.`
-                    : `Remove tranche ${number}?`}
+                  {docCount > 0 ? t.tranches.documentsWillMove(docCount) : t.tranches.removeTrancheConfirm(number)}
                 </span>
                 <button
                   type="button"
@@ -305,7 +309,7 @@ function TrancheRow({
                   disabled={disabled}
                   className="rounded-md bg-rose-500 px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {disabled ? "Removing…" : "Confirm"}
+                  {disabled ? t.common.removing : t.common.confirm}
                 </button>
                 <button
                   type="button"
@@ -313,7 +317,7 @@ function TrancheRow({
                   disabled={disabled}
                   className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
                 >
-                  Cancel
+                  {t.common.cancel}
                 </button>
               </>
             ) : (
@@ -321,11 +325,11 @@ function TrancheRow({
                 type="button"
                 onClick={() => setConfirmingDelete(true)}
                 disabled={disabled}
-                aria-label={`Remove tranche ${number}`}
+                aria-label={t.tranches.removeTrancheAriaLabel(number)}
                 className="inline-flex items-center gap-1 text-xs font-medium text-rose-300 transition-colors duration-150 ease-out hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Remove
+                {t.common.remove}
               </button>
             )}
           </div>
@@ -340,7 +344,7 @@ function TrancheRow({
         >
           {docsOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
           <FileText className="h-3.5 w-3.5" />
-          Documents
+          {t.searchGroups.document}
           <span className="rounded-full border border-white/10 bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-white/50">
             {docCount}
           </span>
@@ -353,6 +357,7 @@ function TrancheRow({
               documentTypes={documentTypes}
               tranches={tranches}
               scope={{ kind: "tranche", number }}
+              lang={lang}
             />
           </div>
         )}
@@ -361,8 +366,9 @@ function TrancheRow({
   );
 }
 
-export function TranchesSection({ projectId, tranches, currency, documents, documentTypes }: TranchesSectionProps) {
+export function TranchesSection({ projectId, tranches, currency, documents, documentTypes, lang = "en" }: TranchesSectionProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [savedNumber, setSavedNumber] = useState<number | null>(null);
@@ -394,14 +400,14 @@ export function TranchesSection({ projectId, tranches, currency, documents, docu
           paidOutOn
         );
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setAddingNext(false);
         setSavedNumber(trancheNumber);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -412,12 +418,12 @@ export function TranchesSection({ projectId, tranches, currency, documents, docu
       try {
         const result = await deleteProjectTranche(projectId, trancheNumber);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -440,9 +446,10 @@ export function TranchesSection({ projectId, tranches, currency, documents, docu
             tranches={tranches}
             documents={documents}
             documentTypes={documentTypes}
+            lang={lang}
           />
           {savedNumber === number && !isPending && (
-            <p className="text-xs text-emerald-300">Saved.</p>
+            <p className="text-xs text-emerald-300">{t.common.saved}</p>
           )}
         </div>
       ))}
@@ -462,6 +469,7 @@ export function TranchesSection({ projectId, tranches, currency, documents, docu
           tranches={tranches}
           documents={documents}
           documentTypes={documentTypes}
+          lang={lang}
         />
       ) : (
         <button
@@ -470,7 +478,7 @@ export function TranchesSection({ projectId, tranches, currency, documents, docu
           className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white"
         >
           <Plus className="h-3.5 w-3.5" />
-          Tranches after
+          {t.tranches.tranchesAfter}
         </button>
       )}
 

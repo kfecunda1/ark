@@ -11,6 +11,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
 import { compareNullsLast, parseSortDirection } from "@/lib/sort";
 import { formatDateTime } from "@/lib/format";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { Contact, ContactProduct, ProductType } from "@/lib/types";
 
 const RECEIVER_SORT_KEYS = ["name", "products_count", "matched_count", "created_at"] as const;
@@ -19,13 +21,6 @@ type ReceiverSortKey = (typeof RECEIVER_SORT_KEYS)[number];
 function isReceiverSortKey(value: string | undefined): value is ReceiverSortKey {
   return (RECEIVER_SORT_KEYS as readonly string[]).includes(value ?? "");
 }
-
-const SORT_OPTIONS: SortOption[] = [
-  { value: "name", label: "Name" },
-  { value: "products_count", label: "Number of products" },
-  { value: "matched_count", label: "Number of matched projects" },
-  { value: "created_at", label: "Created" },
-];
 
 interface ReceiversPageProps {
   searchParams: Promise<{ q?: string; product_type?: string; sort?: string; dir?: string; archived?: string }>;
@@ -37,6 +32,15 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
   const params = await searchParams;
   const sort: ReceiverSortKey = isReceiverSortKey(params.sort) ? params.sort : "name";
   const dir = parseSortDirection(params.dir);
+
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
+  const SORT_OPTIONS: SortOption[] = [
+    { value: "name", label: t.common.name },
+    { value: "products_count", label: t.receivers.numProducts },
+    { value: "matched_count", label: t.receivers.numMatchedProjects },
+    { value: "created_at", label: t.common.created },
+  ];
 
   const showArchived = params.archived === "true";
 
@@ -100,10 +104,10 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">
-            {showArchived ? "Archived Receivers" : "Receivers"}
+            {showArchived ? t.receivers.archivedTitle : t.receivers.title}
           </h1>
           <p className="mt-1 text-sm text-white/45">
-            {showArchived ? "Receivers that have been archived." : "People linked to projects."}
+            {showArchived ? t.receivers.archivedSubtitle : t.receivers.subtitle}
           </p>
         </div>
         <Link
@@ -111,20 +115,20 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
           className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover"
         >
           <Plus className="h-4 w-4" />
-          New Receiver
+          {t.receivers.newReceiver}
         </Link>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Suspense>
-          <ReceiverFilters products={products} />
-          <MobileSortControl options={SORT_OPTIONS} currentSort={sort} currentDir={dir} />
+          <ReceiverFilters products={products} lang={lang} />
+          <MobileSortControl options={SORT_OPTIONS} currentSort={sort} currentDir={dir} lang={lang} />
         </Suspense>
       </div>
 
       {error && (
         <GlassCard interactive={false} className="p-6 text-sm text-rose-300">
-          Failed to load receivers: {error.message}
+          {t.receivers.failedToLoad(error.message)}
         </GlassCard>
       )}
 
@@ -137,14 +141,14 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
             <Users className="h-5 w-5 text-white/40" />
           </div>
           <p className="text-sm font-medium text-white/70">
-            {searchTerm || productFilter || showArchived ? "No matching receivers" : "No receivers yet"}
+            {searchTerm || productFilter || showArchived ? t.receivers.noMatchingReceivers : t.receivers.noReceiversYet}
           </p>
           <p className="max-w-xs text-xs text-white/35">
             {showArchived
-              ? "No archived receivers."
+              ? t.receivers.noArchivedReceivers
               : searchTerm || productFilter
-                ? "No receivers match your filters."
-                : "Receivers you create here can be linked to projects."}
+                ? t.receivers.noReceiversMatchFilters
+                : t.receivers.receiversLinkHint}
           </p>
         </GlassCard>
       )}
@@ -155,25 +159,25 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead>
                 <tr className="border-b border-white/[0.06] text-xs tracking-wide text-white/40 uppercase">
-                  <SortableHeader sortKey="name" label="Name" currentSort={sort} currentDir={dir} />
-                  <th className="px-4 py-3 font-medium">Products</th>
+                  <SortableHeader sortKey="name" label={t.common.name} currentSort={sort} currentDir={dir} />
+                  <th className="px-4 py-3 font-medium">{t.receivers.colProducts}</th>
                   <SortableHeader
                     sortKey="products_count"
-                    label="# Products"
+                    label={t.receivers.colNumProducts}
                     currentSort={sort}
                     currentDir={dir}
                     defaultDir="desc"
                   />
                   <SortableHeader
                     sortKey="matched_count"
-                    label="# Matched Projects"
+                    label={t.receivers.colNumMatchedProjects}
                     currentSort={sort}
                     currentDir={dir}
                     defaultDir="desc"
                   />
                   <SortableHeader
                     sortKey="created_at"
-                    label="Created"
+                    label={t.common.created}
                     currentSort={sort}
                     currentDir={dir}
                     defaultDir="desc"
@@ -194,7 +198,7 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
                           <span className="font-medium text-white/85 group-hover:text-white">
                             {contact.full_name}
                           </span>
-                          {contact.archived_at && <ArchivedBadge />}
+                          {contact.archived_at && <ArchivedBadge lang={lang} />}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -215,7 +219,7 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
                       </td>
                       <td className="px-4 py-3 text-white/70">{contactProducts.length}</td>
                       <td className="px-4 py-3 text-white/70">{matchedCountByContactId.get(contact.id) ?? 0}</td>
-                      <td className="px-4 py-3 text-white/50">{formatDateTime(contact.created_at)}</td>
+                      <td className="px-4 py-3 text-white/50">{formatDateTime(contact.created_at, lang)}</td>
                     </ClickableRow>
                   );
                 })}
@@ -230,7 +234,7 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
                 <ClickableCard key={contact.id} href={`/receivers/${contact.id}`}>
                   <span className="flex items-center gap-2">
                     <span className="font-medium text-white/85">{contact.full_name}</span>
-                    {contact.archived_at && <ArchivedBadge />}
+                    {contact.archived_at && <ArchivedBadge lang={lang} />}
                   </span>
                   {contactProducts.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
@@ -245,8 +249,7 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
                     </div>
                   )}
                   <p className="mt-1.5 text-xs text-white/35">
-                    {matchedCountByContactId.get(contact.id) ?? 0} matched project
-                    {(matchedCountByContactId.get(contact.id) ?? 0) === 1 ? "" : "s"}
+                    {t.receivers.matchedProjectsCount(matchedCountByContactId.get(contact.id) ?? 0)}
                   </p>
                 </ClickableCard>
               );

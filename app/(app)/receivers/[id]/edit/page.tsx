@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getAllProducts } from "@/lib/products";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { personLabel } from "@/lib/people";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { Contact, ContactProduct, Person } from "@/lib/types";
 
 interface EditReceiverPageProps {
@@ -12,6 +14,8 @@ interface EditReceiverPageProps {
 
 export default async function EditReceiverPage({ params }: EditReceiverPageProps) {
   const { id } = await params;
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
   const supabase = await createClient();
 
   const { data } = await supabase.from("contacts").select("*").eq("id", id).maybeSingle();
@@ -34,13 +38,13 @@ export default async function EditReceiverPage({ params }: EditReceiverPageProps
   const allPeople = (peopleData as Pick<Person, "id" | "first_name" | "last_name" | "archived_at">[] | null) ?? [];
   const people = allPeople
     .filter((p) => !p.archived_at || p.id === contact.contact_person_id)
-    .map((p) => ({ id: p.id, label: personLabel(p) + (p.archived_at ? " (Archived)" : "") }));
+    .map((p) => ({ id: p.id, label: personLabel(p) + (p.archived_at ? ` (${t.common.archived})` : "") }));
 
   return (
     <div className="mx-auto max-w-lg">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Edit Receiver</h1>
-        <p className="mt-1 text-sm text-white/45">Update details for {contact.full_name}.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">{t.receivers.editReceiverTitle}</h1>
+        <p className="mt-1 text-sm text-white/45">{t.receivers.updateDetailsFor(contact.full_name)}</p>
       </div>
       <ReceiverForm
         mode="edit"
@@ -49,6 +53,7 @@ export default async function EditReceiverPage({ params }: EditReceiverPageProps
         allProducts={allProducts}
         documentTypes={documentTypes}
         people={people}
+        lang={lang}
       />
     </div>
   );

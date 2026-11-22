@@ -4,15 +4,17 @@ import { useState } from "react";
 import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/top-bar";
 import { ProjectSectionProvider } from "@/components/project-section-context";
+import type { Lang } from "@/lib/i18n";
 
 interface AppShellProps {
   children: React.ReactNode;
   inboxNewCount: number;
   showRecovery: boolean;
   isAdmin: boolean;
+  lang: Lang;
 }
 
-export function AppShell({ children, inboxNewCount, showRecovery, isAdmin }: AppShellProps) {
+export function AppShell({ children, inboxNewCount, showRecovery, isAdmin, lang }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
@@ -24,9 +26,10 @@ export function AppShell({ children, inboxNewCount, showRecovery, isAdmin }: App
           inboxNewCount={inboxNewCount}
           showRecovery={showRecovery}
           isAdmin={isAdmin}
+          lang={lang}
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          <TopBar onMenuClick={() => setMobileNavOpen(true)} showRecovery={showRecovery} />
+          <TopBar onMenuClick={() => setMobileNavOpen(true)} showRecovery={showRecovery} lang={lang} />
           <main className="flex-1 px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pt-8 lg:pb-[max(2rem,env(safe-area-inset-bottom))]">
             {children}
           </main>

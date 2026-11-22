@@ -7,6 +7,7 @@ import { EntityPicker, type EntityOption } from "@/components/entity-picker";
 import { fileInboxItemAsDocument, fileInboxItemAsNote } from "@/lib/actions/inbox";
 import { createClient } from "@/lib/supabase/client";
 import { truncate } from "@/lib/format";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { DocumentTypeRecord, InboxItem, ProjectTranche } from "@/lib/types";
 
 interface BulkFilePanelProps {
@@ -20,14 +21,15 @@ interface BulkFilePanelProps {
   onRemoveItem: (itemId: string) => void;
   onDone: () => void;
   onCancel: () => void;
+  lang?: Lang;
 }
 
 const TRANCHE_GENERAL = "general";
 
-function itemRowLabel(item: InboxItem): string {
+function itemRowLabel(item: InboxItem, t: ReturnType<typeof getDictionary>): string {
   if (item.file_name) return item.file_name;
   if (item.text_or_caption) return truncate(item.text_or_caption, 50);
-  return "(no content)";
+  return t.inbox.noContent;
 }
 
 interface ItemResult {
@@ -45,8 +47,10 @@ export function BulkFilePanel({
   onRemoveItem,
   onDone,
   onCancel,
+  lang = "en",
 }: BulkFilePanelProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [destinationType, setDestinationType] = useState<"project" | "contact">("project");
   const [selectedProject, setSelectedProject] = useState<EntityOption | null>(null);
   const [selectedContact, setSelectedContact] = useState<EntityOption | null>(null);
@@ -101,7 +105,7 @@ export function BulkFilePanel({
           : null;
 
     if (!target) {
-      setError(destinationType === "project" ? "Pick a project first." : "Pick a receiver first.");
+      setError(destinationType === "project" ? t.inboxFile.pickProjectFirst : t.inboxFile.pickReceiverFirst);
       return;
     }
 
@@ -111,7 +115,7 @@ export function BulkFilePanel({
 
     const runResults: ItemResult[] = [];
     for (const item of items) {
-      const label = itemRowLabel(item);
+      const label = itemRowLabel(item, t);
       const docType = perItemDocType[item.id] ?? documentType;
       try {
         if (item.storage_path) {
@@ -126,14 +130,18 @@ export function BulkFilePanel({
             true
           );
           if (result.error) {
-            runResults.push({ itemId: item.id, label, status: "error", message: result.error });
+            const message =
+              result.error === "duplicateSameTarget"
+                ? t.inboxFile.duplicateSameTarget(result.duplicateFileName ?? "")
+                : (resolveError(result.error, lang) ?? result.error);
+            runResults.push({ itemId: item.id, label, status: "error", message });
           } else {
             runResults.push({ itemId: item.id, label, status: "success" });
           }
         } else {
           const result = await fileInboxItemAsNote(item.id, { type: target.type, id: target.id });
           if (result.error) {
-            runResults.push({ itemId: item.id, label, status: "error", message: result.error });
+            runResults.push({ itemId: item.id, label, status: "error", message: resolveError(result.error, lang) ?? result.error });
           } else {
             runResults.push({ itemId: item.id, label, status: "success" });
           }
@@ -143,7 +151,7 @@ export function BulkFilePanel({
           itemId: item.id,
           label,
           status: "error",
-          message: err instanceof Error ? err.message : "Something went wrong.",
+          message: err instanceof Error ? err.message : t.common.somethingWentWrong,
         });
       }
       setProgress({ done: runResults.length, total: items.length });
@@ -160,9 +168,7 @@ export function BulkFilePanel({
 
   return (
     <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3.5">
-      <p className="mb-3 text-sm font-medium text-white">
-        File {items.length} item{items.length === 1 ? "" : "s"} into…
-      </p>
+      <p className="mb-3 text-sm font-medium text-white">{t.inboxBulk.fileItemsIntoHeading(items.length)}</p>
 
       {!results && (
         <>
@@ -175,7 +181,7 @@ export function BulkFilePanel({
                 destinationType === "project" ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
               }`}
             >
-              Project
+              {t.inboxFile.tabProject}
             </button>
             <button
               type="button"
@@ -185,7 +191,7 @@ export function BulkFilePanel({
                 destinationType === "contact" ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
               }`}
             >
-              Receiver
+              {t.inboxFile.tabReceiver}
             </button>
           </div>
 
@@ -193,25 +199,31 @@ export function BulkFilePanel({
             <EntityPicker
               key="bulk-project"
               name="bulk_target_project"
-              label="Project"
+              label={t.inboxFile.projectLabel}
               options={projectOptions}
-              entityNoun="project"
+              entityNoun={lang === "es" ? "proyecto" : "project"}
+              entityNounPlural={lang === "es" ? "proyectos" : "projects"}
+              lang={lang}
               onSelect={selectProject}
             />
           ) : (
             <EntityPicker
               key="bulk-contact"
               name="bulk_target_contact"
-              label="Receiver"
+              label={t.inboxFile.receiverLabel}
               options={contactOptions}
-              entityNoun="receiver"
+              entityNoun={lang === "es" ? "receptor" : "receiver"}
+              entityNounPlural={lang === "es" ? "receptores" : "receivers"}
+              lang={lang}
               onSelect={setSelectedContact}
             />
           )}
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-white/55">Document type (for items with a file)</label>
+              <label className="mb-1.5 block text-xs font-medium text-white/55">
+                {t.inboxBulk.documentTypeForItemsWithFile}
+              </label>
               <select
                 value={documentType}
                 onChange={(e) => setDocumentType(e.target.value)}
@@ -227,7 +239,7 @@ export function BulkFilePanel({
             </div>
             {destinationType === "project" && selectedProject && (
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-white/55">Tranche</label>
+                <label className="mb-1.5 block text-xs font-medium text-white/55">{t.inboxFile.trancheFieldLabel}</label>
                 <select
                   value={trancheValue}
                   onChange={(e) => setTrancheValue(e.target.value)}
@@ -235,14 +247,14 @@ export function BulkFilePanel({
                   className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
                 >
                   <option value={TRANCHE_GENERAL} className="bg-[#0a0e17]">
-                    General
+                    {t.inboxFile.generalTrancheOption}
                   </option>
-                  {[1, 2, ...tranches.map((t) => t.tranche_number).filter((n) => n > 2)]
+                  {[1, 2, ...tranches.map((tr) => tr.tranche_number).filter((n) => n > 2)]
                     .filter((n, i, arr) => arr.indexOf(n) === i)
                     .sort((a, b) => a - b)
                     .map((n) => (
                       <option key={n} value={n} className="bg-[#0a0e17]">
-                        Tranche {n}
+                        {t.inboxFile.trancheOption(n)}
                       </option>
                     ))}
                 </select>
@@ -253,10 +265,10 @@ export function BulkFilePanel({
           <div className="mt-3 flex flex-col gap-1.5 rounded-md border border-white/[0.06] bg-white/[0.02] p-2">
             {items.map((item) => (
               <div key={item.id} className="flex flex-wrap items-center gap-2 rounded px-1.5 py-1 text-xs">
-                <span className="min-w-0 flex-1 truncate text-white/75">{itemRowLabel(item)}</span>
+                <span className="min-w-0 flex-1 truncate text-white/75">{itemRowLabel(item, t)}</span>
                 {item.storage_path && (
                   <select
-                    aria-label={`Document type for ${itemRowLabel(item)}`}
+                    aria-label={t.inboxBulk.documentTypeForItemAria(itemRowLabel(item, t))}
                     value={perItemDocType[item.id] ?? documentType}
                     onChange={(e) => setPerItemDocType((prev) => ({ ...prev, [item.id]: e.target.value }))}
                     disabled={isSubmitting}
@@ -273,7 +285,7 @@ export function BulkFilePanel({
                   type="button"
                   onClick={() => onRemoveItem(item.id)}
                   disabled={isSubmitting}
-                  aria-label={`Remove ${itemRowLabel(item)} from this batch`}
+                  aria-label={t.inboxBulk.removeFromBatchAria(itemRowLabel(item, t))}
                   className="shrink-0 text-white/35 transition-colors duration-150 ease-out hover:text-rose-300 disabled:opacity-50"
                 >
                   <XCircle className="h-3.5 w-3.5" />
@@ -306,9 +318,7 @@ export function BulkFilePanel({
               disabled={isSubmitting || items.length === 0}
               className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isSubmitting
-                ? "Filing…"
-                : `File ${items.length} item${items.length === 1 ? "" : "s"}${destinationLabel ? ` into ${destinationLabel}` : ""}`}
+              {isSubmitting ? t.inboxFile.filing : t.inboxBulk.fileItemsButton(items.length, destinationLabel)}
             </button>
             <button
               type="button"
@@ -316,7 +326,7 @@ export function BulkFilePanel({
               disabled={isSubmitting}
               className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Cancel
+              {t.common.cancel}
             </button>
           </div>
         </>
@@ -324,9 +334,7 @@ export function BulkFilePanel({
 
       {results && (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-white/80">
-            {successCount} filed{failureCount > 0 ? `, ${failureCount} failed` : ""}.
-          </p>
+          <p className="text-sm text-white/80">{t.inboxBulk.filedSummary(successCount, failureCount)}</p>
           <div className="flex flex-col gap-1">
             {results.map((r) => (
               <div key={r.itemId} className="flex items-start gap-2 text-xs">
@@ -347,7 +355,7 @@ export function BulkFilePanel({
             onClick={onDone}
             className="mt-1 w-fit rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
           >
-            Close
+            {t.inbox.close}
           </button>
         </div>
       )}

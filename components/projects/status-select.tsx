@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateProjectStatus } from "@/lib/actions/projects";
 import { STATUS_DOT_COLORS } from "@/components/projects/badges";
+import { catalogLabel, getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { ProjectStatus, StatusRecord } from "@/lib/types";
 
 interface StatusSelectProps {
@@ -15,6 +16,7 @@ interface StatusSelectProps {
   // other admin-managed picker in this app follows), while the option
   // list itself only offers active ones to pick something *new*.
   statuses: StatusRecord[];
+  lang?: Lang;
 }
 
 // Always visible and always usable, regardless of the project's current
@@ -24,8 +26,9 @@ interface StatusSelectProps {
 // Status stage), the select shows a disabled placeholder instead of
 // defaulting to a real option, so it can't look like a status is
 // already set when none has actually been chosen.
-export function StatusSelect({ projectId, currentStatus, statuses }: StatusSelectProps) {
+export function StatusSelect({ projectId, currentStatus, statuses, lang = "en" }: StatusSelectProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -35,12 +38,12 @@ export function StatusSelect({ projectId, currentStatus, statuses }: StatusSelec
       try {
         const result = await updateProjectStatus(projectId, status);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -54,7 +57,7 @@ export function StatusSelect({ projectId, currentStatus, statuses }: StatusSelec
     <div className="flex items-center gap-2">
       {currentColor && <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT_COLORS[currentColor]}`} />}
       <select
-        aria-label="Change status"
+        aria-label={t.stageSelect.changeStatus}
         value={currentStatus ?? ""}
         disabled={isPending}
         onChange={(e) => handleChange(e.target.value)}
@@ -62,12 +65,12 @@ export function StatusSelect({ projectId, currentStatus, statuses }: StatusSelec
       >
         {currentStatus === null && (
           <option value="" disabled className="bg-[#0a0e17]">
-            Set status…
+            {t.stageSelect.setStatusPlaceholder}
           </option>
         )}
         {options.map((s) => (
           <option key={s.name} value={s.name} className="bg-[#0a0e17]">
-            {s.name}
+            {catalogLabel(s, lang)}
           </option>
         ))}
       </select>

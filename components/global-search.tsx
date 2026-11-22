@@ -5,19 +5,14 @@ import { useRouter } from "next/navigation";
 import { Loader2, Search } from "lucide-react";
 import { runGlobalSearch, searchResultHref, type SearchResult, type SearchResultType } from "@/lib/search";
 import { RecoveryBadge } from "@/components/projects/badges";
-
-const GROUP_LABELS: Record<SearchResultType, string> = {
-  project: "Projects",
-  contact: "Receivers",
-  document: "Documents",
-  note: "Notes",
-  person: "Contacts",
-};
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 const GROUP_ORDER: SearchResultType[] = ["project", "contact", "document", "note", "person"];
 
-export function GlobalSearch({ showRecovery }: { showRecovery: boolean }) {
+export function GlobalSearch({ showRecovery, lang }: { showRecovery: boolean; lang: Lang }) {
   const router = useRouter();
+  const t = getDictionary(lang);
+  const GROUP_LABELS: Record<SearchResultType, string> = t.searchGroups;
   const containerRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -37,7 +32,7 @@ export function GlobalSearch({ showRecovery }: { showRecovery: boolean }) {
       }
       setLoading(true);
       try {
-        const found = await runGlobalSearch(trimmed);
+        const found = await runGlobalSearch(trimmed, lang);
         if (!cancelled) setResults(found);
       } finally {
         if (!cancelled) setLoading(false);
@@ -48,7 +43,7 @@ export function GlobalSearch({ showRecovery }: { showRecovery: boolean }) {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [query]);
+  }, [query, lang]);
 
   useEffect(() => {
     function handlePointerDown(e: MouseEvent) {
@@ -90,7 +85,7 @@ export function GlobalSearch({ showRecovery }: { showRecovery: boolean }) {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
-        placeholder="Search projects, receivers, contacts, notes…"
+        placeholder={t.topbar.searchPlaceholder}
         className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-2 pr-3 pl-9 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]"
       />
 
@@ -99,10 +94,10 @@ export function GlobalSearch({ showRecovery }: { showRecovery: boolean }) {
           {loading && results.length === 0 && (
             <div className="flex items-center gap-2 px-3 py-3 text-sm text-white/40">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Searching…
+              {t.topbar.searching}
             </div>
           )}
-          {!loading && results.length === 0 && <p className="px-3 py-3 text-sm text-white/35">No matches.</p>}
+          {!loading && results.length === 0 && <p className="px-3 py-3 text-sm text-white/35">{t.topbar.noMatches}</p>}
           {GROUP_ORDER.map((type) => {
             const group = results.filter((r) => r.type === type);
             if (group.length === 0) return null;

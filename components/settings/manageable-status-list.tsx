@@ -6,22 +6,18 @@ import { ArrowDown, ArrowUp, Check, Pencil, Plus, X } from "lucide-react";
 import { moveCatalogItem, setCatalogItemActive } from "@/lib/actions/catalog";
 import { addStatus, updateStatus } from "@/lib/actions/statuses";
 import { STATUS_DOT_COLORS } from "@/components/projects/badges";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { StatusColor, StatusRecord } from "@/lib/types";
 
 interface ManageableStatusListProps {
   statuses: StatusRecord[];
+  lang?: Lang;
 }
 
 const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 const selectClass =
   "rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
-
-const KINDS: { value: "open" | "completed" | "lost"; label: string }[] = [
-  { value: "open", label: "Open" },
-  { value: "completed", label: "Completed" },
-  { value: "lost", label: "Lost" },
-];
 
 const COLORS: StatusColor[] = ["accent", "cyan", "teal", "silver", "sky", "emerald", "amber", "rose"];
 
@@ -43,8 +39,14 @@ function ColorSelect({ value, onChange }: { value: StatusColor; onChange: (color
 // but with two extra fields (kind, color) neither of those has, so
 // this is its own component rather than ManageableList with optional
 // props bolted on.
-export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
+export function ManageableStatusList({ statuses, lang = "en" }: ManageableStatusListProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
+  const KINDS: { value: "open" | "completed" | "lost"; label: string }[] = [
+    { value: "open", label: t.settings.statusKindOpen },
+    { value: "completed", label: t.settings.statusKindCompleted },
+    { value: "lost", label: t.settings.statusKindLost },
+  ];
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -53,8 +55,11 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
   const [newKind, setNewKind] = useState<"open" | "completed" | "lost">("open");
   const [newColor, setNewColor] = useState<StatusColor>("accent");
 
+  const [newNameEs, setNewNameEs] = useState("");
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [editingNameEs, setEditingNameEs] = useState("");
   const [editingKind, setEditingKind] = useState<"open" | "completed" | "lost">("open");
   const [editingColor, setEditingColor] = useState<StatusColor>("accent");
 
@@ -66,17 +71,18 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
     setError(null);
     startTransition(async () => {
       try {
-        const result = await addStatus(trimmed, newKind, newColor);
+        const result = await addStatus(trimmed, newKind, newColor, newNameEs);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setNewName("");
+        setNewNameEs("");
         setNewKind("open");
         setNewColor("accent");
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -84,6 +90,7 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
   function startEditing(status: StatusRecord) {
     setEditingId(status.id);
     setEditingName(status.name);
+    setEditingNameEs(status.name_es ?? "");
     setEditingKind(status.kind);
     setEditingColor(status.color);
     setError(null);
@@ -98,15 +105,15 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
     setBusyId(id);
     startTransition(async () => {
       try {
-        const result = await updateStatus(id, trimmed, editingKind, editingColor);
+        const result = await updateStatus(id, trimmed, editingKind, editingColor, editingNameEs);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setEditingId(null);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setBusyId(null);
       }
@@ -120,12 +127,12 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
       try {
         const result = await setCatalogItemActive("statuses", status.id, !status.active);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setBusyId(null);
       }
@@ -139,12 +146,12 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
       try {
         const result = await moveCatalogItem("statuses", sorted, status.id, direction);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setBusyId(null);
       }
@@ -153,7 +160,9 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      {sorted.length === 0 && <p className="text-sm text-white/35">No statuses yet.</p>}
+      {sorted.length === 0 && (
+        <p className="text-sm text-white/35">{t.settings.noItemsYet(lang === "es" ? "estados" : "statuses")}</p>
+      )}
 
       {sorted.map((status, index) => (
         <div
@@ -167,7 +176,7 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
               type="button"
               onClick={() => handleMove(status, "up")}
               disabled={index === 0 || isPending}
-              aria-label={`Move ${status.name} up`}
+              aria-label={t.settingsCatalog.moveUp(status.name)}
               className="rounded p-0.5 text-white/40 transition-colors duration-150 ease-out hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-30"
             >
               <ArrowUp className="h-3.5 w-3.5" />
@@ -176,7 +185,7 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
               type="button"
               onClick={() => handleMove(status, "down")}
               disabled={index === sorted.length - 1 || isPending}
-              aria-label={`Move ${status.name} down`}
+              aria-label={t.settingsCatalog.moveDown(status.name)}
               className="rounded p-0.5 text-white/40 transition-colors duration-150 ease-out hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-30"
             >
               <ArrowDown className="h-3.5 w-3.5" />
@@ -190,6 +199,12 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
                 onChange={(e) => setEditingName(e.target.value)}
                 className={`${fieldClass} min-w-[8rem] flex-1`}
                 autoFocus
+              />
+              <input
+                value={editingNameEs}
+                onChange={(e) => setEditingNameEs(e.target.value)}
+                placeholder={t.common.spanishNamePlaceholder}
+                className={`${fieldClass} min-w-[8rem] flex-1`}
               />
               <select
                 value={editingKind}
@@ -207,7 +222,7 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
                 type="button"
                 onClick={handleSaveEdit}
                 disabled={isPending && busyId === status.id}
-                aria-label="Save"
+                aria-label={t.common.save}
                 className="rounded-md p-1.5 text-emerald-300 transition-colors duration-150 ease-out hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Check className="h-4 w-4" />
@@ -216,7 +231,7 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
                 type="button"
                 onClick={() => setEditingId(null)}
                 disabled={isPending}
-                aria-label="Cancel"
+                aria-label={t.common.cancel}
                 className="rounded-md p-1.5 text-white/40 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
               >
                 <X className="h-4 w-4" />
@@ -225,19 +240,22 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
           ) : (
             <>
               <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_DOT_COLORS[status.color]}`} />
-              <span className="min-w-[6rem] flex-1 text-sm text-white/85">{status.name}</span>
-              <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/50 capitalize">
-                {status.kind}
+              <span className="min-w-[6rem] flex-1 text-sm text-white/85">
+                {status.name}
+                {status.name_es && <span className="ml-2 text-xs text-white/35">({status.name_es})</span>}
+              </span>
+              <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/50">
+                {KINDS.find((k) => k.value === status.kind)?.label ?? status.kind}
               </span>
               {!status.active && (
                 <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] text-white/50">
-                  Hidden
+                  {t.common.hidden}
                 </span>
               )}
               <button
                 type="button"
                 onClick={() => startEditing(status)}
-                aria-label={`Edit ${status.name}`}
+                aria-label={t.settingsCatalog.edit(status.name)}
                 className="shrink-0 rounded-md p-1.5 text-white/40 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white/80"
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -248,7 +266,7 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
                 disabled={isPending && busyId === status.id}
                 className="shrink-0 rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {status.active ? "Hide" : "Show"}
+                {status.active ? t.common.hide : t.common.show}
               </button>
             </>
           )}
@@ -259,7 +277,7 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
         <input
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          placeholder="Add a status…"
+          placeholder={t.settings.addPlaceholder(lang === "es" ? "estado" : "status")}
           className={`${fieldClass} min-w-[8rem] flex-1`}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -267,6 +285,12 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
               handleAdd();
             }
           }}
+        />
+        <input
+          value={newNameEs}
+          onChange={(e) => setNewNameEs(e.target.value)}
+          placeholder={t.common.spanishNamePlaceholder}
+          className={`${fieldClass} min-w-[8rem] flex-1`}
         />
         <select
           value={newKind}
@@ -287,7 +311,7 @@ export function ManageableStatusList({ statuses }: ManageableStatusListProps) {
           className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Plus className="h-4 w-4" />
-          Add
+          {t.common.add}
         </button>
       </div>
 

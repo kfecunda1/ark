@@ -16,13 +16,13 @@ export interface PersonFormState {
 // returned-error shape every normal Supabase-error path already uses,
 // so callers never see a save silently fail.
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 function buildPersonPayload(formData: FormData) {
   const firstName = formData.get("first_name")?.toString().trim();
   if (!firstName) {
-    throw new Error('"First name" is required.');
+    throw new Error("firstNameRequired");
   }
 
   return {
@@ -96,7 +96,7 @@ export async function createPersonWithId(formData: FormData): Promise<{ id: stri
   try {
     payload = buildPersonPayload(formData);
   } catch (err) {
-    return { id: null, error: err instanceof Error ? err.message : "Invalid form data." };
+    return { id: null, error: err instanceof Error ? err.message : "invalidInput" };
   }
 
   try {
@@ -104,7 +104,7 @@ export async function createPersonWithId(formData: FormData): Promise<{ id: stri
     const { data, error } = await supabase.from("people").insert(payload).select("id").single();
 
     if (error || !data) {
-      return { id: null, error: error?.message ?? "Failed to create contact." };
+      return { id: null, error: error?.message ?? "createFailed" };
     }
 
     revalidatePath("/people");
@@ -123,7 +123,7 @@ export async function updatePerson(
   try {
     payload = buildPersonPayload(formData);
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Invalid form data." };
+    return { error: err instanceof Error ? err.message : "invalidInput" };
   }
 
   try {
@@ -179,10 +179,19 @@ export async function togglePersonArchived(id: string, archived: boolean): Promi
 // (every FK into `people` is ON DELETE SET NULL or, for intermediaries,
 // ON DELETE RESTRICT — never CASCADE), so this is a plain delete once
 // every link check clears.
-export async function deletePerson(id: string): Promise<{ error: string | null }> {
+export interface DeletePersonResult {
+  error: string | null;
+  // Set only when `error` is the "linkedToCannotDelete" key — the UI
+  // (components/people/delete-person-button.tsx) needs these counts to
+  // build the translated sentence itself (lib/i18n can't carry dynamic
+  // numbers inside a plain error key).
+  linkedCounts?: { projectCount: number; receiverCount: number };
+}
+
+export async function deletePerson(id: string): Promise<DeletePersonResult> {
   try {
     if (!(await isCurrentUserAdmin())) {
-      return { error: "Only admins can delete contacts." };
+      return { error: "forbidden" };
     }
 
     const supabase = await createClient();
@@ -209,10 +218,7 @@ export async function deletePerson(id: string): Promise<{ error: string | null }
     ]).size;
 
     if (projectCount > 0 || receiverCount > 0) {
-      const parts: string[] = [];
-      if (projectCount) parts.push(`${projectCount} project${projectCount === 1 ? "" : "s"}`);
-      if (receiverCount) parts.push(`${receiverCount} receiver${receiverCount === 1 ? "" : "s"}`);
-      return { error: `Linked to ${parts.join(" and ")}. Archive instead, or unlink first.` };
+      return { error: "linkedToCannotDelete", linkedCounts: { projectCount, receiverCount } };
     }
 
     const { error } = await supabase.from("people").delete().eq("id", id);
@@ -240,7 +246,7 @@ export async function quickCreatePerson(input: { name: string }): Promise<{
 }> {
   const trimmed = input.name.trim();
   if (!trimmed) {
-    return { person: null, error: "Name is required." };
+    return { person: null, error: "nameRequired" };
   }
 
   const [firstName, ...rest] = trimmed.split(/\s+/);
@@ -255,7 +261,7 @@ export async function quickCreatePerson(input: { name: string }): Promise<{
       .single();
 
     if (error || !data) {
-      return { person: null, error: error?.message ?? "Failed to create contact." };
+      return { person: null, error: error?.message ?? "createFailed" };
     }
 
     return { person: data as Person, error: null };

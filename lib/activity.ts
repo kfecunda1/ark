@@ -1,5 +1,6 @@
-import { LOCALE, TIME_ZONE, dateKeyInTimeZone } from "@/lib/format";
+import { LOCALE, TIME_ZONE, dateKeyInTimeZone, type Lang } from "@/lib/format";
 import { PRIORITY_LABELS, STAGE_LABELS } from "@/lib/projects";
+import { getDictionary } from "@/lib/i18n";
 import type { ActivityAction, ActivityDetails, ActivityEntityType, ActivityLog } from "@/lib/types";
 
 // The three buckets the Activity page filters by. "document" covers
@@ -17,6 +18,15 @@ export const ACTIVITY_FILTER_LABELS: Record<ActivityFilter, string> = {
   contact: "Receivers",
   document: "Documents",
 };
+
+// Language-aware counterpart of the three English consts above — not
+// yet wired into app/(app)/activity/page.tsx itself (which still
+// renders the plain English consts, same as the per-row "detail
+// chips" below), but ready for that page to switch to once it gets
+// its own translated pass.
+export function activityFilterLabel(filter: ActivityFilter, lang: Lang): string {
+  return getDictionary(lang).activity.filters[filter];
+}
 
 export const ACTIVITY_FILTER_ENTITY_TYPES: Record<ActivityFilter, ActivityEntityType[]> = {
   project: ["project", "project_step", "project_product", "project_intermediary", "project_tranche"],
@@ -58,6 +68,14 @@ export const ACTION_LABELS: Record<ActivityAction, string> = {
   deleted: "Deleted",
 };
 
+export function entityTypeLabel(entityType: ActivityEntityType, lang: Lang): string {
+  return getDictionary(lang).activity.entityTypes[entityType];
+}
+
+export function actionLabel(action: ActivityAction, lang: Lang): string {
+  return getDictionary(lang).activity.actions[action];
+}
+
 // Child-entity types whose own 'deleted' row should still link to the
 // parent (which, unlike the child, still exists) — originally just the
 // two document types, now also project_step entries.
@@ -74,75 +92,15 @@ export function isDocumentEntity(entityType: ActivityEntityType): boolean {
   );
 }
 
-// Column names as they appear in details.fields, prettified for display.
-const FIELD_LABELS: Record<string, string> = {
-  // projects
-  name: "name",
-  product_type: "product type",
-  client_contact_id: "client contact",
-  assigned_contact_id: "assigned contact",
-  matched_contact_id: "matched receiver",
-  contact_person_id: "contact person",
-  ratio_presented: "ratio presented",
-  ratio_real: "ratio real",
-  total_face_value: "total face value",
-  currency: "currency",
-  priority: "priority",
-  stage: "stage",
-  status: "status",
-  archived: "archived",
-  is_recovery: "recovery",
-  // contacts
-  full_name: "name",
-  // contact products
-  ratio: "ratio",
-  recovery_ratio: "recovery ratio",
-  // documents
-  document_type: "document type",
-  file_name: "file name",
-  file_path: "file path",
-  tranche_id: "tranche",
-  // project steps (timeline)
-  kind: "type",
-  body: "text",
-  due_date: "due date",
-  // project_tranche
-  confirmed_on: "confirmed on",
-  paid_out_on: "paid out on",
-  done: "done",
-  // products / document_types / statuses / app_settings
-  active: "active",
-  sort_order: "order",
-  color: "color",
-  default_currency: "default currency",
-  stuck_after_days: "stuck after (days)",
-  show_recovery: "show recovery",
-  // users
-  role: "role",
-  event: "event",
-  // project_products
-  final_product: "final product",
-  product: "product",
-  // notes
-  title: "title",
-  content: "text",
-  is_reminder: "reminder",
-  reminder_done: "reminder done",
-  // people
-  first_name: "first name",
-  last_name: "last name",
-  phone: "phone",
-  email: "email",
-};
-
 // contact_person_id is shared by both contacts and projects (same
 // column name, same generic "fields changed" chip), but the label
 // differs: the Project side is "Contact Person Project" everywhere
 // else in the UI, while the Receiver's own stays plain "Contact
 // person" — entityType picks which one a given activity row means.
-export function fieldLabel(field: string, entityType?: ActivityEntityType): string {
-  if (field === "contact_person_id" && entityType === "project") return "contact person project";
-  return FIELD_LABELS[field] ?? field.replace(/_/g, " ");
+export function fieldLabel(field: string, entityType?: ActivityEntityType, lang: Lang = "en"): string {
+  const labels = getDictionary(lang).activity.fieldLabels as Record<string, string>;
+  if (field === "contact_person_id" && entityType === "project") return labels.contact_person_id_project;
+  return labels[field] ?? field.replace(/_/g, " ");
 }
 
 // Fields whose change is already spelled out as its own "x -> y" chip, so
@@ -183,56 +141,49 @@ function labelled<T extends string>(value: T | null, labels: Record<T, string>):
   return value && labels[value] ? labels[value] : (value ?? "—");
 }
 
-function transition<T extends string>(pair: [T, T], labels: Record<T, string>): string {
-  return `${labelled(pair[0], labels)} -> ${labelled(pair[1], labels)}`;
-}
-
-// status's pair can have a null side (a project's very first status, or
-// one cleared by moving back out of the Status stage), unlike stage/
-// priority which are never null. Unlike those two, there's no label
-// lookup here either: a project's status column now holds the admin-
-// configured status's own display name directly (supabase/migrations/
-// 019_statuses.sql), not a slug that needs translating.
-function statusTransition(pair: [string | null, string | null]): string {
-  return `${pair[0] ?? "—"} -> ${pair[1] ?? "—"}`;
-}
-
 /**
  * Short human-readable bits describing one activity row — the "what
  * exactly changed" column on the Activity page.
  */
-export function activityDetailChips(row: ActivityLog): string[] {
+export function activityDetailChips(row: ActivityLog, lang: Lang = "en"): string[] {
   const details: ActivityDetails = row.details ?? {};
   const chips: string[] = [];
+  const c = getDictionary(lang).activity.chips;
+  const stageLabels: Record<string, string> = lang === "es"
+    ? { new: "Nuevo", documents_received: "Documentos recibidos", match: "Coincidencia", status: "Estado" }
+    : STAGE_LABELS;
+  const priorityLabels: Record<string, string> = lang === "es"
+    ? { low: "Baja", medium: "Media", high: "Alta", urgent: "Urgente" }
+    : PRIORITY_LABELS;
 
   const stagePair = asPair(details.stage);
   if (stagePair) {
-    chips.push(`stage ${transition(stagePair, STAGE_LABELS)}`);
+    chips.push(c.stageTransition(labelled(stagePair[0], stageLabels), labelled(stagePair[1], stageLabels)));
   } else if (row.action !== "updated") {
     const stage = asScalar(details.stage);
-    if (stage) chips.push(`stage ${labelled(stage, STAGE_LABELS)}`);
+    if (stage) chips.push(c.stageSet(labelled(stage, stageLabels)));
   }
 
   if (Array.isArray(details.status)) {
-    chips.push(`status ${statusTransition(details.status)}`);
+    chips.push(c.statusTransition(details.status[0] ?? "—", details.status[1] ?? "—"));
   }
 
   const priorityPair = asPair(details.priority);
   if (priorityPair) {
-    chips.push(`priority ${transition(priorityPair, PRIORITY_LABELS)}`);
+    chips.push(c.priorityTransition(labelled(priorityPair[0], priorityLabels), labelled(priorityPair[1], priorityLabels)));
   }
 
   if (details.archived) {
-    chips.push(details.archived[1] ? "archived" : "unarchived");
+    chips.push(details.archived[1] ? c.archived : c.unarchived);
   }
 
   if (details.is_recovery) {
-    chips.push(details.is_recovery[1] ? "marked recovery" : "unmarked recovery");
+    chips.push(details.is_recovery[1] ? c.markedRecovery : c.unmarkedRecovery);
   }
 
   if (details.full_name) {
     const [before, after] = details.full_name;
-    if (before !== after) chips.push(`renamed ${before ?? "—"} -> ${after ?? "—"}`);
+    if (before !== after) chips.push(c.renamed(before ?? "—", after ?? "—"));
   }
 
   if (details.document_type) {
@@ -240,41 +191,42 @@ export function activityDetailChips(row: ActivityLog): string[] {
   }
 
   if (details.kind) {
-    chips.push(details.kind.replace("_", " "));
+    const timelineLabels = getDictionary(lang).projectTimeline;
+    chips.push(details.kind === "step_taken" ? timelineLabels.stepTaken : timelineLabels.nextStep);
   }
 
   if (details.done) {
-    chips.push(details.done[1] ? "marked done" : "reopened");
+    chips.push(details.done[1] ? c.markedDone : c.reopened);
   }
 
   if (details.name) {
     const [before, after] = details.name;
-    if (before !== after) chips.push(`renamed ${before ?? "—"} -> ${after ?? "—"}`);
+    if (before !== after) chips.push(c.renamed(before ?? "—", after ?? "—"));
   }
 
   if (details.active) {
     const isUser = row.entity_type === "user";
-    chips.push(details.active[1] ? (isUser ? "reactivated" : "shown") : isUser ? "deactivated" : "hidden");
+    chips.push(details.active[1] ? (isUser ? c.reactivated : c.shown) : isUser ? c.deactivated : c.hidden);
   }
 
   if (details.default_currency) {
-    chips.push(`default currency ${details.default_currency[0]} -> ${details.default_currency[1]}`);
+    chips.push(c.defaultCurrencyTransition(details.default_currency[0], details.default_currency[1]));
   }
 
   if (details.stuck_after_days) {
-    chips.push(`stuck after ${details.stuck_after_days[0]} -> ${details.stuck_after_days[1]} days`);
+    chips.push(c.stuckAfterTransition(String(details.stuck_after_days[0]), String(details.stuck_after_days[1])));
   }
 
   if (details.show_recovery) {
-    chips.push(details.show_recovery[1] ? "recovery shown" : "recovery hidden");
+    chips.push(details.show_recovery[1] ? c.recoveryShown : c.recoveryHidden);
   }
 
   if (details.role) {
-    chips.push(`role ${details.role[0] ?? "—"} -> ${details.role[1] ?? "—"}`);
+    chips.push(c.roleTransition(details.role[0] ?? "—", details.role[1] ?? "—"));
   }
 
   if (details.event === "password_reset") {
-    chips.push("password reset");
+    chips.push(c.passwordReset);
   }
 
   if (details.product) {
@@ -283,29 +235,29 @@ export function activityDetailChips(row: ActivityLog): string[] {
 
   if (details.final_product) {
     const [before, after] = details.final_product;
-    if (after && !before) chips.push(`final product chosen: ${after}`);
-    else if (after && before && after !== before) chips.push(`final product changed ${before} -> ${after}`);
-    else if (!after && before) chips.push("final product undone");
+    if (after && !before) chips.push(c.finalProductChosen(after));
+    else if (after && before && after !== before) chips.push(c.finalProductChanged(before, after));
+    else if (!after && before) chips.push(c.finalProductUndone);
   }
 
   if (details.is_reminder) {
-    chips.push("reminder");
+    chips.push(c.reminder);
   }
 
   if (details.reminder_done) {
-    chips.push(details.reminder_done[1] ? "reminder done" : "reminder reopened");
+    chips.push(details.reminder_done[1] ? c.reminderDone : c.reminderReopened);
   }
 
   // project_intermediary's only UPDATE is a reorder (position moving);
   // receiver_intermediary never updates (only created/deleted), so
   // details.position is always a scalar there, never reached here.
   if (Array.isArray(details.position)) {
-    chips.push(`moved position ${details.position[0]} -> ${details.position[1]}`);
+    chips.push(c.movedPosition(String(details.position[0]), String(details.position[1])));
   }
 
   const rest = (details.fields ?? []).filter((f) => !FIELDS_DESCRIBED_SEPARATELY.has(f));
   if (rest.length > 0) {
-    chips.push(`${rest.map((f) => fieldLabel(f, row.entity_type)).join(", ")} changed`);
+    chips.push(c.fieldsChanged(rest.map((f) => fieldLabel(f, row.entity_type, lang)).join(", ")));
   }
 
   return chips;
@@ -375,8 +327,19 @@ export function targetKey(table: ActivityTarget["table"], id: string): string {
 }
 
 /** HH:MM in the fixed business timezone, matching formatDateTime. */
-export function formatActivityTime(value: string): string {
-  return new Date(value).toLocaleTimeString(LOCALE, { timeZone: TIME_ZONE, hour: "numeric", minute: "2-digit" });
+export function formatActivityTime(value: string, lang: Lang = "en"): string {
+  const date = new Date(value);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: TIME_ZONE,
+    hourCycle: "h23",
+    hour: "numeric",
+    minute: "2-digit",
+  }).formatToParts(date);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value);
+  const minute = String(Number(parts.find((p) => p.type === "minute")?.value)).padStart(2, "0");
+  return lang === "es"
+    ? `${hour}:${minute}`
+    : `${hour % 12 === 0 ? 12 : hour % 12}:${minute} ${hour >= 12 ? "PM" : "AM"}`;
 }
 
 /** Stable per-day bucket key, in the fixed business timezone — not
@@ -385,7 +348,7 @@ export function activityDayKey(value: string): string {
   return dateKeyInTimeZone(value);
 }
 
-export function formatActivityDayHeading(dayKey: string): string {
+export function formatActivityDayHeading(dayKey: string, lang: Lang = "en"): string {
   const [year, month, day] = dayKey.split("-").map(Number);
   // A locally-constructed Date here (as opposed to parsing dayKey as a
   // UTC string) is safe and intentional: it's only used below for
@@ -398,8 +361,15 @@ export function formatActivityDayHeading(dayKey: string): string {
   const [todayYear, todayMonth, todayDay] = todayKey.split("-").map(Number);
   const today = new Date(todayYear, todayMonth - 1, todayDay);
   const diffDays = Math.round((today.getTime() - date.getTime()) / 86_400_000);
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
+  const t = getDictionary(lang).activity;
+  if (diffDays === 0) return t.today;
+  if (diffDays === 1) return t.yesterday;
+
+  if (lang === "es") {
+    const WEEKDAYS_ES = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+    const MONTHS_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+    return `${WEEKDAYS_ES[date.getDay()]}, ${day} ${MONTHS_ES[month - 1]} ${year}`;
+  }
 
   return date.toLocaleDateString(LOCALE, {
     weekday: "short",
@@ -416,7 +386,7 @@ export interface ActivityDayGroup {
 }
 
 /** Groups rows (already newest-first) into newest-first day buckets. */
-export function groupActivityByDay(rows: ActivityLog[]): ActivityDayGroup[] {
+export function groupActivityByDay(rows: ActivityLog[], lang: Lang = "en"): ActivityDayGroup[] {
   const groups: ActivityDayGroup[] = [];
 
   for (const row of rows) {
@@ -425,7 +395,7 @@ export function groupActivityByDay(rows: ActivityLog[]): ActivityDayGroup[] {
     if (last && last.dayKey === dayKey) {
       last.rows.push(row);
     } else {
-      groups.push({ dayKey, heading: formatActivityDayHeading(dayKey), rows: [row] });
+      groups.push({ dayKey, heading: formatActivityDayHeading(dayKey, lang), rows: [row] });
     }
   }
 

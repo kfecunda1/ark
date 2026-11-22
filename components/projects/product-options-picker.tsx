@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus, X } from "lucide-react";
+import { getDictionary, type Lang } from "@/lib/i18n";
 import type { Product } from "@/lib/types";
 
 const MAX_OPTIONS = 3;
@@ -12,6 +13,7 @@ interface ProductOptionsPickerProps {
   products: Product[];
   value: string[];
   onChange: (value: string[]) => void;
+  lang?: Lang;
 }
 
 const fieldClass =
@@ -22,7 +24,8 @@ const fieldClass =
 // (project-product-options.tsx, detail page only) — this one only
 // ever produces the plain list of product names the form submits as
 // repeated `product_options` fields.
-export function ProductOptionsPicker({ products, value, onChange }: ProductOptionsPickerProps) {
+export function ProductOptionsPicker({ products, value, onChange, lang = "en" }: ProductOptionsPickerProps) {
+  const t = getDictionary(lang);
   const used = new Set(value.filter(Boolean));
   const available = products.filter((p) => p.active && !used.has(p.name));
 
@@ -61,7 +64,7 @@ export function ProductOptionsPicker({ products, value, onChange }: ProductOptio
               className={fieldClass}
             >
               <option value="" disabled className="bg-[#0a0e17]">
-                Select…
+                {t.productOptions.select}
               </option>
               {optionsForRow.map((product) => (
                 <option key={product.id} value={product.name} className="bg-[#0a0e17]">
@@ -73,7 +76,7 @@ export function ProductOptionsPicker({ products, value, onChange }: ProductOptio
               <button
                 type="button"
                 onClick={() => removeRow(index)}
-                aria-label="Remove product option"
+                aria-label={t.productOptions.removeOption}
                 className="shrink-0 rounded-md p-2 text-white/40 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white/80"
               >
                 <X className="h-4 w-4" />
@@ -91,11 +94,11 @@ export function ProductOptionsPicker({ products, value, onChange }: ProductOptio
           className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Plus className="h-3.5 w-3.5" />
-          Add Product
+          {t.productOptions.addProduct}
         </button>
       )}
 
-      <p className="text-xs text-white/35">Choose 1 to 3 products. A single option becomes final automatically.</p>
+      <p className="text-xs text-white/35">{t.productOptions.chooseHint}</p>
     </div>
   );
 }

@@ -10,6 +10,8 @@ import { isCurrentUserAdmin } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { personLabel } from "@/lib/people";
 import { displayProduct, getProjectProductsByProjectIds } from "@/lib/project-products";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { Contact, Person, Project } from "@/lib/types";
 
 interface IntermediaryReceiverRow {
@@ -31,6 +33,8 @@ interface PersonDetailPageProps {
 export default async function PersonDetailPage({ params }: PersonDetailPageProps) {
   const { id } = await params;
   const supabase = await createClient();
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
 
   const { data } = await supabase.from("people").select("*").eq("id", id).maybeSingle();
   const person = data as Person | null;
@@ -81,9 +85,9 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
   const blockedProjectCount = new Set([...linkedProjects.map((p) => p.id), ...intermediaryProjectIds]).size;
 
   const fields: { label: string; value: string }[] = [
-    { label: "Phone", value: person.phone || "—" },
-    { label: "Email", value: person.email || "—" },
-    { label: "Created", value: formatDateTime(person.created_at) },
+    { label: t.common.columnPhone, value: person.phone || "—" },
+    { label: t.common.columnEmail, value: person.email || "—" },
+    { label: t.common.columnCreated, value: formatDateTime(person.created_at, lang) },
   ];
 
   return (
@@ -91,11 +95,11 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link href="/people" className="text-xs font-medium text-white/40 hover:text-white/70">
-            ← Back to contacts
+            {t.people.backToContacts}
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-tight text-white">{personLabel(person)}</h1>
-            {person.archived_at && <ArchivedBadge />}
+            {person.archived_at && <ArchivedBadge lang={lang} />}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -104,15 +108,16 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
             className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
           >
             <Pencil className="h-4 w-4" />
-            Edit
+            {t.common.edit}
           </Link>
-          <ArchiveToggleButton entityType="person" entityId={person.id} archived={Boolean(person.archived_at)} />
+          <ArchiveToggleButton entityType="person" entityId={person.id} archived={Boolean(person.archived_at)} lang={lang} />
           {isAdmin && (
             <DeletePersonButton
               personId={person.id}
               redirectTo="/people"
               linkedProjectCount={blockedProjectCount}
               linkedReceiverCount={blockedReceiverCount}
+              lang={lang}
             />
           )}
         </div>
@@ -130,9 +135,9 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
       </GlassCard>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Linked Receivers</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.people.linkedReceivers}</h2>
         {linkedReceivers.length === 0 ? (
-          <p className="text-sm text-white/35">Not linked as the contact person for any Receiver.</p>
+          <p className="text-sm text-white/35">{t.people.notLinkedReceiver}</p>
         ) : (
           <div className="flex flex-col gap-2">
             {linkedReceivers.map((receiver) => (
@@ -142,7 +147,7 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
                 className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
               >
                 <span className="min-w-0 flex-1 truncate text-sm text-white/80">{receiver.full_name}</span>
-                {receiver.archived_at && <ArchivedBadge />}
+                {receiver.archived_at && <ArchivedBadge lang={lang} />}
               </Link>
             ))}
           </div>
@@ -150,9 +155,9 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
       </div>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Linked Projects</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.people.linkedProjects}</h2>
         {linkedProjects.length === 0 ? (
-          <p className="text-sm text-white/35">Not linked as the contact person for any Project.</p>
+          <p className="text-sm text-white/35">{t.people.notLinkedProject}</p>
         ) : (
           <div className="flex flex-col gap-2">
             {linkedProjects.map((project) => (
@@ -172,9 +177,9 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
       </div>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Intermediary for Receivers</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.people.intermediaryForReceivers}</h2>
         {intermediaryReceivers.length === 0 ? (
-          <p className="text-sm text-white/35">Not an intermediary for any Receiver.</p>
+          <p className="text-sm text-white/35">{t.people.notIntermediaryReceiver}</p>
         ) : (
           <div className="flex flex-col gap-2">
             {intermediaryReceivers.map((receiver) => (
@@ -184,7 +189,7 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
                 className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
               >
                 <span className="min-w-0 flex-1 truncate text-sm text-white/80">{receiver.full_name}</span>
-                {receiver.archived_at && <ArchivedBadge />}
+                {receiver.archived_at && <ArchivedBadge lang={lang} />}
               </Link>
             ))}
           </div>
@@ -192,9 +197,9 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
       </div>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Intermediary in Projects</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.people.intermediaryInProjects}</h2>
         {intermediaryProjects.length === 0 ? (
-          <p className="text-sm text-white/35">Not an intermediary in any Project.</p>
+          <p className="text-sm text-white/35">{t.people.notIntermediaryProject}</p>
         ) : (
           <div className="flex flex-col gap-2">
             {intermediaryProjects.map((project) => (
@@ -204,7 +209,7 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
                 className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
               >
                 <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
-                <span className="shrink-0 text-xs text-white/35">{project.final_product ?? "Product not decided"}</span>
+                <span className="shrink-0 text-xs text-white/35">{project.final_product ?? t.common.productNotDecided}</span>
               </Link>
             ))}
           </div>

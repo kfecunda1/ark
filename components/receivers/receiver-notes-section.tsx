@@ -8,11 +8,13 @@ import { ReminderBadge } from "@/components/notes/badges";
 import { DeleteNoteButton } from "@/components/notes/delete-note-button";
 import { addContactNote } from "@/lib/actions/contacts";
 import { formatDateTime } from "@/lib/format";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { Note } from "@/lib/types";
 
 interface ReceiverNotesSectionProps {
   contactId: string;
   notes: Note[];
+  lang?: Lang;
 }
 
 const fieldClass =
@@ -22,8 +24,9 @@ const fieldClass =
 // New Note page — addContactNote doesn't redirect, so the form just
 // clears and the new note appears in the list below without leaving
 // this page.
-export function ReceiverNotesSection({ contactId, notes }: ReceiverNotesSectionProps) {
+export function ReceiverNotesSection({ contactId, notes, lang = "en" }: ReceiverNotesSectionProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -44,7 +47,7 @@ export function ReceiverNotesSection({ contactId, notes }: ReceiverNotesSectionP
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!content.trim()) {
-      setError('"Content" is required.');
+      setError(t.errors.contentRequired);
       return;
     }
     setError(null);
@@ -53,13 +56,13 @@ export function ReceiverNotesSection({ contactId, notes }: ReceiverNotesSectionP
       try {
         const result = await addContactNote(contactId, formData);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         resetForm();
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -67,7 +70,7 @@ export function ReceiverNotesSection({ contactId, notes }: ReceiverNotesSectionP
   return (
     <div className="flex flex-col gap-2">
       {notes.length === 0 ? (
-        <p className="text-sm text-white/35">No notes yet.</p>
+        <p className="text-sm text-white/35">{t.receiverDialogs.noNotesYet}</p>
       ) : (
         notes.map((note) => (
           <div
@@ -77,12 +80,12 @@ export function ReceiverNotesSection({ contactId, notes }: ReceiverNotesSectionP
             <Link href={`/notes/${note.id}/edit`} className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 {note.title && <p className="truncate text-sm font-medium text-white/85">{note.title}</p>}
-                {note.is_reminder && note.due_date && <ReminderBadge dueDate={note.due_date} />}
+                {note.is_reminder && note.due_date && <ReminderBadge dueDate={note.due_date} lang={lang} />}
               </div>
               <p className="mt-1 line-clamp-2 text-sm text-white/60">{note.content}</p>
-              <p className="mt-1 text-xs text-white/35">{formatDateTime(note.created_at)}</p>
+              <p className="mt-1 text-xs text-white/35">{formatDateTime(note.created_at, lang)}</p>
             </Link>
-            <DeleteNoteButton noteId={note.id} />
+            <DeleteNoteButton noteId={note.id} lang={lang} />
           </div>
         ))
       )}
@@ -94,14 +97,14 @@ export function ReceiverNotesSection({ contactId, notes }: ReceiverNotesSectionP
               name="title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Title (optional)"
+              placeholder={t.receiverDialogs.titleOptional}
               className={fieldClass}
             />
             <textarea
               name="content"
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder="Content *"
+              placeholder={t.receiverDialogs.contentRequired}
               rows={3}
               required
               className={fieldClass}
@@ -114,7 +117,7 @@ export function ReceiverNotesSection({ contactId, notes }: ReceiverNotesSectionP
                 onChange={(e) => setIsReminder(e.target.checked)}
                 className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
               />
-              This is a reminder
+              {t.receiverDialogs.thisIsAReminder}
             </label>
             {isReminder && (
               <input
@@ -134,7 +137,7 @@ export function ReceiverNotesSection({ contactId, notes }: ReceiverNotesSectionP
               disabled={isPending}
               className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isPending ? "Saving…" : "Save Note"}
+              {isPending ? t.common.saving : t.receiverDialogs.saveNote}
             </button>
             <button
               type="button"
@@ -142,7 +145,7 @@ export function ReceiverNotesSection({ contactId, notes }: ReceiverNotesSectionP
               disabled={isPending}
               className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
             >
-              Cancel
+              {t.common.cancel}
             </button>
           </div>
         </form>
@@ -153,7 +156,7 @@ export function ReceiverNotesSection({ contactId, notes }: ReceiverNotesSectionP
           className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white"
         >
           <Plus className="h-3.5 w-3.5" />
-          Add Note
+          {t.receiverDialogs.addNote}
         </button>
       )}
     </div>

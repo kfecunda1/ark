@@ -4,12 +4,14 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Search, X } from "lucide-react";
 import { updateProjectMatchedContact, updateProjectRatioReal } from "@/lib/actions/projects";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { EntityOption } from "@/components/entity-picker";
 
 interface MatchedReceiverSelectProps {
   projectId: string;
   receivers: EntityOption[];
   currentReceiver: EntityOption | null;
+  lang?: Lang;
 }
 
 type Message =
@@ -24,8 +26,9 @@ type Message =
 // project's already-saved final product. The create/edit form has its
 // own client-side version of the same check, since there the project
 // may not be saved yet.
-export function MatchedReceiverSelect({ projectId, receivers, currentReceiver }: MatchedReceiverSelectProps) {
+export function MatchedReceiverSelect({ projectId, receivers, currentReceiver, lang = "en" }: MatchedReceiverSelectProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [isPending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -47,13 +50,13 @@ export function MatchedReceiverSelect({ projectId, receivers, currentReceiver }:
       try {
         const result = await updateProjectMatchedContact(projectId, receiverId);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         if (result.autoFill) {
           const { filled, differs, contactName, productType, theirRatio, currentRatio, isRecovery } = result.autoFill;
           if (filled) {
-            setMessage({ tone: "filled", text: `Real ratio filled from ${contactName} (${productType}).` });
+            setMessage({ tone: "filled", text: t.matchedReceiver.ratioFilled(contactName, productType) });
           } else if (differs) {
             setMessage({ tone: "differs", contactName, productType, theirRatio: theirRatio!, currentRatio: currentRatio ?? "" });
           } else {
@@ -62,7 +65,7 @@ export function MatchedReceiverSelect({ projectId, receivers, currentReceiver }:
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -77,13 +80,13 @@ export function MatchedReceiverSelect({ projectId, receivers, currentReceiver }:
       try {
         const result = await updateProjectRatioReal(projectId, theirRatio);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setMessage(null);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -101,7 +104,7 @@ export function MatchedReceiverSelect({ projectId, receivers, currentReceiver }:
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 120)}
           disabled={isPending}
-          placeholder="Matched with…"
+          placeholder={t.matchedReceiver.placeholder}
           className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] py-1.5 pr-7 pl-7 text-xs font-medium text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
         />
         {currentReceiver && !open && (
@@ -109,7 +112,7 @@ export function MatchedReceiverSelect({ projectId, receivers, currentReceiver }:
             type="button"
             onClick={() => apply(null)}
             disabled={isPending}
-            aria-label="Clear matched receiver"
+            aria-label={t.matchedReceiver.clear}
             className="absolute top-1/2 right-2 -translate-y-1/2 text-white/30 transition-colors duration-150 ease-out hover:text-white/70"
           >
             <X className="h-3.5 w-3.5" />
@@ -118,7 +121,7 @@ export function MatchedReceiverSelect({ projectId, receivers, currentReceiver }:
 
         {open && (
           <ul className="absolute z-10 mt-1.5 max-h-56 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0f1420] py-1 shadow-xl">
-            {filtered.length === 0 && <li className="px-3 py-2 text-xs text-white/35">No matching receivers.</li>}
+            {filtered.length === 0 && <li className="px-3 py-2 text-xs text-white/35">{t.matchedReceiver.noMatching}</li>}
             {filtered.map((receiver) => (
               <li
                 key={receiver.id}
@@ -139,8 +142,7 @@ export function MatchedReceiverSelect({ projectId, receivers, currentReceiver }:
       {message?.tone === "differs" && (
         <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5">
           <p className="text-xs text-amber-200">
-            {message.contactName}&apos;s ratio for {message.productType} is {message.theirRatio}. Current real
-            ratio is {message.currentRatio}.
+            {t.matchedReceiver.ratioDiffers(message.contactName, message.productType, message.theirRatio, message.currentRatio)}
           </p>
           <div className="mt-2 flex gap-2">
             <button
@@ -149,7 +151,7 @@ export function MatchedReceiverSelect({ projectId, receivers, currentReceiver }:
               disabled={isPending}
               className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Use {message.theirRatio}
+              {t.matchedReceiver.useRatio(message.theirRatio)}
             </button>
             <button
               type="button"
@@ -157,14 +159,18 @@ export function MatchedReceiverSelect({ projectId, receivers, currentReceiver }:
               disabled={isPending}
               className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-white/80 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Keep {message.currentRatio}
+              {t.matchedReceiver.keepRatio(message.currentRatio)}
             </button>
           </div>
         </div>
       )}
       {message?.tone === "missing" && (
         <p className="text-xs text-amber-300">
-          {message.contactName} has no {message.isRecovery ? "recovery ratio" : "ratio"} set for {message.productType}.
+          {t.matchedReceiver.noRatioSet(
+            message.contactName,
+            message.isRecovery ? t.matchedReceiver.recoveryRatioNoun : t.matchedReceiver.ratioNoun,
+            message.productType
+          )}
         </p>
       )}
       {error && <p className="text-xs text-rose-300">{error}</p>}

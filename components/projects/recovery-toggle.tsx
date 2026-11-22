@@ -3,10 +3,12 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateProjectIsRecovery, updateProjectRatioReal } from "@/lib/actions/projects";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 
 interface RecoveryToggleProps {
   projectId: string;
   isRecovery: boolean;
+  lang?: Lang;
 }
 
 type Message =
@@ -20,8 +22,9 @@ type Message =
 // auto-fill against whichever ratio column the new value now points
 // at. The create/edit form has its own client-side version of the same
 // check, since there the project may not be saved yet.
-export function RecoveryToggle({ projectId, isRecovery }: RecoveryToggleProps) {
+export function RecoveryToggle({ projectId, isRecovery, lang = "en" }: RecoveryToggleProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
@@ -38,15 +41,15 @@ export function RecoveryToggle({ projectId, isRecovery }: RecoveryToggleProps) {
       try {
         const result = await updateProjectIsRecovery(projectId, next);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
-        setMovedNote(next ? "Moved to Recovery Projects" : "Moved to Projects");
+        setMovedNote(next ? t.recoveryToggle.movedToRecovery : t.recoveryToggle.movedToProjects);
         if (result.autoFill) {
           const { filled, differs, contactName, productType, theirRatio, currentRatio, isRecovery: forRecovery } =
             result.autoFill;
           if (filled) {
-            setMessage({ tone: "filled", text: `Real ratio filled from ${contactName} (${productType}).` });
+            setMessage({ tone: "filled", text: t.matchedReceiver.ratioFilled(contactName, productType) });
           } else if (differs) {
             setMessage({ tone: "differs", contactName, productType, theirRatio: theirRatio!, currentRatio: currentRatio ?? "" });
           } else {
@@ -55,7 +58,7 @@ export function RecoveryToggle({ projectId, isRecovery }: RecoveryToggleProps) {
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -70,13 +73,13 @@ export function RecoveryToggle({ projectId, isRecovery }: RecoveryToggleProps) {
       try {
         const result = await updateProjectRatioReal(projectId, theirRatio);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setMessage(null);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -91,7 +94,7 @@ export function RecoveryToggle({ projectId, isRecovery }: RecoveryToggleProps) {
           disabled={isPending}
           className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
         />
-        Recovery
+        {t.recoveryToggle.label}
       </label>
 
       {movedNote && <p className="text-xs text-emerald-300">{movedNote}</p>}
@@ -99,8 +102,7 @@ export function RecoveryToggle({ projectId, isRecovery }: RecoveryToggleProps) {
       {message?.tone === "differs" && (
         <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5">
           <p className="text-xs text-amber-200">
-            {message.contactName}&apos;s ratio for {message.productType} is {message.theirRatio}. Current real
-            ratio is {message.currentRatio}.
+            {t.matchedReceiver.ratioDiffers(message.contactName, message.productType, message.theirRatio, message.currentRatio)}
           </p>
           <div className="mt-2 flex gap-2">
             <button
@@ -109,7 +111,7 @@ export function RecoveryToggle({ projectId, isRecovery }: RecoveryToggleProps) {
               disabled={isPending}
               className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Use {message.theirRatio}
+              {t.matchedReceiver.useRatio(message.theirRatio)}
             </button>
             <button
               type="button"
@@ -117,14 +119,18 @@ export function RecoveryToggle({ projectId, isRecovery }: RecoveryToggleProps) {
               disabled={isPending}
               className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-white/80 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Keep {message.currentRatio}
+              {t.matchedReceiver.keepRatio(message.currentRatio)}
             </button>
           </div>
         </div>
       )}
       {message?.tone === "missing" && (
         <p className="text-xs text-amber-300">
-          {message.contactName} has no {message.isRecovery ? "recovery ratio" : "ratio"} set for {message.productType}.
+          {t.matchedReceiver.noRatioSet(
+            message.contactName,
+            message.isRecovery ? t.matchedReceiver.recoveryRatioNoun : t.matchedReceiver.ratioNoun,
+            message.productType
+          )}
         </p>
       )}
       {error && <p className="text-xs text-rose-300">{error}</p>}

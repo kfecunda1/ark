@@ -4,10 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { isCurrentUserAdmin } from "@/lib/auth";
 import { buildInboxSuggestions, suggestDocumentType } from "@/lib/inbox-suggestions";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { InboxItem } from "@/lib/types";
 
 export default async function InboxPage() {
   const supabase = await createClient();
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
 
   const [
     { data: itemsData },
@@ -62,7 +66,7 @@ export default async function InboxPage() {
   // Covers both the original sender (profile_id) and whoever actually
   // filed an item (filed_by) — both are just profile ids.
   const userNameById = Object.fromEntries(
-    profiles.map((p) => [p.id, p.full_name?.trim() || p.email || "Unknown user"])
+    profiles.map((p) => [p.id, p.full_name?.trim() || p.email || t.inbox.unknownUser])
   );
 
   // A filed item's destination may not be in the active projects/
@@ -192,8 +196,8 @@ export default async function InboxPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Inbox</h1>
-        <p className="mt-1 text-sm text-white/45">Messages and files forwarded from Telegram.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">{t.inbox.title}</h1>
+        <p className="mt-1 text-sm text-white/45">{t.inbox.subtitle}</p>
       </div>
 
       <GlassCard interactive={false} className="p-6">
@@ -211,6 +215,7 @@ export default async function InboxPage() {
           isAdmin={isAdmin}
           suggestionsByItemId={suggestionsByItemId}
           suggestedDocTypeByItemId={suggestedDocTypeByItemId}
+          lang={lang}
         />
       </GlassCard>
     </div>

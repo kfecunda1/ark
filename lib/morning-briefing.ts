@@ -4,6 +4,7 @@ import { TIME_ZONE, dateKeyInTimeZone, truncate } from "@/lib/format";
 import { dueDateLabel, followUpLabel } from "@/lib/projects";
 import { formatMoney } from "@/lib/money";
 import { computeChecklistStatus, getRequiredDocumentsByProduct } from "@/lib/checklists";
+import { getDictionary, type Lang } from "@/lib/i18n";
 import type { Currency, Project, ProjectTranche } from "@/lib/types";
 
 // Everything behind the ARK Telegram bot's morning briefing — shared
@@ -76,7 +77,7 @@ const STUCK_PROJECTS_LIMIT = 5;
 // queries (Due today & overdue, Stuck Projects, Active Tranches, Not
 // matched, Inbox) scoped down to just the counts/top-N this message
 // needs.
-export async function getBriefingSnapshot(supabase: SupabaseClient): Promise<BriefingSnapshot> {
+export async function getBriefingSnapshot(supabase: SupabaseClient, lang: Lang = "en"): Promise<BriefingSnapshot> {
   const [{ data: statusesData }, { data: appSettingsData }, { data: projectsData }, { count: inboxToFileCount }] =
     await Promise.all([
       supabase.from("statuses").select("name, kind"),
@@ -145,7 +146,7 @@ export async function getBriefingSnapshot(supabase: SupabaseClient): Promise<Bri
     href: `/projects/${s.project_id}`,
     body: s.body,
     parentName: projectNameById.get(s.project_id) ?? "Project",
-    label: dueDateLabel(s.due_date),
+    label: dueDateLabel(s.due_date, lang),
     dueDate: s.due_date,
   }));
 
@@ -159,7 +160,7 @@ export async function getBriefingSnapshot(supabase: SupabaseClient): Promise<Bri
         : n.contact_id
           ? contactNameById.get(n.contact_id) ?? "Receiver"
           : "—",
-      label: followUpLabel(n.due_date),
+      label: followUpLabel(n.due_date, lang),
       dueDate: n.due_date,
     }));
 
@@ -278,8 +279,17 @@ export async function getBriefingSnapshot(supabase: SupabaseClient): Promise<Bri
   };
 }
 
-function headerDateLabel(): string {
-  return new Date().toLocaleDateString("en-US", { timeZone: TIME_ZONE, weekday: "long", month: "short", day: "numeric" });
+// Telegram message text, generated once server-side and never
+// re-rendered in a browser — so, unlike lib/format.ts's date helpers,
+// there's no hydration-mismatch risk in letting Intl's own locale
+// formatting pick the weekday/month name directly.
+function headerDateLabel(lang: Lang = "en"): string {
+  return new Date().toLocaleDateString(lang === "es" ? "es-ES" : "en-US", {
+    timeZone: TIME_ZONE,
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 // Curacao's own calendar weekday (0 = Sunday … 6 = Saturday) for
@@ -301,7 +311,8 @@ export function todayDateKey(): string {
 // with nothing to report is omitted outright rather than printed as a
 // bare "0", so a quiet day reads as quiet instead of noisy; if that
 // leaves nothing at all, the whole body collapses to "All clear".
-export function buildBriefingText(snapshot: BriefingSnapshot, isAdmin: boolean): string {
+export function buildBriefingText(snapshot: BriefingSnapshot, isAdmin: boolean, lang: Lang = "en"): string {
+  const t = getDictionary(lang);
   const sections: string[] = [];
 
   if (snapshot.dueItems.length > 0) {
@@ -309,51 +320,47 @@ export function buildBriefingText(snapshot: BriefingSnapshot, isAdmin: boolean):
       (item) => `• ${link(item.href, truncate(item.body, 80))} — ${escapeHtml(item.parentName)} · ${item.label}`
     );
     const extra = snapshot.dueItemsTotalCount - snapshot.dueItems.length;
-    if (extra > 0) lines.push(`+${extra} more`);
-    sections.push(`📌 <b>Due today &amp; overdue</b>\n${lines.join("\n")}`);
+    if (extra > 0) lines.push(t.briefing.moreCount(extra));
+    sections.push(`${t.briefing.dueTodayOverdue}\n${lines.join("\n")}`);
   }
 
   if (snapshot.stuckProjects.length > 0) {
     const lines = snapshot.stuckProjects.map((p) => `• ${link(p.href, p.name)}`);
-    sections.push(`⏳ <b>Stuck projects</b>\n${lines.join("\n")}`);
+    sections.push(`${t.briefing.stuckProjects}\n${lines.join("\n")}`);
   }
 
   if (snapshot.activeTranchesCount > 0) {
     const totals = (Object.entries(snapshot.activeTrancheTotalsByCurrency) as [Currency, number][])
       .map(([currency, amount]) => formatMoney(amount, currency))
       .join(" · ");
-    sections.push(
-      `💶 Active tranches: ${snapshot.activeTranchesCount}${totals ? ` (${totals})` : ""}`
-    );
+    sections.push(t.briefing.activeTranches(snapshot.activeTranchesCount, totals));
   }
 
   if (snapshot.notMatchedCount > 0) {
-    sections.push(
-      `🔗 Not matched: ${snapshot.notMatchedCount} (${snapshot.notMatchedDocsReceivedCount} with documents received)`
-    );
+    sections.push(t.briefing.notMatched(snapshot.notMatchedCount, snapshot.notMatchedDocsReceivedCount));
   }
 
   if (snapshot.inboxToFileCount > 0) {
-    sections.push(`📥 Inbox: ${snapshot.inboxToFileCount} to file`);
+    sections.push(t.briefing.inboxToFile(snapshot.inboxToFileCount));
   }
 
   if (snapshot.projectsMissingDocumentsCount > 0) {
-    sections.push(`📄 ${snapshot.projectsMissingDocumentsCount} projects missing documents`);
+    sections.push(t.briefing.missingDocuments(snapshot.projectsMissingDocumentsCount));
   }
 
   if (isAdmin) {
     if (snapshot.payoutsWithoutCommissionCount > 0) {
-      sections.push(`💰 Payouts: ${snapshot.payoutsWithoutCommissionCount} without commission set`);
+      sections.push(t.briefing.payoutsWithoutCommission(snapshot.payoutsWithoutCommissionCount));
     }
     if (snapshot.daysSinceBackup === null) {
-      sections.push(`🗄 Backup: never backed up`);
+      sections.push(t.briefing.backupNever);
     } else if (snapshot.daysSinceBackup > 7) {
-      sections.push(`🗄 Backup: last ${snapshot.daysSinceBackup} days ago`);
+      sections.push(t.briefing.backupDaysAgo(snapshot.daysSinceBackup));
     }
   }
 
-  const header = `☀️ <b>ARK — ${headerDateLabel()}</b>`;
-  const body = sections.length > 0 ? sections.join("\n\n") : "✅ All clear today.";
+  const header = t.briefing.header(headerDateLabel(lang));
+  const body = sections.length > 0 ? sections.join("\n\n") : t.briefing.allClear;
   const text = `${header}\n\n${body}`;
 
   return text.length > TELEGRAM_MESSAGE_LIMIT ? `${text.slice(0, TELEGRAM_MESSAGE_LIMIT - 1)}…` : text;

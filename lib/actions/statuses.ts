@@ -10,17 +10,18 @@ import type { StatusColor } from "@/lib/types";
 // still go through catalog.ts's setCatalogItemActive/moveCatalogItem
 // ("statuses" is one of SortableCatalogTable's tables there).
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 export async function addStatus(
   name: string,
   kind: "open" | "completed" | "lost",
-  color: StatusColor
+  color: StatusColor,
+  nameEs = ""
 ): Promise<{ error: string | null }> {
   const trimmed = name.trim();
   if (!trimmed) {
-    return { error: "Name is required." };
+    return { error: "nameRequired" };
   }
 
   try {
@@ -35,7 +36,7 @@ export async function addStatus(
 
     const { error } = await supabase
       .from("statuses")
-      .insert({ name: trimmed, kind, color, sort_order: nextSortOrder });
+      .insert({ name: trimmed, name_es: nameEs.trim() || null, kind, color, sort_order: nextSortOrder });
     if (error) {
       return { error: error.message };
     }
@@ -51,16 +52,20 @@ export async function updateStatus(
   id: string,
   name: string,
   kind: "open" | "completed" | "lost",
-  color: StatusColor
+  color: StatusColor,
+  nameEs = ""
 ): Promise<{ error: string | null }> {
   const trimmed = name.trim();
   if (!trimmed) {
-    return { error: "Name is required." };
+    return { error: "nameRequired" };
   }
 
   try {
     const supabase = await createClient();
-    const { error } = await supabase.from("statuses").update({ name: trimmed, kind, color }).eq("id", id);
+    const { error } = await supabase
+      .from("statuses")
+      .update({ name: trimmed, name_es: nameEs.trim() || null, kind, color })
+      .eq("id", id);
     if (error) {
       return { error: error.message };
     }

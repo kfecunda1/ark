@@ -7,6 +7,7 @@ import { setProjectStepDone } from "@/lib/actions/project-steps";
 import { setNoteReminderDone } from "@/lib/actions/notes";
 import { DueDateBadge } from "@/components/projects/due-date-badge";
 import { RecoveryBadge } from "@/components/projects/badges";
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 export interface DueItem {
   id: string;
@@ -26,16 +27,16 @@ export interface DueItem {
   isRecovery?: boolean;
 }
 
-const KIND_LABEL: Record<DueItem["kind"], string> = {
-  step: "Next step",
-  note: "Reminder",
-};
-
 // Lets an item be checked off right from the Dashboard, without
 // navigating away — dispatches to whichever action owns that kind of
 // row (project_steps vs notes).
-export function DueTodayAndOverdue({ items }: { items: DueItem[] }) {
+export function DueTodayAndOverdue({ items, lang = "en" }: { items: DueItem[]; lang?: Lang }) {
   const router = useRouter();
+  const t = getDictionary(lang);
+  const KIND_LABEL: Record<DueItem["kind"], string> = {
+    step: t.dashboard.nextStepLabel,
+    note: t.dashboard.reminderLabel,
+  };
   const [isPending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +56,7 @@ export function DueTodayAndOverdue({ items }: { items: DueItem[] }) {
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setPendingId(null);
       }
@@ -63,7 +64,7 @@ export function DueTodayAndOverdue({ items }: { items: DueItem[] }) {
   }
 
   if (items.length === 0) {
-    return <p className="text-sm text-white/35">Nothing due.</p>;
+    return <p className="text-sm text-white/35">{t.dashboard.nothingDue}</p>;
   }
 
   return (
@@ -77,7 +78,7 @@ export function DueTodayAndOverdue({ items }: { items: DueItem[] }) {
             type="checkbox"
             onChange={() => handleDone(item)}
             disabled={isPending && pendingId === item.id}
-            aria-label="Mark as done"
+            aria-label={t.dashboard.markAsDone}
             className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
           />
           <div className="min-w-0 flex-1">
@@ -92,7 +93,7 @@ export function DueTodayAndOverdue({ items }: { items: DueItem[] }) {
             </Link>
             <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/40">
               <span className="truncate">{item.parentName}</span>
-              <DueDateBadge dueDate={item.dueDate} />
+              <DueDateBadge dueDate={item.dueDate} lang={lang} />
             </p>
           </div>
         </div>

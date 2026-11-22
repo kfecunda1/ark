@@ -3,17 +3,20 @@
 import { useState } from "react";
 import { updateAppSettings } from "@/lib/actions/app-settings";
 import { CURRENCIES } from "@/lib/projects";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { AppSettings, Currency } from "@/lib/types";
 
 interface DefaultsFormProps {
   settings: AppSettings;
+  lang?: Lang;
 }
 
 const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
-export function DefaultsForm({ settings }: DefaultsFormProps) {
+export function DefaultsForm({ settings, lang = "en" }: DefaultsFormProps) {
+  const t = getDictionary(lang);
   const [defaultCurrency, setDefaultCurrency] = useState<Currency>(settings.default_currency);
   const [stuckAfterDays, setStuckAfterDays] = useState(String(settings.stuck_after_days));
   const [showRecovery, setShowRecovery] = useState(settings.show_recovery);
@@ -28,7 +31,7 @@ export function DefaultsForm({ settings }: DefaultsFormProps) {
 
     const days = Number(stuckAfterDays);
     if (!Number.isInteger(days) || days <= 0) {
-      setError('"Stuck after" must be a whole number of days greater than 0.');
+      setError(t.errors.stuckAfterInvalid);
       return;
     }
 
@@ -36,12 +39,12 @@ export function DefaultsForm({ settings }: DefaultsFormProps) {
     try {
       const result = await updateAppSettings(defaultCurrency, days, showRecovery);
       if (result.error) {
-        setError(result.error);
+        setError(resolveError(result.error, lang));
         return;
       }
       setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
       setIsPending(false);
     }
@@ -51,7 +54,7 @@ export function DefaultsForm({ settings }: DefaultsFormProps) {
     <form onSubmit={handleSubmit} className="flex max-w-sm flex-col gap-5">
       <div>
         <label className={labelClass} htmlFor="default_currency">
-          Default Currency for New Projects
+          {t.defaultsForm.defaultCurrencyLabel}
         </label>
         <select
           id="default_currency"
@@ -72,7 +75,7 @@ export function DefaultsForm({ settings }: DefaultsFormProps) {
 
       <div>
         <label className={labelClass} htmlFor="stuck_after_days">
-          Stuck After (days)
+          {t.defaultsForm.stuckAfterDaysLabel}
         </label>
         <input
           id="stuck_after_days"
@@ -86,9 +89,7 @@ export function DefaultsForm({ settings }: DefaultsFormProps) {
           }}
           className={fieldClass}
         />
-        <p className="mt-1.5 text-xs text-white/35">
-          Projects with no activity for this many days show up as &quot;stuck&quot; on the Dashboard.
-        </p>
+        <p className="mt-1.5 text-xs text-white/35">{t.defaultsForm.stuckAfterHint}</p>
       </div>
 
       <div>
@@ -102,9 +103,9 @@ export function DefaultsForm({ settings }: DefaultsFormProps) {
             }}
             className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
           />
-          Show Recovery
+          {t.defaultsForm.showRecoveryLabel}
         </label>
-        <p className="mt-1.5 text-xs text-white/35">Hides recovery features. No data is deleted.</p>
+        <p className="mt-1.5 text-xs text-white/35">{t.defaultsForm.showRecoveryHint}</p>
       </div>
 
       {error && (
@@ -112,7 +113,7 @@ export function DefaultsForm({ settings }: DefaultsFormProps) {
       )}
       {success && (
         <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-          Saved.
+          {t.common.saved}
         </p>
       )}
 
@@ -122,7 +123,7 @@ export function DefaultsForm({ settings }: DefaultsFormProps) {
           disabled={isPending}
           className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isPending ? "Saving…" : "Save"}
+          {isPending ? t.common.saving : t.common.save}
         </button>
       </div>
     </form>

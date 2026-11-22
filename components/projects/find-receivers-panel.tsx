@@ -7,6 +7,7 @@ import { Loader2, Search, X } from "lucide-react";
 import { findMatchingReceivers, type FindMatchingReceiversResult, type ReceiverMatch } from "@/lib/actions/matching";
 import { useMatchAndAutoFill } from "@/lib/use-match-and-autofill";
 import { truncate } from "@/lib/format";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 
 interface FindReceiversPanelProps {
   projectId: string;
@@ -16,16 +17,18 @@ interface FindReceiversPanelProps {
   // card and the Projects list's own "Find receivers" link both land
   // here (components/projects/projects-list-view.tsx).
   defaultOpen?: boolean;
+  lang?: Lang;
 }
 
-function matchingProductsLabel(r: ReceiverMatch): string {
+function matchingProductsLabel(r: ReceiverMatch, t: ReturnType<typeof getDictionary>): string {
   return r.matchingProducts
-    .map((m) => `${m.product}${m.isFinal ? " (final)" : ""} · ${m.ratio ? m.ratio : "no ratio"}`)
+    .map((m) => `${m.product}${m.isFinal ? ` (${t.findReceivers.final})` : ""} · ${m.ratio ? m.ratio : t.findReceivers.noRatio}`)
     .join("  ·  ");
 }
 
-export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false }: FindReceiversPanelProps) {
+export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false, lang = "en" }: FindReceiversPanelProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [open, setOpen] = useState(defaultOpen);
   const [loading, setLoading] = useState(defaultOpen);
   const [data, setData] = useState<FindMatchingReceiversResult | null>(null);
@@ -35,9 +38,9 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false }:
 
   const { match, resolveDiffers, isPending, error, differs, clearError } = useMatchAndAutoFill((receiverLabel) => {
     setOpen(false);
-    setJustMatched(`Matched with ${receiverLabel}`);
+    setJustMatched(t.findReceivers.matchedWith(receiverLabel));
     router.refresh();
-  });
+  }, lang);
 
   useEffect(() => {
     if (!open) return;
@@ -74,7 +77,7 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false }:
     });
   }, [data, search, productFilter]);
 
-  const relevantLabel = data?.finalProduct ?? data?.productOptions.join(" or ") ?? "this product";
+  const relevantLabel = data?.finalProduct ?? data?.productOptions.join(t.findReceivers.or) ?? t.findReceivers.thisProduct;
   const showChips = Boolean(data && !data.finalProduct && data.productOptions.length > 1);
 
   return (
@@ -90,7 +93,7 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false }:
           }
         >
           <Search className={hasMatch ? "h-3.5 w-3.5" : "h-4 w-4"} />
-          {open ? "Close" : "Find receivers"}
+          {open ? t.common.close : t.findReceivers.title}
         </button>
         {justMatched && <p className="text-xs text-emerald-300">{justMatched}</p>}
       </div>
@@ -100,19 +103,18 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false }:
           {loading && (
             <p className="flex items-center gap-2 text-sm text-white/50">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Loading receivers…
+              {t.findReceivers.loading}
             </p>
           )}
 
-          {!loading && data?.error && <p className="text-sm text-rose-300">{data.error}</p>}
+          {!loading && data?.error && <p className="text-sm text-rose-300">{resolveError(data.error, lang)}</p>}
 
           {!loading && data && !data.error && (
             <>
               {differs && (
                 <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5">
                   <p className="text-xs text-amber-200">
-                    {differs.contactName}&apos;s ratio for {differs.productType} is {differs.theirRatio}. Current real
-                    ratio is {differs.currentRatio || "—"}.
+                    {t.matchedReceiver.ratioDiffers(differs.contactName, differs.productType, differs.theirRatio, differs.currentRatio || "—")}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
@@ -121,7 +123,7 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false }:
                       disabled={isPending}
                       className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Use {differs.theirRatio}
+                      {t.matchedReceiver.useRatio(differs.theirRatio)}
                     </button>
                     <button
                       type="button"
@@ -129,7 +131,7 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false }:
                       disabled={isPending}
                       className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-white/80 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Keep {differs.currentRatio || "current"}
+                      {t.matchedReceiver.keepRatio(differs.currentRatio || t.findReceivers.current)}
                     </button>
                   </div>
                 </div>
@@ -139,9 +141,9 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false }:
 
               {data.receivers.length === 0 ? (
                 <div className="flex flex-col gap-2">
-                  <p className="text-sm text-white/50">No receivers offer {relevantLabel} yet.</p>
+                  <p className="text-sm text-white/50">{t.findReceivers.noneOffer(relevantLabel)}</p>
                   <Link href="/receivers/new" className="w-fit text-xs font-medium text-accent-soft hover:underline">
-                    + Add a receiver
+                    {t.findReceivers.addReceiver}
                   </Link>
                 </div>
               ) : (
@@ -152,14 +154,14 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false }:
                       <input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search receivers…"
+                        placeholder={t.findReceivers.searchPlaceholder}
                         className="w-full rounded-md border border-white/[0.08] bg-white/[0.04] py-1.5 pr-7 pl-7 text-xs text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40"
                       />
                       {search && (
                         <button
                           type="button"
                           onClick={() => setSearch("")}
-                          aria-label="Clear search"
+                          aria-label={t.findReceivers.clearSearch}
                           className="absolute top-1/2 right-2 -translate-y-1/2 text-white/30 hover:text-white/70"
                         >
                           <X className="h-3.5 w-3.5" />
@@ -179,7 +181,7 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false }:
                             : "border-white/10 bg-white/[0.03] text-white/50 hover:text-white/80"
                         }`}
                       >
-                        All
+                        {t.findReceivers.all}
                       </button>
                       {data.productOptions.map((p) => (
                         <button
@@ -199,7 +201,7 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false }:
                   )}
 
                   {filtered.length === 0 ? (
-                    <p className="text-sm text-white/35">No receivers match your search.</p>
+                    <p className="text-sm text-white/35">{t.findReceivers.noMatchYourSearch}</p>
                   ) : (
                     <div className="flex flex-col gap-2">
                       {filtered.map((r) => (
@@ -217,23 +219,19 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false }:
                               disabled={isPending}
                               className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              {isPending ? "Matching…" : "Match"}
+                              {isPending ? t.findReceivers.matching : t.findReceivers.match}
                             </button>
                           </div>
-                          <p className="mt-1.5 text-xs text-white/50">{matchingProductsLabel(r)}</p>
+                          <p className="mt-1.5 text-xs text-white/50">{matchingProductsLabel(r, t)}</p>
                           {r.notes && <p className="mt-1 text-xs text-white/35">{truncate(r.notes, 100)}</p>}
                           <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[11px] text-white/35">
                             <span>
                               {r.documentTypesOnFile.length > 0
-                                ? r.documentTypesOnFile.map((t) => `${t} ✓`).join("  ·  ")
-                                : "No documents on file"}
+                                ? r.documentTypesOnFile.map((docType) => `${docType} ✓`).join("  ·  ")
+                                : t.findReceivers.noDocumentsOnFile}
                             </span>
-                            <span>
-                              {r.intermediaryCount} intermediar{r.intermediaryCount === 1 ? "y" : "ies"}
-                            </span>
-                            <span>
-                              {r.openMatchedProjectCount} open matched project{r.openMatchedProjectCount === 1 ? "" : "s"}
-                            </span>
+                            <span>{t.findReceivers.intermediaryCount(r.intermediaryCount)}</span>
+                            <span>{t.findReceivers.openMatchedProjectCount(r.openMatchedProjectCount)}</span>
                           </div>
                         </div>
                       ))}

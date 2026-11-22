@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isCurrentUserAdmin } from "@/lib/auth";
 import { withPreservedExtension } from "@/lib/storage";
+import { getDictionary, type Lang } from "@/lib/i18n";
 import type { Contact, ContactDocumentType, ProductType } from "@/lib/types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -18,13 +19,13 @@ export interface ContactFormState {
 // returned-error shape every normal Supabase-error path already uses,
 // so callers never see a save silently fail.
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 function buildContactPayload(formData: FormData) {
   const fullName = formData.get("full_name")?.toString().trim();
   if (!fullName) {
-    throw new Error('"Full Name" is required.');
+    throw new Error("fullNameRequired");
   }
 
   return {
@@ -144,7 +145,7 @@ export async function createContactWithId(
   try {
     payload = buildContactPayload(formData);
   } catch (err) {
-    return { id: null, error: err instanceof Error ? err.message : "Invalid form data." };
+    return { id: null, error: err instanceof Error ? err.message : "invalidFormData" };
   }
 
   try {
@@ -152,7 +153,7 @@ export async function createContactWithId(
     const { data, error } = await supabase.from("contacts").insert(payload).select("id").single();
 
     if (error || !data) {
-      return { id: null, error: error?.message ?? "Failed to create receiver." };
+      return { id: null, error: error?.message ?? "receiverCreateFailed" };
     }
     const newId: string = data.id;
 
@@ -188,7 +189,7 @@ export async function updateContact(
   try {
     payload = buildContactPayload(formData);
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Invalid form data." };
+    return { error: err instanceof Error ? err.message : "invalidFormData" };
   }
 
   try {
@@ -267,10 +268,10 @@ export async function toggleContactArchived(id: string, archived: boolean): Prom
 // files can't cascade with them, so those are removed afterward, same
 // order as deleteContactDocument above (DB row gone first, storage
 // cleanup is best-effort and never blocks the delete from completing).
-export async function deleteContact(id: string): Promise<{ error: string | null }> {
+export async function deleteContact(id: string, lang: Lang = "en"): Promise<{ error: string | null }> {
   try {
     if (!(await isCurrentUserAdmin())) {
-      return { error: "Only admins can delete receivers." };
+      return { error: "adminsOnlyDeleteReceivers" };
     }
 
     const supabase = await createClient();
@@ -281,8 +282,11 @@ export async function deleteContact(id: string): Promise<{ error: string | null 
       .eq("matched_contact_id", id);
 
     if ((projectCount ?? 0) > 0) {
+      // Parameterized (needs the live count), so this is the one
+      // exception to the plain-key error pattern elsewhere in this
+      // file — translated directly here rather than via resolveError.
       return {
-        error: `Linked to ${projectCount} project${projectCount === 1 ? "" : "s"}. Archive instead, or unlink first.`,
+        error: getDictionary(lang).receiverDialogs.linkedToProjects(projectCount ?? 0),
       };
     }
 
@@ -318,7 +322,7 @@ export async function quickCreateContact(input: { full_name: string }): Promise<
 }> {
   const fullName = input.full_name.trim();
   if (!fullName) {
-    return { contact: null, error: "Name is required." };
+    return { contact: null, error: "nameRequired" };
   }
 
   try {
@@ -330,7 +334,7 @@ export async function quickCreateContact(input: { full_name: string }): Promise<
       .single();
 
     if (error || !data) {
-      return { contact: null, error: error?.message ?? "Failed to create receiver." };
+      return { contact: null, error: error?.message ?? "receiverCreateFailed" };
     }
 
     revalidatePath("/receivers");
@@ -494,7 +498,7 @@ export async function deleteContactDocument(documentId: string): Promise<{ error
 // renameProjectDocument (lib/actions/projects.ts) — see there for why.
 export async function renameContactDocument(documentId: string, newName: string): Promise<{ error: string | null }> {
   if (!newName.trim()) {
-    return { error: "Name can't be empty." };
+    return { error: "nameCantBeEmpty" };
   }
 
   try {
@@ -506,7 +510,7 @@ export async function renameContactDocument(documentId: string, newName: string)
       .eq("id", documentId)
       .maybeSingle();
     if (readError || !existing) {
-      return { error: readError?.message ?? "Document not found." };
+      return { error: readError?.message ?? "notFound" };
     }
 
     const finalName = withPreservedExtension(existing.file_name, newName);
@@ -529,7 +533,10 @@ export interface ContactDocumentHashMatch {
   fileName: string;
 }
 
-export async function findContactDocumentsByHash(hash: string): Promise<ContactDocumentHashMatch[]> {
+export async function findContactDocumentsByHash(
+  hash: string,
+  lang: Lang = "en"
+): Promise<ContactDocumentHashMatch[]> {
   if (!hash) return [];
 
   try {
@@ -556,7 +563,7 @@ export async function findContactDocumentsByHash(hash: string): Promise<ContactD
     return rows.map((row) => ({
       documentId: row.id,
       contactId: row.contact_id,
-      contactLabel: contactNameById.get(row.contact_id) ?? "Receiver",
+      contactLabel: contactNameById.get(row.contact_id) ?? (lang === "es" ? "Receptor" : "Receiver"),
       fileName: row.file_name,
     }));
   } catch (err) {
@@ -577,13 +584,13 @@ export async function addContactNote(
 ): Promise<{ error: string | null }> {
   const content = formData.get("content")?.toString().trim();
   if (!content) {
-    return { error: '"Content" is required.' };
+    return { error: "contentRequired" };
   }
 
   const isReminder = formData.get("is_reminder") === "on";
   const dueDate = formData.get("due_date")?.toString().trim() || null;
   if (isReminder && !dueDate) {
-    return { error: '"Due date" is required for a reminder.' };
+    return { error: "dueDateRequiredForReminder" };
   }
 
   try {

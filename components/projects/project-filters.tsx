@@ -2,7 +2,8 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Archive, FileWarning } from "lucide-react";
-import { STAGES, STAGE_LABELS } from "@/lib/projects";
+import { STAGES, stageLabel } from "@/lib/projects";
+import { catalogLabel, getDictionary, type Lang } from "@/lib/i18n";
 import type { Product, StatusRecord } from "@/lib/types";
 
 const selectClass =
@@ -18,12 +19,14 @@ interface ProjectFiltersProps {
   // archived people included (same "a since-hidden/archived value must
   // still be findable by filtering on it" reasoning as products above).
   intermediaries: { id: string; label: string }[];
+  lang?: Lang;
 }
 
-export function ProjectFilters({ products, statuses, intermediaries }: ProjectFiltersProps) {
+export function ProjectFilters({ products, statuses, intermediaries, lang = "en" }: ProjectFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const t = getDictionary(lang);
   const showArchived = searchParams.get("archived") === "true";
   const missingDocuments = searchParams.get("missing_documents") === "true";
 
@@ -40,13 +43,13 @@ export function ProjectFilters({ products, statuses, intermediaries }: ProjectFi
   return (
     <div className="flex flex-wrap items-center gap-3">
       <select
-        aria-label="Filter by product"
+        aria-label={t.projectsList.filterByProduct}
         value={searchParams.get("product_type") ?? ""}
         onChange={(e) => setParam("product_type", e.target.value)}
         className={selectClass}
       >
         <option value="" className="bg-[#0a0e17]">
-          All products
+          {t.projectsList.allProducts}
         </option>
         {products.map((product) => (
           <option key={product.id} value={product.name} className="bg-[#0a0e17]">
@@ -56,47 +59,47 @@ export function ProjectFilters({ products, statuses, intermediaries }: ProjectFi
       </select>
 
       <select
-        aria-label="Filter by stage"
+        aria-label={t.projectsList.filterByStage}
         value={searchParams.get("stage") ?? ""}
         onChange={(e) => setParam("stage", e.target.value)}
         className={selectClass}
       >
         <option value="" className="bg-[#0a0e17]">
-          All stages
+          {t.projectsList.allStages}
         </option>
         {STAGES.map((stage) => (
           <option key={stage} value={stage} className="bg-[#0a0e17]">
-            {STAGE_LABELS[stage]}
+            {stageLabel(stage, lang)}
           </option>
         ))}
       </select>
 
       <select
-        aria-label="Filter by status"
+        aria-label={t.projectsList.filterByStatus}
         value={searchParams.get("status") ?? ""}
         onChange={(e) => setParam("status", e.target.value)}
         className={selectClass}
       >
         <option value="" className="bg-[#0a0e17]">
-          All statuses
+          {t.projectsList.allStatuses}
         </option>
         {[...statuses]
           .sort((a, b) => a.sort_order - b.sort_order)
           .map((status) => (
             <option key={status.id} value={status.name} className="bg-[#0a0e17]">
-              {status.name}
+              {catalogLabel(status, lang)}
             </option>
           ))}
       </select>
 
       <select
-        aria-label="Filter by intermediary"
+        aria-label={t.projectsList.filterByIntermediary}
         value={searchParams.get("intermediary") ?? ""}
         onChange={(e) => setParam("intermediary", e.target.value)}
         className={selectClass}
       >
         <option value="" className="bg-[#0a0e17]">
-          All intermediaries
+          {t.projectsList.allIntermediaries}
         </option>
         {intermediaries.map((person) => (
           <option key={person.id} value={person.id} className="bg-[#0a0e17]">
@@ -116,7 +119,7 @@ export function ProjectFilters({ products, statuses, intermediaries }: ProjectFi
         }`}
       >
         <FileWarning className="h-3.5 w-3.5" />
-        Missing documents
+        {t.projectsList.missingDocuments}
       </button>
 
       <button
@@ -130,7 +133,7 @@ export function ProjectFilters({ products, statuses, intermediaries }: ProjectFi
         }`}
       >
         <Archive className="h-3.5 w-3.5" />
-        {showArchived ? "Showing Archived" : "Show Archived"}
+        {showArchived ? t.common.showingArchived : t.common.showArchived}
       </button>
     </div>
   );

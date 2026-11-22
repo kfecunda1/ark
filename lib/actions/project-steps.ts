@@ -9,7 +9,7 @@ import type { ProjectStepKind } from "@/lib/types";
 // returned-error shape every normal Supabase-error path already uses,
 // so callers never see a save silently fail.
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 // Every write below touches the project's own pages (the timeline) as
@@ -30,10 +30,10 @@ export async function createProjectStep(
 ): Promise<{ error: string | null }> {
   const trimmed = body.trim();
   if (!trimmed) {
-    return { error: '"Text" is required.' };
+    return { error: "textIsRequired" };
   }
   if (kind === "next_step" && !dueDate) {
-    return { error: '"Due date" is required for a next step.' };
+    return { error: "dueDateRequiredForNextStep" };
   }
 
   try {
@@ -69,7 +69,7 @@ export async function updateProjectStep(
 ): Promise<{ error: string | null }> {
   const trimmed = body.trim();
   if (!trimmed) {
-    return { error: '"Text" is required.' };
+    return { error: "textIsRequired" };
   }
 
   try {

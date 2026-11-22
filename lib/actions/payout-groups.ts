@@ -12,12 +12,12 @@ import { createClient } from "@/lib/supabase/server";
 // same as every other action in this app that relies on RLS rather
 // than an app-level check.
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 function validateSharePct(value: number): string | null {
   if (!Number.isFinite(value) || value < 0 || value > 100) {
-    return "Default share must be a number between 0 and 100.";
+    return "invalidSharePct";
   }
   return null;
 }
@@ -25,7 +25,7 @@ function validateSharePct(value: number): string | null {
 export async function addPayoutGroup(name: string, defaultSharePct: number): Promise<{ error: string | null }> {
   const trimmed = name.trim();
   if (!trimmed) {
-    return { error: "Name is required." };
+    return { error: "nameRequired" };
   }
   const shareError = validateSharePct(defaultSharePct);
   if (shareError) {
@@ -63,7 +63,7 @@ export async function updatePayoutGroup(
 ): Promise<{ error: string | null }> {
   const trimmed = name.trim();
   if (!trimmed) {
-    return { error: "Name is required." };
+    return { error: "nameRequired" };
   }
   const shareError = validateSharePct(defaultSharePct);
   if (shareError) {

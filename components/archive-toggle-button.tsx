@@ -4,11 +4,13 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, ArchiveRestore } from "lucide-react";
 import { setArchived, type ArchivableEntityType } from "@/lib/actions/archive";
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 interface ArchiveToggleButtonProps {
   entityType: ArchivableEntityType;
   entityId: string;
   archived: boolean;
+  lang?: Lang;
 }
 
 // Same shape as components/projects/archive-project-button.tsx, just
@@ -17,8 +19,9 @@ interface ArchiveToggleButtonProps {
 // function), for the same reason components/contact-person-select.tsx
 // does: a Server Component page must never pass this button a closure
 // over toggleContactArchived/togglePersonArchived.
-export function ArchiveToggleButton({ entityType, entityId, archived }: ArchiveToggleButtonProps) {
+export function ArchiveToggleButton({ entityType, entityId, archived, lang = "en" }: ArchiveToggleButtonProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +36,7 @@ export function ArchiveToggleButton({ entityType, entityId, archived }: ArchiveT
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -47,7 +50,7 @@ export function ArchiveToggleButton({ entityType, entityId, archived }: ArchiveT
         className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-        {isPending ? "Saving…" : archived ? "Unarchive" : "Archive"}
+        {isPending ? t.common.saving : archived ? t.common.unarchive : t.common.archive}
       </button>
       {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
     </div>

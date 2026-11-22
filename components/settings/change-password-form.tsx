@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { confirmPasswordChanged } from "@/lib/actions/profile";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 
 const MIN_LENGTH = 12;
 
@@ -16,10 +17,12 @@ interface ChangePasswordFormProps {
   // screen: once the password is changed, send the user into the app
   // instead of showing the inline success message in place.
   redirectTo?: string;
+  lang?: Lang;
 }
 
-export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {}) {
+export function ChangePasswordForm({ redirectTo, lang = "en" }: ChangePasswordFormProps = {}) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -33,15 +36,15 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
     setSuccess(false);
 
     if (newPassword.length < MIN_LENGTH) {
-      setError(`New password must be at least ${MIN_LENGTH} characters.`);
+      setError(t.auth.errorMinLength(MIN_LENGTH));
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError("New password and confirmation do not match.");
+      setError(t.auth.errorMismatch);
       return;
     }
     if (newPassword === currentPassword) {
-      setError("New password must be different from your current password.");
+      setError(t.auth.errorSamePassword);
       return;
     }
 
@@ -53,7 +56,7 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
         data: { user },
       } = await supabase.auth.getUser();
       if (!user?.email) {
-        setError("Could not determine your account email. Please sign in again.");
+        setError(t.auth.errorNoEmail);
         return;
       }
 
@@ -67,7 +70,7 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
         password: currentPassword,
       });
       if (reauthError) {
-        setError("Current password is incorrect.");
+        setError(t.auth.errorWrongCurrentPassword);
         return;
       }
 
@@ -94,7 +97,7 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
       // success) would be lying to the user about their account state.
       const confirmResult = await confirmPasswordChanged(newPassword);
       if (confirmResult.error) {
-        setError(confirmResult.error);
+        setError(resolveError(confirmResult.error, lang));
         return;
       }
 
@@ -109,7 +112,7 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
         setSuccess(true);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
       setIsPending(false);
     }
@@ -119,7 +122,7 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div>
         <label className={labelClass} htmlFor="current_password">
-          Current Password
+          {t.auth.currentPassword}
         </label>
         <input
           id="current_password"
@@ -137,7 +140,7 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
 
       <div>
         <label className={labelClass} htmlFor="new_password">
-          New Password
+          {t.auth.newPassword}
         </label>
         <input
           id="new_password"
@@ -151,14 +154,12 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
           onChange={(e) => setNewPassword(e.target.value)}
           className={fieldClass}
         />
-        <p className="mt-1.5 text-xs text-white/35">
-          At least {MIN_LENGTH} characters, and different from your current password.
-        </p>
+        <p className="mt-1.5 text-xs text-white/35">{t.auth.newPasswordHint(MIN_LENGTH)}</p>
       </div>
 
       <div>
         <label className={labelClass} htmlFor="confirm_password">
-          Confirm New Password
+          {t.auth.confirmNewPassword}
         </label>
         <input
           id="confirm_password"
@@ -172,7 +173,7 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
           onChange={(e) => setConfirmPassword(e.target.value)}
           className={fieldClass}
         />
-        <p className="mt-1.5 text-xs text-white/35">Must match the new password above.</p>
+        <p className="mt-1.5 text-xs text-white/35">{t.auth.confirmPasswordHint}</p>
       </div>
 
       {error && (
@@ -180,7 +181,7 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
       )}
       {success && (
         <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-          Password changed.
+          {t.auth.passwordChangedSuccess}
         </p>
       )}
 
@@ -190,7 +191,7 @@ export function ChangePasswordForm({ redirectTo }: ChangePasswordFormProps = {})
           disabled={isPending}
           className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isPending ? "Changing…" : "Change password"}
+          {isPending ? t.auth.changingPassword : t.auth.changePasswordButton}
         </button>
       </div>
     </form>

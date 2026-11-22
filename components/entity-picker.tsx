@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { Search, UserPlus, X } from "lucide-react";
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 export interface EntityOption {
   id: string;
@@ -15,16 +16,20 @@ interface EntityPickerProps {
   defaultId?: string | null;
   placeholder?: string;
   // Lowercase singular noun for this picker's rows — "receiver",
-  // "contact" — used to build "No matching <noun>s." / "New <noun>
-  // <name>" without hardcoding either entity's wording here.
+  // "contact" (already translated by the caller when lang is "es") —
+  // used to build "New <noun>" without hardcoding either entity's
+  // wording here.
   entityNoun: string;
-  // Fires whenever the selection changes — picking an option, clearing
-  // one, or quick-creating a new one. Not fired for the initial value
-  // from defaultId.
+  // Plural form of entityNoun — used to build "Search <plural>…" / "No
+  // matching <plural>." Defaults to entityNoun + "s" (English's usual
+  // case), but a Spanish caller must pass its own plural explicitly
+  // (concatenation doesn't produce correct Spanish).
+  entityNounPlural?: string;
   onSelect?: (option: EntityOption | null) => void;
   // Omit to disable the inline "+ New <noun>" row entirely (not every
   // picker wants quick-create).
   onQuickCreate?: (name: string) => Promise<{ option: EntityOption | null; error: string | null }>;
+  lang?: Lang;
 }
 
 const fieldClass =
@@ -47,9 +52,13 @@ export function EntityPicker({
   defaultId,
   placeholder,
   entityNoun,
+  entityNounPlural,
   onSelect,
   onQuickCreate,
+  lang = "en",
 }: EntityPickerProps) {
+  const t = getDictionary(lang);
+  const plural = entityNounPlural ?? `${entityNoun}s`;
   const [allOptions, setAllOptions] = useState(options);
   const [selected, setSelected] = useState<EntityOption | null>(
     () => allOptions.find((o) => o.id === defaultId) ?? null
@@ -95,7 +104,7 @@ export function EntityPicker({
   function handleCreate() {
     if (!onQuickCreate) return;
     if (!newName.trim()) {
-      setError("Name is required.");
+      setError(t.common.nameRequired);
       return;
     }
     setError(null);
@@ -103,7 +112,7 @@ export function EntityPicker({
       try {
         const result = await onQuickCreate(newName.trim());
         if (result.error || !result.option) {
-          setError(result.error ?? `Could not create ${entityNoun}.`);
+          setError(result.error ?? t.common.couldNotCreate(entityNoun));
           return;
         }
         const created = result.option;
@@ -111,7 +120,7 @@ export function EntityPicker({
         selectOption(created);
         setCreating(false);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -133,14 +142,14 @@ export function EntityPicker({
             }}
             onFocus={() => setOpen(true)}
             onBlur={() => setTimeout(() => setOpen(false), 120)}
-            placeholder={placeholder ?? `Search ${entityNoun}s…`}
+            placeholder={placeholder ?? t.common.searchPlaceholderFor(plural)}
             className={`${fieldClass} pr-9 pl-9`}
           />
           {selected && (
             <button
               type="button"
               onClick={clearSelection}
-              aria-label={`Clear ${entityNoun}`}
+              aria-label={t.common.clearEntity(entityNoun)}
               className="absolute top-1/2 right-2.5 -translate-y-1/2 text-white/30 transition-colors duration-150 ease-out hover:text-white/70"
             >
               <X className="h-4 w-4" />
@@ -150,7 +159,7 @@ export function EntityPicker({
           {open && !selected && (
             <ul className="absolute z-10 mt-1.5 max-h-64 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0f1420] py-1 shadow-xl">
               {filtered.length === 0 && (
-                <li className="px-3 py-2 text-sm text-white/35">No matching {entityNoun}s.</li>
+                <li className="px-3 py-2 text-sm text-white/35">{t.common.noMatchingFor(plural)}</li>
               )}
               {filtered.map((option) => (
                 <li
@@ -173,7 +182,7 @@ export function EntityPicker({
                   className="flex items-center gap-1.5 border-t border-white/[0.06] px-3 py-2 text-sm font-medium text-accent-soft transition-colors duration-100 ease-out hover:bg-white/[0.06]"
                 >
                   <UserPlus className="h-3.5 w-3.5" />
-                  New {entityNoun}
+                  {t.common.newEntity(entityNoun)}
                   {query.trim() ? ` "${query.trim()}"` : ""}
                 </li>
               )}
@@ -186,7 +195,7 @@ export function EntityPicker({
         <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
           <input
             autoFocus
-            placeholder="Name *"
+            placeholder={t.common.namePlaceholder}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             className={smallFieldClass}
@@ -199,14 +208,14 @@ export function EntityPicker({
               onClick={handleCreate}
               className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isPending ? "Creating…" : "Create & Select"}
+              {isPending ? t.common.creating : t.common.createAndSelect}
             </button>
             <button
               type="button"
               onClick={cancelCreating}
               className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
             >
-              Cancel
+              {t.common.cancel}
             </button>
           </div>
         </div>

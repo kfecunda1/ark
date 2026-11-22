@@ -5,6 +5,8 @@ import { getAllStatuses } from "@/lib/statuses";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { getAppSettings } from "@/lib/app-settings";
 import { personLabel } from "@/lib/people";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { Person } from "@/lib/types";
 
 interface NewProjectPageProps {
@@ -13,6 +15,8 @@ interface NewProjectPageProps {
 
 export default async function NewProjectPage({ searchParams }: NewProjectPageProps) {
   const { recovery } = await searchParams;
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
   const supabase = await createClient();
   const [{ data: receiversData }, { data: peopleData }, products, statuses, documentTypes, appSettings] =
     await Promise.all([
@@ -36,10 +40,10 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
     <div className="mx-auto max-w-3xl">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight text-white">
-          {defaultRecovery ? "New Recovery Project" : "New Project"}
+          {defaultRecovery ? t.projectForm.newRecoveryProjectTitle : t.projectForm.newProjectTitle}
         </h1>
         <p className="mt-1 text-sm text-white/45">
-          {defaultRecovery ? "Add a new recovery project to the pipeline." : "Add a new project to the pipeline."}
+          {defaultRecovery ? t.projectForm.newRecoveryProjectSubtitle : t.projectForm.newProjectSubtitle}
         </p>
       </div>
       <ProjectForm
@@ -52,6 +56,7 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
         defaultCurrency={appSettings.default_currency}
         defaultRecovery={defaultRecovery}
         showRecovery={appSettings.show_recovery}
+        lang={lang}
       />
     </div>
   );

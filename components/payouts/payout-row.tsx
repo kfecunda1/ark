@@ -7,6 +7,7 @@ import { RecoveryBadge } from "@/components/projects/badges";
 import { upsertTranchePayout, type PayoutShareInput } from "@/lib/actions/payouts";
 import { formatDateOnly } from "@/lib/projects";
 import { formatMoney } from "@/lib/money";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { PayoutGroup, ProjectTranche, TranchePayout, TranchePayoutShare } from "@/lib/types";
 
 interface PayoutRowProps {
@@ -15,6 +16,7 @@ interface PayoutRowProps {
   allGroups: PayoutGroup[];
   payout: TranchePayout | undefined;
   shares: TranchePayoutShare[];
+  lang?: Lang;
 }
 
 const fieldClass =
@@ -28,8 +30,9 @@ function shareKey(payout: TranchePayout | undefined, shares: TranchePayoutShare[
   return `${payout?.our_pct ?? ""}|${sharesPart}`;
 }
 
-export function PayoutRow({ tranche, project, allGroups, payout, shares }: PayoutRowProps) {
+export function PayoutRow({ tranche, project, allGroups, payout, shares, lang = "en" }: PayoutRowProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
 
   // Every currently-active group, plus any hidden one that already has
   // a saved share here — same "hidden but still shown where it's
@@ -95,7 +98,7 @@ export function PayoutRow({ tranche, project, allGroups, payout, shares }: Payou
     setError(null);
     setSaved(false);
     if (totalOff) {
-      setError(`Group shares must total 100% — currently ${shareTotal.toFixed(2)}%.`);
+      setError(t.payoutRow.shareTotalMismatch(shareTotal.toFixed(2)));
       return;
     }
     setIsSaving(true);
@@ -106,13 +109,13 @@ export function PayoutRow({ tranche, project, allGroups, payout, shares }: Payou
       }));
       const result = await upsertTranchePayout(tranche.id, ourPct, payout?.notes ?? "", shareInputs);
       if (result.error) {
-        setError(result.error);
+        setError(resolveError(result.error, lang));
         return;
       }
       setSaved(true);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
       setIsSaving(false);
     }
@@ -127,26 +130,26 @@ export function PayoutRow({ tranche, project, allGroups, payout, shares }: Payou
               {project.name}
             </Link>
           ) : (
-            <span className="truncate text-sm font-medium text-white/85">Unknown project</span>
+            <span className="truncate text-sm font-medium text-white/85">{t.payoutRow.unknownProject}</span>
           )}
-          {project?.is_recovery && <RecoveryBadge />}
-          <span className="shrink-0 text-xs text-white/50">Tranche {tranche.tranche_number}</span>
+          {project?.is_recovery && <RecoveryBadge lang={lang} />}
+          <span className="shrink-0 text-xs text-white/50">{t.dashboard.trancheNumber(tranche.tranche_number)}</span>
         </div>
         {commissionNotSet && (
           <span className="shrink-0 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">
-            Commission not set
+            {t.payoutRow.commissionNotSet}
           </span>
         )}
       </div>
 
       <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-white/40">
         <span className="font-medium text-white/70">{formatMoney(tranche.amount, project?.currency ?? null)}</span>
-        <span>Paid out on {formatDateOnly(tranche.paid_out_on as string)}</span>
+        <span>{t.payoutRow.paidOutOn(formatDateOnly(tranche.paid_out_on as string, lang))}</span>
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr]">
         <div className="sm:w-40">
-          <label className="mb-1 block text-[11px] font-medium text-white/40">Our %</label>
+          <label className="mb-1 block text-[11px] font-medium text-white/40">{t.payoutRow.ourPctLabel}</label>
           <input
             type="number"
             min={0}
@@ -156,28 +159,29 @@ export function PayoutRow({ tranche, project, allGroups, payout, shares }: Payou
               setOurPct(e.target.value);
               setSaved(false);
             }}
-            placeholder="e.g. 1.25"
+            placeholder={t.payoutRow.ourPctPlaceholder}
             className={fieldClass}
           />
           <p className="mt-1 text-xs text-white/40">
-            Our commission: <span className="font-medium text-white/70">{formatMoney(ourCommission, project?.currency ?? null)}</span>
+            {t.payoutRow.ourCommissionLabel}{" "}
+            <span className="font-medium text-white/70">{formatMoney(ourCommission, project?.currency ?? null)}</span>
           </p>
         </div>
 
         <div>
           <div className="mb-1 flex items-center justify-between">
-            <label className="text-[11px] font-medium text-white/40">Group split</label>
+            <label className="text-[11px] font-medium text-white/40">{t.payoutRow.groupSplitLabel}</label>
             <button
               type="button"
               onClick={splitEvenly}
               className="text-[11px] font-medium text-accent-soft transition-colors duration-150 ease-out hover:underline"
             >
-              Split evenly
+              {t.payoutRow.splitEvenly}
             </button>
           </div>
           <div className="flex flex-col gap-2">
             {visibleGroups.length === 0 ? (
-              <p className="text-xs text-white/35">No groups set up yet — add one in Settings → Groups.</p>
+              <p className="text-xs text-white/35">{t.payoutRow.noGroupsSetUp}</p>
             ) : (
               visibleGroups.map((group) => {
                 const sharePct = Number(shareByGroupId[group.id]) || 0;
@@ -190,7 +194,7 @@ export function PayoutRow({ tranche, project, allGroups, payout, shares }: Payou
                   >
                     <span className="truncate text-xs text-white/70">
                       {group.name}
-                      {!group.active && <span className="ml-1 text-white/35">(hidden)</span>}
+                      {!group.active && <span className="ml-1 text-white/35">{t.dashboard.hiddenSuffix}</span>}
                     </span>
                     <div className="flex items-center gap-1">
                       <input
@@ -204,8 +208,8 @@ export function PayoutRow({ tranche, project, allGroups, payout, shares }: Payou
                       />
                       <span className="text-xs text-white/40">%</span>
                     </div>
-                    <span className="text-xs text-white/40">of commission</span>
-                    <span className="text-xs text-white/50">{pctOfDeal.toFixed(4)}% of deal</span>
+                    <span className="text-xs text-white/40">{t.payoutRow.ofCommission}</span>
+                    <span className="text-xs text-white/50">{t.payoutRow.ofDeal(pctOfDeal.toFixed(4))}</span>
                     <span className="text-xs font-medium text-white/80">
                       {formatMoney(amountEarned, project?.currency ?? null)}
                     </span>
@@ -215,7 +219,8 @@ export function PayoutRow({ tranche, project, allGroups, payout, shares }: Payou
             )}
           </div>
           <p className={`mt-1.5 text-xs font-medium ${totalOff ? "text-red-300" : "text-white/35"}`}>
-            Total: {shareTotal.toFixed(2)}%{totalOff && " — must total 100%"}
+            {t.payoutRow.totalLabel(shareTotal.toFixed(2))}
+            {totalOff && t.payoutRow.mustTotal100Suffix}
           </p>
         </div>
       </div>
@@ -227,9 +232,9 @@ export function PayoutRow({ tranche, project, allGroups, payout, shares }: Payou
           disabled={isSaving}
           className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isSaving ? "Saving…" : "Save"}
+          {isSaving ? t.common.saving : t.common.save}
         </button>
-        {saved && !isSaving && <span className="text-xs text-emerald-300">Saved.</span>}
+        {saved && !isSaving && <span className="text-xs text-emerald-300">{t.common.saved}</span>}
         {error && <span className="text-xs text-rose-300">{error}</span>}
       </div>
     </div>

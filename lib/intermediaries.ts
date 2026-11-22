@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { personLabel } from "@/lib/people";
+import { getDictionary, type Lang } from "@/lib/i18n";
 import type { IntermediaryChainEntry } from "@/components/projects/intermediary-chain-editor";
 import type { Person } from "@/lib/types";
 
@@ -28,11 +29,11 @@ async function fetchPeopleByIds(
   return byId;
 }
 
-function toChainEntry(rowId: string, personId: string, person: PersonOption | undefined): ChainEntry {
+function toChainEntry(rowId: string, personId: string, person: PersonOption | undefined, lang: Lang): ChainEntry {
   return {
     key: rowId,
     personId,
-    label: person ? personLabel(person) : "Unknown contact",
+    label: person ? personLabel(person) : getDictionary(lang).common.unknownContact,
     archived: Boolean(person?.archived_at),
   };
 }
@@ -43,7 +44,10 @@ function toChainEntry(rowId: string, personId: string, person: PersonOption | un
 // existing chain keeps showing them, marked "Archived" — see AGENTS.md)
 // — callers that build an *add* picker must filter archived out
 // themselves (buildIntermediaryPickerOptions below does).
-export async function getProjectIntermediaryChains(projectIds: string[]): Promise<Map<string, ChainEntry[]>> {
+export async function getProjectIntermediaryChains(
+  projectIds: string[],
+  lang: Lang = "en"
+): Promise<Map<string, ChainEntry[]>> {
   const byProject = new Map<string, ChainEntry[]>();
   if (projectIds.length === 0) return byProject;
 
@@ -59,7 +63,7 @@ export async function getProjectIntermediaryChains(projectIds: string[]): Promis
 
   for (const row of rows) {
     const list = byProject.get(row.project_id) ?? [];
-    list.push(toChainEntry(row.id, row.person_id, peopleById.get(row.person_id)));
+    list.push(toChainEntry(row.id, row.person_id, peopleById.get(row.person_id), lang));
     byProject.set(row.project_id, list);
   }
   return byProject;
@@ -67,8 +71,8 @@ export async function getProjectIntermediaryChains(projectIds: string[]): Promis
 
 // The detail/edit pages select just their own project's chain instead
 // of the whole-list batch above.
-export async function getProjectIntermediaryChain(projectId: string): Promise<ChainEntry[]> {
-  const byProject = await getProjectIntermediaryChains([projectId]);
+export async function getProjectIntermediaryChain(projectId: string, lang: Lang = "en"): Promise<ChainEntry[]> {
+  const byProject = await getProjectIntermediaryChains([projectId], lang);
   return byProject.get(projectId) ?? [];
 }
 
@@ -85,7 +89,7 @@ export interface ReceiverIntermediaryRow {
 // A receiver's own intermediaries — an unordered set, each with its
 // per-receiver project count (components/receivers/receiver-
 // intermediaries-section.tsx).
-export async function getReceiverIntermediaries(receiverId: string): Promise<ReceiverIntermediaryRow[]> {
+export async function getReceiverIntermediaries(receiverId: string, lang: Lang = "en"): Promise<ReceiverIntermediaryRow[]> {
   const supabase = await createClient();
 
   const [{ data: linksData }, { data: projectsData }] = await Promise.all([
@@ -121,7 +125,7 @@ export async function getReceiverIntermediaries(receiverId: string): Promise<Rec
     return {
       id: link.id,
       personId: link.person_id,
-      label: person ? personLabel(person) : "Unknown contact",
+      label: person ? personLabel(person) : getDictionary(lang).common.unknownContact,
       archived: Boolean(person?.archived_at),
       projectCount: countByPerson.get(link.person_id) ?? 0,
     };

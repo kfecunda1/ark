@@ -1,11 +1,12 @@
 import { CalendarClock } from "lucide-react";
 import { dueDateLabel, dueDateTone } from "@/lib/projects";
+import type { Lang } from "@/lib/i18n";
 
 // Shared by the project timeline, the Projects list's "Next step"
 // column, and the Dashboard's Follow-ups due section — every place a
 // project_steps.next_step due date needs the same overdue (red) / due
 // today (amber) / upcoming (neutral) coloring.
-export function DueDateBadge({ dueDate }: { dueDate: string }) {
+export function DueDateBadge({ dueDate, lang = "en" }: { dueDate: string; lang?: Lang }) {
   const tone = dueDateTone(dueDate);
   const toneClass =
     tone === "overdue"
@@ -18,7 +19,7 @@ export function DueDateBadge({ dueDate }: { dueDate: string }) {
       className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${toneClass}`}
     >
       <CalendarClock className="h-3 w-3" />
-      {dueDateLabel(dueDate)}
+      {dueDateLabel(dueDate, lang)}
     </span>
   );
 }

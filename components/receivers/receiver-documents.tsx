@@ -25,6 +25,7 @@ import {
   uploadFileWithProgress,
 } from "@/lib/storage";
 import { formatDateTime } from "@/lib/format";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { ContactDocument, ContactDocumentType, DocumentTypeRecord } from "@/lib/types";
 
 interface ContactDocumentWithUrl extends ContactDocument {
@@ -35,6 +36,7 @@ interface ReceiverDocumentsProps {
   contactId: string;
   documents: ContactDocumentWithUrl[];
   documentTypes: DocumentTypeRecord[];
+  lang?: Lang;
 }
 
 interface PendingUpload {
@@ -57,8 +59,9 @@ function DocumentIcon({ doc }: { doc: ContactDocumentWithUrl }) {
   return <FileText className="h-4 w-4 shrink-0 text-white/35" />;
 }
 
-export function ReceiverDocuments({ contactId, documents, documentTypes }: ReceiverDocumentsProps) {
+export function ReceiverDocuments({ contactId, documents, documentTypes, lang = "en" }: ReceiverDocumentsProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [documentType, setDocumentType] = useState<ContactDocumentType>(documentTypes[0]?.name ?? "");
   const [isChecking, setIsChecking] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -91,7 +94,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
       } = await supabase.auth.getSession();
 
       if (!session) {
-        throw new Error("Your session has expired. Please sign in again.");
+        throw new Error(t.errors.sessionExpired);
       }
 
       const path = buildDocumentPath(file.name);
@@ -99,7 +102,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
 
       const result = await addContactDocument(contactId, type, path, file.name, hash);
       if (result.error) {
-        setError(result.error);
+        setError(resolveError(result.error, lang));
         // The file made it to storage but never got a DB row — don't leave
         // it behind as an orphan.
         await supabase.storage.from("contact-documents").remove([path]);
@@ -107,7 +110,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed.");
+      setError(err instanceof Error ? err.message : t.errors.uploadFailed);
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -122,13 +125,13 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
     setPending(null);
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      setError(`${file.name} is ${formatFileSizeMB(file.size)} — maximum is ${MAX_FILE_SIZE_MB} MB. Compress it, or save a link instead.`);
+      setError(t.receiverDocuments.fileTooLarge(file.name, formatFileSizeMB(file.size), MAX_FILE_SIZE_MB));
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
     if (!isAllowedDocumentFile(file)) {
-      setError(`${file.name} isn't a supported file type. Allowed: PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX.`);
+      setError(t.receiverDocuments.unsupportedFileType(file.name));
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -137,11 +140,11 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
 
     try {
       const hash = await computeFileHash(file);
-      const matches = await findContactDocumentsByHash(hash);
+      const matches = await findContactDocumentsByHash(hash, lang);
 
       const sameContact = matches.find((m) => m.contactId === contactId);
       if (sameContact) {
-        setError(`This exact file is already attached as "${sameContact.fileName}".`);
+        setError(t.receiverDocuments.alreadyAttachedAs(sameContact.fileName));
         return;
       }
 
@@ -162,7 +165,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
 
       await uploadFile(file, documentType, hash);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not check this file for duplicates.");
+      setError(err instanceof Error ? err.message : t.errors.couldNotCheckDuplicates);
     } finally {
       setIsChecking(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -186,11 +189,11 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
     const url = linkUrl.trim();
 
     if (!name) {
-      setError("Give the link a name.");
+      setError(t.receiverDocuments.giveLinkAName);
       return;
     }
     if (!/^https?:\/\//i.test(url)) {
-      setError("Link must be a full URL starting with http:// or https://.");
+      setError(t.receiverDocuments.linkMustBeUrl);
       return;
     }
 
@@ -198,14 +201,14 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
     try {
       const result = await addContactDocumentLink(contactId, linkType, name, url);
       if (result.error) {
-        setError(result.error);
+        setError(resolveError(result.error, lang));
       } else {
         setLinkName("");
         setLinkUrl("");
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
       setIsAddingLink(false);
     }
@@ -218,12 +221,12 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
       try {
         const result = await deleteContactDocument(documentId);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
         } else {
           router.refresh();
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setDeletingId(null);
         setConfirmingId(null);
@@ -243,13 +246,13 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
     try {
       const result = await renameContactDocument(documentId, renameValue);
       if (result.error) {
-        setError(result.error);
+        setError(resolveError(result.error, lang));
       } else {
         setRenamingId(null);
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
       setIsRenaming(false);
     }
@@ -258,7 +261,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
   return (
     <div className="flex flex-col gap-4">
       {documents.length === 0 ? (
-        <p className="text-sm text-white/35">No documents attached yet.</p>
+        <p className="text-sm text-white/35">{t.receiverDocuments.noDocumentsYet}</p>
       ) : (
         <div className="flex flex-col gap-2">
           {documents.map((doc) => {
@@ -266,7 +269,11 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
             const isVideo = kind === "video" && doc.signedUrl;
             const isPlaying = playingId === doc.id;
             const viewHref = doc.url ?? doc.signedUrl;
-            const viewLabel = doc.url ? "Open link" : kind === "heic" ? "Download" : "View";
+            const viewLabel = doc.url
+              ? t.receiverDocuments.openLink
+              : kind === "heic"
+                ? t.receiverDocuments.download
+                : t.receiverDocuments.view;
             return (
               <div
                 key={doc.id}
@@ -278,7 +285,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                       <button
                         type="button"
                         onClick={() => setPlayingId(isPlaying ? null : doc.id)}
-                        aria-label={isPlaying ? "Hide player" : "Play video"}
+                        aria-label={isPlaying ? t.receiverDocuments.hidePlayer : t.receiverDocuments.playVideo}
                         className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-white/[0.06] text-white/60 transition-colors duration-150 ease-out hover:bg-white/[0.1] hover:text-white/90"
                       >
                         {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
@@ -300,7 +307,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                       )}
                       <p className="mt-0.5 flex items-center gap-1.5 text-xs text-white/40">
                         <ProjectDocumentTypeBadge type={doc.document_type} />
-                        {formatDateTime(doc.created_at)}
+                        {formatDateTime(doc.created_at, lang)}
                       </p>
                     </div>
                   </div>
@@ -316,7 +323,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                         {viewLabel}
                       </a>
                     ) : (
-                      <span className="text-xs text-rose-300">No link</span>
+                      <span className="text-xs text-rose-300">{t.receiverDocuments.noLink}</span>
                     )}
                     {renamingId === doc.id ? (
                       <>
@@ -324,7 +331,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                           type="button"
                           onClick={() => handleRenameSave(doc.id)}
                           disabled={isRenaming}
-                          aria-label="Save name"
+                          aria-label={t.receiverDocuments.saveName}
                           className="inline-flex items-center rounded-md bg-accent px-2 py-1.5 text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Check className="h-3.5 w-3.5" />
@@ -333,7 +340,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                           type="button"
                           onClick={() => setRenamingId(null)}
                           disabled={isRenaming}
-                          aria-label="Cancel rename"
+                          aria-label={t.receiverDocuments.cancelRename}
                           className="inline-flex items-center rounded-md border border-white/10 bg-white/[0.04] px-2 py-1.5 text-white/60 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <X className="h-3.5 w-3.5" />
@@ -346,7 +353,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                         className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
                       >
                         <Pencil className="h-3.5 w-3.5" />
-                        Rename
+                        {t.receiverDocuments.rename}
                       </button>
                     )}
                     {confirmingId === doc.id ? (
@@ -358,7 +365,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                           className="inline-flex items-center gap-1 rounded-md bg-rose-500 px-2.5 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                          {isPending && deletingId === doc.id ? "Deleting…" : "Confirm"}
+                          {isPending && deletingId === doc.id ? t.common.deleting : t.common.confirm}
                         </button>
                         <button
                           type="button"
@@ -366,7 +373,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                           disabled={isPending}
                           className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
                         >
-                          Cancel
+                          {t.receiverDocuments.cancel}
                         </button>
                       </>
                     ) : (
@@ -376,7 +383,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                         className="inline-flex items-center gap-1 rounded-md border border-rose-500/25 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-300 transition-colors duration-150 ease-out hover:bg-rose-500/20"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                        Delete
+                        {t.receiverDocuments.delete}
                       </button>
                     )}
                   </div>
@@ -393,7 +400,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
       {pending && (
         <>
           <DuplicateWarningBanner
-            heading={`"${pending.file.name}" matches a file already attached elsewhere:`}
+            heading={t.receiverDocuments.matchesElsewhere(pending.file.name)}
             matches={pending.otherContactMatches.map((m) => ({
               id: m.contactId,
               href: `/receivers/${m.contactId}`,
@@ -401,21 +408,22 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
               meta: m.fileName,
             }))}
             onAddAnyway={confirmPending}
-            addAnywayLabel="Attach anyway"
+            addAnywayLabel={t.receiverDocuments.attachAnyway}
+            lang={lang}
           />
           <button
             type="button"
             onClick={cancelPending}
             className="w-fit text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
           >
-            Don&apos;t attach this file
+            {t.receiverDocuments.dontAttach}
           </button>
         </>
       )}
 
       <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
         <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-medium text-white/55">Add Document</p>
+          <p className="text-xs font-medium text-white/55">{t.receiverDocuments.addDocument}</p>
           <div className="flex items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.02] p-0.5">
             <button
               type="button"
@@ -424,7 +432,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                 mode === "file" ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
               }`}
             >
-              Upload file
+              {t.receiverDocuments.uploadFile}
             </button>
             <button
               type="button"
@@ -433,7 +441,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                 mode === "link" ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
               }`}
             >
-              Add link
+              {t.receiverDocuments.addLink}
             </button>
           </div>
         </div>
@@ -442,7 +450,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
           <>
             <div className="flex flex-wrap items-center gap-3">
               <select
-                aria-label="Document type"
+                aria-label={t.receiverDocuments.documentType}
                 value={documentType}
                 onChange={(e) => setDocumentType(e.target.value as ContactDocumentType)}
                 disabled={isUploading || isChecking}
@@ -464,7 +472,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
               />
               {isChecking && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-white/50" />}
             </div>
-            <p className="mt-2 text-xs text-white/35">PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX — up to {MAX_FILE_SIZE_MB} MB.</p>
+            <p className="mt-2 text-xs text-white/35">{t.receiverDocuments.allowedTypesHint(MAX_FILE_SIZE_MB)}</p>
             {isUploading && (
               <div className="mt-2 flex items-center gap-2">
                 <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-white/50" />
@@ -482,7 +490,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <select
-                aria-label="Document type"
+                aria-label={t.receiverDocuments.documentType}
                 value={linkType}
                 onChange={(e) => setLinkType(e.target.value as ContactDocumentType)}
                 disabled={isAddingLink}
@@ -498,7 +506,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                 type="text"
                 value={linkName}
                 onChange={(e) => setLinkName(e.target.value)}
-                placeholder="Name"
+                placeholder={t.receiverDocuments.linkNamePlaceholder}
                 disabled={isAddingLink}
                 className="min-w-[140px] flex-1 rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out placeholder:text-white/30 focus:border-accent/40 disabled:opacity-50"
               />
@@ -506,7 +514,7 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                 type="url"
                 value={linkUrl}
                 onChange={(e) => setLinkUrl(e.target.value)}
-                placeholder="https://…"
+                placeholder={t.receiverDocuments.linkUrlPlaceholder}
                 disabled={isAddingLink}
                 className="min-w-[180px] flex-[2] rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out placeholder:text-white/30 focus:border-accent/40 disabled:opacity-50"
               />
@@ -516,10 +524,10 @@ export function ReceiverDocuments({ contactId, documents, documentTypes }: Recei
                 disabled={isAddingLink}
                 className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isAddingLink ? "Adding…" : "Add link"}
+                {isAddingLink ? t.receiverDocuments.adding : t.receiverDocuments.addLink}
               </button>
             </div>
-            <p className="text-xs text-white/35">For large files kept elsewhere (e.g. Google Drive). Opens in a new tab.</p>
+            <p className="text-xs text-white/35">{t.receiverDocuments.linkHint}</p>
           </div>
         )}
       </div>

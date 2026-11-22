@@ -28,6 +28,7 @@ import {
   uploadFileWithProgress,
 } from "@/lib/storage";
 import { formatDateTime } from "@/lib/format";
+import { catalogLabel, getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { DocumentTypeRecord, ProjectDocument, ProjectDocumentType, ProjectTranche } from "@/lib/types";
 
 export interface ProjectDocumentWithUrl extends ProjectDocument {
@@ -59,6 +60,7 @@ interface ProjectDocumentsProps {
   // "Upload" click (a new ?uploadType=…) remounts it with the new
   // initial state instead of needing an effect to sync it in place.
   initialDocumentType?: string | null;
+  lang?: Lang;
 }
 
 interface PendingUpload {
@@ -99,8 +101,10 @@ export function ProjectDocuments({
   tranches,
   scope,
   initialDocumentType,
+  lang = "en",
 }: ProjectDocumentsProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [documentType, setDocumentType] = useState<ProjectDocumentType>(
     initialDocumentType || documentTypes[0]?.name || ""
   );
@@ -151,12 +155,12 @@ export function ProjectDocuments({
       }
     }
     const result: { key: string; label: string | null; documents: ProjectDocumentWithUrl[] }[] = [];
-    if (general.length > 0) result.push({ key: "general", label: "General", documents: general });
+    if (general.length > 0) result.push({ key: "general", label: t.common.general, documents: general });
     for (const number of [...byTranche.keys()].sort((a, b) => a - b)) {
-      result.push({ key: `tranche-${number}`, label: `Tranche ${number}`, documents: byTranche.get(number)! });
+      result.push({ key: `tranche-${number}`, label: t.projectDocuments.trancheLabel(number), documents: byTranche.get(number)! });
     }
     return result;
-  }, [scope, scopedDocuments, trancheNumberById]);
+  }, [scope, scopedDocuments, trancheNumberById, t]);
 
   async function resolveTrancheId(trancheNumber: number | null): Promise<{ id: string | null; error: string | null }> {
     if (trancheNumber === null) return { id: null, error: null };
@@ -172,7 +176,7 @@ export function ProjectDocuments({
     try {
       const { id: trancheId, error: trancheError } = await resolveTrancheId(trancheNumber);
       if (trancheError) {
-        setError(trancheError);
+        setError(resolveError(trancheError, lang));
         return;
       }
 
@@ -182,7 +186,7 @@ export function ProjectDocuments({
       } = await supabase.auth.getSession();
 
       if (!session) {
-        throw new Error("Your session has expired. Please sign in again.");
+        throw new Error(t.projectDocuments.sessionExpired);
       }
 
       const path = buildDocumentPath(file.name);
@@ -190,7 +194,7 @@ export function ProjectDocuments({
 
       const result = await addProjectDocument(projectId, type, path, file.name, hash, trancheId);
       if (result.error) {
-        setError(result.error);
+        setError(resolveError(result.error, lang));
         // The file made it to storage but never got a DB row — don't leave
         // it behind as an orphan.
         await supabase.storage.from("project-documents").remove([path]);
@@ -198,7 +202,7 @@ export function ProjectDocuments({
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed.");
+      setError(err instanceof Error ? err.message : t.projectDocuments.uploadFailed);
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -215,13 +219,13 @@ export function ProjectDocuments({
     const trancheNumber = scope.kind === "tranche" ? scope.number : parseTrancheSelectValue(uploadTranche);
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      setError(`${file.name} is ${formatFileSizeMB(file.size)} — maximum is ${MAX_FILE_SIZE_MB} MB. Compress it, or save a link instead.`);
+      setError(t.projectDocuments.fileTooLarge(file.name, formatFileSizeMB(file.size), MAX_FILE_SIZE_MB));
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
     if (!isAllowedDocumentFile(file)) {
-      setError(`${file.name} isn't a supported file type. Allowed: PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX.`);
+      setError(t.projectDocuments.unsupportedFileType(file.name));
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -234,7 +238,7 @@ export function ProjectDocuments({
 
       const sameProject = matches.find((m) => m.projectId === projectId);
       if (sameProject) {
-        setError(`This exact file is already attached as "${sameProject.fileName}".`);
+        setError(t.projectDocuments.duplicateInThisProject(sameProject.fileName));
         return;
       }
 
@@ -256,7 +260,7 @@ export function ProjectDocuments({
 
       await uploadFile(file, documentType, hash, trancheNumber);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not check this file for duplicates.");
+      setError(err instanceof Error ? err.message : t.projectDocuments.couldNotCheckDuplicates);
     } finally {
       setIsChecking(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -280,11 +284,11 @@ export function ProjectDocuments({
     const url = linkUrl.trim();
 
     if (!name) {
-      setError("Give the link a name.");
+      setError(t.projectDocuments.giveLinkName);
       return;
     }
     if (!/^https?:\/\//i.test(url)) {
-      setError("Link must be a full URL starting with http:// or https://.");
+      setError(t.projectDocuments.linkMustBeUrl);
       return;
     }
 
@@ -294,20 +298,20 @@ export function ProjectDocuments({
     try {
       const { id: trancheId, error: trancheError } = await resolveTrancheId(trancheNumber);
       if (trancheError) {
-        setError(trancheError);
+        setError(resolveError(trancheError, lang));
         return;
       }
 
       const result = await addProjectDocumentLink(projectId, linkType, name, url, trancheId);
       if (result.error) {
-        setError(result.error);
+        setError(resolveError(result.error, lang));
       } else {
         setLinkName("");
         setLinkUrl("");
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
       setIsAddingLink(false);
     }
@@ -320,12 +324,12 @@ export function ProjectDocuments({
       try {
         const result = await deleteProjectDocument(documentId);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
         } else {
           router.refresh();
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setDeletingId(null);
       }
@@ -339,17 +343,17 @@ export function ProjectDocuments({
       const trancheNumber = parseTrancheSelectValue(value);
       const { id: trancheId, error: trancheError } = await resolveTrancheId(trancheNumber);
       if (trancheError) {
-        setError(trancheError);
+        setError(resolveError(trancheError, lang));
         return;
       }
       const result = await moveProjectDocument(doc.id, trancheId);
       if (result.error) {
-        setError(result.error);
+        setError(resolveError(result.error, lang));
       } else {
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
       setMovingId(null);
     }
@@ -367,13 +371,13 @@ export function ProjectDocuments({
     try {
       const result = await renameProjectDocument(documentId, renameValue);
       if (result.error) {
-        setError(result.error);
+        setError(resolveError(result.error, lang));
       } else {
         setRenamingId(null);
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
       setIsRenaming(false);
     }
@@ -384,8 +388,10 @@ export function ProjectDocuments({
     const isVideo = kind === "video" && doc.signedUrl;
     const isPlaying = playingId === doc.id;
     const viewHref = doc.url ?? doc.signedUrl;
-    const viewLabel = doc.url ? "Open link" : kind === "heic" ? "Download" : "View";
+    const viewLabel = doc.url ? t.projectDocuments.openLink : kind === "heic" ? t.projectDocuments.download : t.projectDocuments.view;
     const currentTrancheNumber = doc.tranche_id ? trancheNumberById.get(doc.tranche_id) ?? null : null;
+    const docTypeRecord = documentTypes.find((dt) => dt.name === doc.document_type);
+    const docTypeLabel = docTypeRecord ? catalogLabel(docTypeRecord, lang) : doc.document_type;
 
     return (
       <div
@@ -419,25 +425,25 @@ export function ProjectDocuments({
                 <p className="truncate text-sm text-white/85">{doc.file_name}</p>
               )}
               <p className="mt-0.5 flex items-center gap-1.5 text-xs text-white/40">
-                <ProjectDocumentTypeBadge type={doc.document_type} />
-                {formatDateTime(doc.created_at)}
+                <ProjectDocumentTypeBadge type={doc.document_type} label={docTypeLabel} />
+                {formatDateTime(doc.created_at, lang)}
               </p>
             </div>
           </div>
           <div className="flex flex-wrap shrink-0 items-center gap-2">
             <select
-              aria-label="Move to"
+              aria-label={t.projectDocuments.moveToAriaLabel}
               value={trancheSelectValue(currentTrancheNumber)}
               onChange={(e) => handleMove(doc, e.target.value)}
               disabled={movingId === doc.id}
               className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
             >
               <option value={TRANCHE_SELECT_GENERAL} className="bg-[#0a0e17]">
-                General
+                {t.common.general}
               </option>
               {trancheNumbers.map((n) => (
                 <option key={n} value={n} className="bg-[#0a0e17]">
-                  Tranche {n}
+                  {t.projectDocuments.trancheLabel(n)}
                 </option>
               ))}
             </select>
@@ -452,7 +458,7 @@ export function ProjectDocuments({
                 {viewLabel}
               </a>
             ) : (
-              <span className="text-xs text-rose-300">No link</span>
+              <span className="text-xs text-rose-300">{t.projectDocuments.noLink}</span>
             )}
             {renamingId === doc.id ? (
               <>
@@ -460,7 +466,7 @@ export function ProjectDocuments({
                   type="button"
                   onClick={() => handleRenameSave(doc.id)}
                   disabled={isRenaming}
-                  aria-label="Save name"
+                  aria-label={t.projectDocuments.saveName}
                   className="inline-flex items-center rounded-md bg-accent px-2 py-1.5 text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Check className="h-3.5 w-3.5" />
@@ -469,7 +475,7 @@ export function ProjectDocuments({
                   type="button"
                   onClick={() => setRenamingId(null)}
                   disabled={isRenaming}
-                  aria-label="Cancel rename"
+                  aria-label={t.projectDocuments.cancelRename}
                   className="inline-flex items-center rounded-md border border-white/10 bg-white/[0.04] px-2 py-1.5 text-white/60 transition-colors duration-150 ease-out hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -482,7 +488,7 @@ export function ProjectDocuments({
                 className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
               >
                 <Pencil className="h-3.5 w-3.5" />
-                Rename
+                {t.common.rename}
               </button>
             )}
             <button
@@ -492,7 +498,7 @@ export function ProjectDocuments({
               className="inline-flex items-center gap-1 rounded-md border border-rose-500/25 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-300 transition-colors duration-150 ease-out hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              {isPending && deletingId === doc.id ? "Deleting…" : "Delete"}
+              {isPending && deletingId === doc.id ? t.common.deleting : t.common.delete}
             </button>
           </div>
         </div>
@@ -506,7 +512,7 @@ export function ProjectDocuments({
   return (
     <div className="flex flex-col gap-4">
       {scopedDocuments.length === 0 ? (
-        <p className="text-sm text-white/35">No documents attached yet.</p>
+        <p className="text-sm text-white/35">{t.projectDocuments.noDocumentsYet}</p>
       ) : (
         <div className="flex flex-col gap-4">
           {groups.map((group) => (
@@ -523,7 +529,7 @@ export function ProjectDocuments({
       {pending && (
         <>
           <DuplicateWarningBanner
-            heading={`"${pending.file.name}" matches a file already attached elsewhere:`}
+            heading={t.projectDocuments.matchesElsewhereHeading(pending.file.name)}
             matches={pending.otherProjectMatches.map((m) => ({
               id: m.projectId,
               href: `/projects/${m.projectId}`,
@@ -531,21 +537,22 @@ export function ProjectDocuments({
               meta: m.fileName,
             }))}
             onAddAnyway={confirmPending}
-            addAnywayLabel="Attach anyway"
+            addAnywayLabel={t.projectDocuments.attachAnyway}
+            lang={lang}
           />
           <button
             type="button"
             onClick={cancelPending}
             className="w-fit text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
           >
-            Don&apos;t attach this file
+            {t.projectDocuments.dontAttach}
           </button>
         </>
       )}
 
       <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
         <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-medium text-white/55">Add Document</p>
+          <p className="text-xs font-medium text-white/55">{t.projectDocuments.addDocument}</p>
           <div className="flex items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.02] p-0.5">
             <button
               type="button"
@@ -554,7 +561,7 @@ export function ProjectDocuments({
                 mode === "file" ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
               }`}
             >
-              Upload file
+              {t.projectDocuments.uploadFile}
             </button>
             <button
               type="button"
@@ -563,7 +570,7 @@ export function ProjectDocuments({
                 mode === "link" ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
               }`}
             >
-              Add link
+              {t.projectDocuments.addLink}
             </button>
           </div>
         </div>
@@ -572,7 +579,7 @@ export function ProjectDocuments({
           <>
             <div className="flex flex-wrap items-center gap-3">
               <select
-                aria-label="Document type"
+                aria-label={t.projectDocuments.documentTypeAriaLabel}
                 value={documentType}
                 onChange={(e) => setDocumentType(e.target.value as ProjectDocumentType)}
                 disabled={isUploading || isChecking}
@@ -580,24 +587,24 @@ export function ProjectDocuments({
               >
                 {documentTypes.map((type) => (
                   <option key={type.id} value={type.name} className="bg-[#0a0e17]">
-                    {type.name}
+                    {catalogLabel(type, lang)}
                   </option>
                 ))}
               </select>
               {scope.kind === "all" && (
                 <select
-                  aria-label="For tranche"
+                  aria-label={t.projectDocuments.forTrancheAriaLabel}
                   value={uploadTranche}
                   onChange={(e) => setUploadTranche(e.target.value)}
                   disabled={isUploading || isChecking}
                   className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
                 >
                   <option value={TRANCHE_SELECT_GENERAL} className="bg-[#0a0e17]">
-                    General
+                    {t.common.general}
                   </option>
                   {trancheNumbers.map((n) => (
                     <option key={n} value={n} className="bg-[#0a0e17]">
-                      Tranche {n}
+                      {t.projectDocuments.trancheLabel(n)}
                     </option>
                   ))}
                 </select>
@@ -612,7 +619,7 @@ export function ProjectDocuments({
               />
               {isChecking && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-white/50" />}
             </div>
-            <p className="mt-2 text-xs text-white/35">PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX — up to {MAX_FILE_SIZE_MB} MB.</p>
+            <p className="mt-2 text-xs text-white/35">{t.projectDocuments.fileSizeHint(MAX_FILE_SIZE_MB)}</p>
             {isUploading && (
               <div className="mt-2 flex items-center gap-2">
                 <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-white/50" />
@@ -630,7 +637,7 @@ export function ProjectDocuments({
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <select
-                aria-label="Document type"
+                aria-label={t.projectDocuments.documentTypeAriaLabel}
                 value={linkType}
                 onChange={(e) => setLinkType(e.target.value as ProjectDocumentType)}
                 disabled={isAddingLink}
@@ -638,24 +645,24 @@ export function ProjectDocuments({
               >
                 {documentTypes.map((type) => (
                   <option key={type.id} value={type.name} className="bg-[#0a0e17]">
-                    {type.name}
+                    {catalogLabel(type, lang)}
                   </option>
                 ))}
               </select>
               {scope.kind === "all" && (
                 <select
-                  aria-label="For tranche"
+                  aria-label={t.projectDocuments.forTrancheAriaLabel}
                   value={linkTranche}
                   onChange={(e) => setLinkTranche(e.target.value)}
                   disabled={isAddingLink}
                   className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40 disabled:opacity-50"
                 >
                   <option value={TRANCHE_SELECT_GENERAL} className="bg-[#0a0e17]">
-                    General
+                    {t.common.general}
                   </option>
                   {trancheNumbers.map((n) => (
                     <option key={n} value={n} className="bg-[#0a0e17]">
-                      Tranche {n}
+                      {t.projectDocuments.trancheLabel(n)}
                     </option>
                   ))}
                 </select>
@@ -664,7 +671,7 @@ export function ProjectDocuments({
                 type="text"
                 value={linkName}
                 onChange={(e) => setLinkName(e.target.value)}
-                placeholder="Name"
+                placeholder={t.projectDocuments.linkNamePlaceholder}
                 disabled={isAddingLink}
                 className="min-w-[140px] flex-1 rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs text-white outline-none transition-colors duration-150 ease-out placeholder:text-white/30 focus:border-accent/40 disabled:opacity-50"
               />
@@ -682,10 +689,10 @@ export function ProjectDocuments({
                 disabled={isAddingLink}
                 className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isAddingLink ? "Adding…" : "Add link"}
+                {isAddingLink ? t.projectDocuments.adding : t.projectDocuments.addLink}
               </button>
             </div>
-            <p className="text-xs text-white/35">For large files kept elsewhere (e.g. Google Drive). Opens in a new tab.</p>
+            <p className="text-xs text-white/35">{t.projectDocuments.linkHint}</p>
           </div>
         )}
       </div>

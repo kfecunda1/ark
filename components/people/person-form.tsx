@@ -13,11 +13,13 @@ import {
   type DuplicatePersonMatch,
   type PersonFormState,
 } from "@/lib/actions/people";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { Person } from "@/lib/types";
 
 interface PersonFormProps {
   mode: "create" | "edit";
   person?: Person;
+  lang?: Lang;
 }
 
 const initialState: PersonFormState = { error: null };
@@ -31,8 +33,9 @@ const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 // anyway" can resubmit without the user retyping anything. Edit mode
 // keeps the plain server-action/useActionState flow, same as every
 // other edit form in the app.
-export function PersonForm({ mode, person }: PersonFormProps) {
+export function PersonForm({ mode, person, lang = "en" }: PersonFormProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
 
   const editAction = mode === "edit" && person ? updatePerson.bind(null, person.id) : async () => ({ error: null });
   const [editState, editFormAction, isEditPending] = useActionState(editAction, initialState);
@@ -70,7 +73,7 @@ export function PersonForm({ mode, person }: PersonFormProps) {
 
     const result = await createPersonWithId(formData);
     if (result.error || !result.id) {
-      setCreateError(result.error ?? "Failed to create contact.");
+      setCreateError(resolveError(result.error ?? "createFailed", lang));
       setIsCreating(false);
       return;
     }
@@ -89,7 +92,7 @@ export function PersonForm({ mode, person }: PersonFormProps) {
     mode === "edit"
       ? { action: editFormAction, onSubmit: () => disableSubmitButton(submitButtonRef) }
       : { onSubmit: handleCreateSubmit };
-  const error = mode === "edit" ? editState?.error : createError;
+  const error = mode === "edit" ? resolveError(editState?.error ?? null, lang) : createError;
   const isPending = mode === "edit" ? isEditPending : isCreating;
 
   return (
@@ -97,7 +100,7 @@ export function PersonForm({ mode, person }: PersonFormProps) {
       <GlassCard interactive={false} className="grid grid-cols-1 gap-5 p-6 sm:grid-cols-2">
         <div>
           <label className={labelClass} htmlFor="first_name">
-            First Name *
+            {t.people.firstName}
           </label>
           <input
             id="first_name"
@@ -110,21 +113,21 @@ export function PersonForm({ mode, person }: PersonFormProps) {
 
         <div>
           <label className={labelClass} htmlFor="last_name">
-            Last Name
+            {t.people.lastName}
           </label>
           <input id="last_name" name="last_name" defaultValue={person?.last_name ?? ""} className={fieldClass} />
         </div>
 
         <div>
           <label className={labelClass} htmlFor="phone">
-            Phone
+            {t.common.columnPhone}
           </label>
           <input id="phone" name="phone" defaultValue={person?.phone ?? ""} className={fieldClass} />
         </div>
 
         <div>
           <label className={labelClass} htmlFor="email">
-            Email
+            {t.common.columnEmail}
           </label>
           <input id="email" name="email" type="email" defaultValue={person?.email ?? ""} className={fieldClass} />
         </div>
@@ -132,9 +135,10 @@ export function PersonForm({ mode, person }: PersonFormProps) {
 
       {duplicateMatches && duplicateMatches.length > 0 && (
         <DuplicateWarningBanner
-          heading="A contact with this same name or email already exists:"
+          heading={t.people.duplicateHeading}
           matches={duplicateMatches.map((m) => ({ id: m.id, href: `/people/${m.id}`, label: m.label, meta: m.meta }))}
           onAddAnyway={handleAddAnyway}
+          lang={lang}
         />
       )}
 
@@ -149,13 +153,19 @@ export function PersonForm({ mode, person }: PersonFormProps) {
           disabled={isPending}
           className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {mode === "edit" ? (isEditPending ? "Saving…" : "Save changes") : isCreating ? "Creating…" : "Create contact"}
+          {mode === "edit"
+            ? isEditPending
+              ? t.common.saving
+              : t.people.saveChanges
+            : isCreating
+              ? t.common.creating
+              : t.people.createContact}
         </button>
         <Link
           href={mode === "edit" && person ? `/people/${person.id}` : "/people"}
           className="text-sm font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
         >
-          Cancel
+          {t.common.cancel}
         </Link>
       </div>
     </form>

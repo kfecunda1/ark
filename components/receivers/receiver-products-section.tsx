@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { upsertContactProduct, deleteContactProduct } from "@/lib/actions/contacts";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { ContactProduct, Product, ProductType } from "@/lib/types";
 
 interface ReceiverProductsSectionProps {
@@ -14,6 +15,7 @@ interface ReceiverProductsSectionProps {
   // need for the hidden-but-still-in-use override this component's
   // sibling (components/receivers/product-fields.tsx) needs.
   availableProducts: Product[];
+  lang?: Lang;
 }
 
 const fieldClass =
@@ -27,9 +29,11 @@ interface RowProps {
   onSave: (productType: ProductType, ratio: string, recoveryRatio: string, notes: string) => void;
   onDelete?: () => void;
   onCancel?: () => void;
+  lang?: Lang;
 }
 
-function ProductRow({ product, productType, availableProductTypes, disabled, onSave, onDelete, onCancel }: RowProps) {
+function ProductRow({ product, productType, availableProductTypes, disabled, onSave, onDelete, onCancel, lang = "en" }: RowProps) {
+  const t = getDictionary(lang);
   const [selectedType, setSelectedType] = useState<ProductType>(productType);
   const [ratio, setRatio] = useState(product?.ratio ?? "");
   const [recoveryRatio, setRecoveryRatio] = useState(product?.recovery_ratio ?? "");
@@ -56,21 +60,21 @@ function ProductRow({ product, productType, availableProductTypes, disabled, onS
         <input
           value={ratio}
           onChange={(e) => setRatio(e.target.value)}
-          placeholder='Ratio, e.g. "2%" or "70/30"'
+          placeholder={t.receiverForm.ratioPlaceholder}
           disabled={disabled}
           className={fieldClass}
         />
         <input
           value={recoveryRatio}
           onChange={(e) => setRecoveryRatio(e.target.value)}
-          placeholder='Recovery ratio, e.g. "2%" or "70/30"'
+          placeholder={t.receiverForm.recoveryRatioPlaceholder}
           disabled={disabled}
           className={fieldClass}
         />
         <input
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Notes"
+          placeholder={t.receiverForm.notesPlaceholder}
           disabled={disabled}
           className={fieldClass}
         />
@@ -82,7 +86,7 @@ function ProductRow({ product, productType, availableProductTypes, disabled, onS
           disabled={disabled}
           className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Save
+          {t.receiverDialogs.save}
         </button>
         {onCancel && (
           <button
@@ -91,7 +95,7 @@ function ProductRow({ product, productType, availableProductTypes, disabled, onS
             disabled={disabled}
             className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
           >
-            Cancel
+            {t.common.cancel}
           </button>
         )}
         {onDelete && (
@@ -102,7 +106,7 @@ function ProductRow({ product, productType, availableProductTypes, disabled, onS
             className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-rose-300 transition-colors duration-150 ease-out hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Trash2 className="h-3.5 w-3.5" />
-            Remove
+            {t.common.remove}
           </button>
         )}
       </div>
@@ -110,7 +114,8 @@ function ProductRow({ product, productType, availableProductTypes, disabled, onS
   );
 }
 
-export function ReceiverProductsSection({ contactId, products, availableProducts }: ReceiverProductsSectionProps) {
+export function ReceiverProductsSection({ contactId, products, availableProducts, lang = "en" }: ReceiverProductsSectionProps) {
+  const t = getDictionary(lang);
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -125,13 +130,13 @@ export function ReceiverProductsSection({ contactId, products, availableProducts
       try {
         const result = await upsertContactProduct(contactId, productType, ratio, recoveryRatio, notes);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setAdding(false);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -142,19 +147,19 @@ export function ReceiverProductsSection({ contactId, products, availableProducts
       try {
         const result = await deleteContactProduct(contactId, productId);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
 
   return (
     <div className="flex flex-col gap-3">
-      {products.length === 0 && !adding && <p className="text-sm text-white/35">No products yet.</p>}
+      {products.length === 0 && !adding && <p className="text-sm text-white/35">{t.receiverDialogs.noProductsYet}</p>}
 
       {products.map((product) => (
         <ProductRow
@@ -165,6 +170,7 @@ export function ReceiverProductsSection({ contactId, products, availableProducts
           disabled={isPending}
           onSave={(productType, ratio, recoveryRatio, notes) => handleSave(productType, ratio, recoveryRatio, notes)}
           onDelete={() => handleDelete(product.id)}
+          lang={lang}
         />
       ))}
 
@@ -176,6 +182,7 @@ export function ReceiverProductsSection({ contactId, products, availableProducts
           disabled={isPending}
           onSave={(productType, ratio, recoveryRatio, notes) => handleSave(productType, ratio, recoveryRatio, notes)}
           onCancel={() => setAdding(false)}
+          lang={lang}
         />
       )}
 
@@ -187,7 +194,7 @@ export function ReceiverProductsSection({ contactId, products, availableProducts
           className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Plus className="h-3.5 w-3.5" />
-          Add Product
+          {t.receiverForm.addProduct}
         </button>
       )}
 

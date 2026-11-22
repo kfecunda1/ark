@@ -9,7 +9,7 @@ import { buildDocumentPath, computeFileHash, withPreservedExtension } from "@/li
 import type { InboxItem } from "@/lib/types";
 
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 export type InboxFileTarget =
@@ -24,6 +24,11 @@ export interface InboxDuplicateMatch {
 
 export interface FileInboxItemResult {
   error: string | null;
+  // Present only alongside the "errors.duplicateSameTarget" key — the
+  // file name that's already attached, since the error key alone can't
+  // carry it (see lib/i18n/index.ts's resolveError: a key is a stable
+  // string with no interpolation slot of its own).
+  duplicateFileName?: string;
   // Present (and error null) when a cross-record hash match was found
   // and this call hasn't been told to go ahead anyway — same "warning,
   // never blocking" shape as the main Documents section's own
@@ -38,7 +43,7 @@ async function loadInboxItem(
 ): Promise<{ item: InboxItem | null; error: string | null }> {
   const { data, error } = await supabase.from("inbox_items").select("*").eq("id", itemId).maybeSingle();
   if (error) return { item: null, error: error.message };
-  if (!data) return { item: null, error: "This item no longer exists." };
+  if (!data) return { item: null, error: "notFound" };
   return { item: data as InboxItem, error: null };
 }
 
@@ -87,15 +92,15 @@ async function markFiled(
 // no activity-log trigger at all, by design (022_telegram_inbox.sql).
 export async function renameInboxItem(itemId: string, newName: string): Promise<{ error: string | null }> {
   if (!newName.trim()) {
-    return { error: "Name can't be empty." };
+    return { error: "nameRequired" };
   }
 
   try {
     const supabase = await createClient();
     const { item, error: loadError } = await loadInboxItem(supabase, itemId);
     if (loadError) return { error: loadError };
-    if (!item) return { error: "This item no longer exists." };
-    if (!item.file_name) return { error: "This item has no file to rename." };
+    if (!item) return { error: "notFound" };
+    if (!item.file_name) return { error: "noFileToRename" };
 
     const finalName = withPreservedExtension(item.file_name, newName);
     const { error } = await supabase.from("inbox_items").update({ file_name: finalName }).eq("id", itemId);
@@ -136,7 +141,7 @@ export async function deleteInboxItem(itemId: string): Promise<{ error: string |
     // dismissed item carries no such history, so anyone registered can
     // clean those up, matching inbox_items' own DELETE RLS policy.
     if (item?.status === "filed" && !(await isCurrentUserAdmin())) {
-      return { error: "Only admins can delete a filed item." };
+      return { error: "onlyAdminsCanDeleteFiled" };
     }
 
     const { error } = await supabase.from("inbox_items").delete().eq("id", itemId);
@@ -174,7 +179,7 @@ export async function fileInboxItemAsNote(
     const supabase = await createClient();
     const { item, error: loadError } = await loadInboxItem(supabase, itemId);
     if (loadError) return { error: loadError };
-    if (!item) return { error: "This item no longer exists." };
+    if (!item) return { error: "notFound" };
 
     const {
       data: { user },
@@ -208,12 +213,12 @@ export async function fileInboxItemAsDocument(
     const supabase = await createClient();
     const { item, error: loadError } = await loadInboxItem(supabase, itemId);
     if (loadError) return { error: loadError };
-    if (!item) return { error: "This item no longer exists." };
-    if (!item.storage_path) return { error: "This item has no file to file as a document." };
+    if (!item) return { error: "notFound" };
+    if (!item.storage_path) return { error: "noFileToFileAsDocument" };
 
     const { data: blob, error: downloadError } = await supabase.storage.from("inbox").download(item.storage_path);
     if (downloadError || !blob) {
-      return { error: downloadError?.message ?? "Could not read this file." };
+      return { error: downloadError?.message ?? "couldNotReadFile" };
     }
 
     const hash = await computeFileHash(blob);
@@ -226,7 +231,7 @@ export async function fileInboxItemAsDocument(
         ? matches.find((m) => "projectId" in m && m.projectId === target.id)
         : matches.find((m) => "contactId" in m && m.contactId === target.id);
     if (sameTarget) {
-      return { error: `This exact file is already attached as "${sameTarget.fileName}".` };
+      return { error: "duplicateSameTarget", duplicateFileName: sameTarget.fileName };
     }
 
     if (matches.length > 0 && !confirmDuplicate) {

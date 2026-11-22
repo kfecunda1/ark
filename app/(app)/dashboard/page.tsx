@@ -6,11 +6,13 @@ import { DueTodayAndOverdue, type DueItem } from "@/components/dashboard/due-tod
 import { createClient } from "@/lib/supabase/server";
 import { dateKeyInTimeZone, formatDateTime } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
-import { CURRENCIES, STAGES, STAGE_LABELS, daysSince, formatDateOnly } from "@/lib/projects";
+import { CURRENCIES, STAGES, daysSince, formatDateOnly, stageLabel } from "@/lib/projects";
 import { getAllProducts } from "@/lib/products";
 import { getAllStatuses, isClosedStatus } from "@/lib/statuses";
 import { countedProducts, getProjectProductsByProjectIds } from "@/lib/project-products";
 import { getAppSettings } from "@/lib/app-settings";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { Project, ProjectStage, ProjectTranche } from "@/lib/types";
 
 const STAGE_BAR_COLORS: Record<ProjectStage, string> = {
@@ -32,6 +34,9 @@ interface DashboardPageProps {
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const { passwordChanged } = await searchParams;
+
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
 
   const supabase = await createClient();
   const { data, error } = await supabase.from("projects").select("*").is("archived_at", null);
@@ -262,10 +267,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     daysSinceBackup === null ? "danger" : daysSinceBackup > 14 ? "danger" : daysSinceBackup > 7 ? "warning" : "ok";
   const backupLabel =
     daysSinceBackup === null
-      ? "Last backup: never"
+      ? t.dashboard.lastBackupNever
       : daysSinceBackup === 0
-        ? "Last backup: today"
-        : `Last backup: ${daysSinceBackup} day${daysSinceBackup === 1 ? "" : "s"} ago`;
+        ? t.dashboard.lastBackupToday
+        : t.dashboard.lastBackupDaysAgo(daysSinceBackup);
   const BACKUP_TONE_CLASSES: Record<typeof backupTone, string> = {
     ok: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
     warning: "border-amber-500/25 bg-amber-500/10 text-amber-300",
@@ -294,7 +299,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     extra: string | null;
   }[] = [
     {
-      label: "Open Projects",
+      label: t.dashboard.openProjects,
       value: openNonRecoveryCount,
       icon: Layers,
       tone: "text-white",
@@ -303,16 +308,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       extra: null,
     },
     {
-      label: "Not matched",
+      label: t.dashboard.notMatched,
       value: notMatchedProjects.length,
       icon: Unlink,
       tone: "text-sky-300",
       href: "/projects?unmatched=true",
       suffix: null,
-      extra: `${notMatchedDocsReceivedCount} with documents received`,
+      extra: t.dashboard.withDocumentsReceived(notMatchedDocsReceivedCount),
     },
     {
-      label: "Completed (month)",
+      label: t.dashboard.completedMonth,
       value: completedThisMonth,
       icon: CheckCircle2,
       tone: "text-emerald-300",
@@ -323,7 +328,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     ...(appSettings.show_recovery
       ? [
           {
-            label: "Recovery Projects",
+            label: t.dashboard.recoveryProjects,
             value: openRecoveryCount,
             icon: RotateCcw,
             tone: "text-amber-300",
@@ -334,16 +339,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         ]
       : []),
     {
-      label: "Inbox",
+      label: t.dashboard.inbox,
       value: inboxNewCount ?? 0,
       icon: Inbox,
       tone: "text-cyan-300",
       href: "/inbox",
-      suffix: " to file",
+      suffix: t.dashboard.toFile,
       extra: null,
     },
     {
-      label: "Active Tranches",
+      label: t.dashboard.activeTranches,
       value: activeTranches.length,
       icon: Landmark,
       tone: "text-teal-300",
@@ -357,8 +362,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     <div className="mx-auto max-w-6xl">
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Dashboard</h1>
-          <p className="mt-1 text-sm text-white/45">Overview of your pipeline at a glance.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">{t.dashboard.title}</h1>
+          <p className="mt-1 text-sm text-white/45">{t.dashboard.subtitle}</p>
         </div>
         {isAdmin && (
           <span
@@ -375,13 +380,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           interactive={false}
           className="mb-6 border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-300"
         >
-          Password changed — welcome to ARK.
+          {t.dashboard.passwordChanged}
         </GlassCard>
       )}
 
       {error && (
         <GlassCard interactive={false} className="mb-6 p-6 text-sm text-rose-300">
-          Failed to load projects: {error.message}
+          {t.dashboard.failedToLoadProjects(error.message)}
         </GlassCard>
       )}
 
@@ -407,10 +412,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <GlassCard interactive={false} className="p-6">
           <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
             <Landmark className="h-4 w-4 text-white/40" />
-            Active tranches
+            {t.dashboard.activeTranchesHeading}
           </h2>
           {activeTranches.length === 0 ? (
-            <p className="text-sm text-white/35">No active tranches.</p>
+            <p className="text-sm text-white/35">{t.dashboard.noActiveTranches}</p>
           ) : (
             <div className="flex flex-col gap-2">
               {activeTranches.map((tranche) => {
@@ -425,15 +430,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                       {projectNameById.get(tranche.project_id) ?? "Project"}
                     </span>
                     {projectIsRecoveryById.get(tranche.project_id) && <RecoveryBadge />}
-                    <span className="shrink-0 text-xs text-white/50">Tranche {tranche.tranche_number}</span>
+                    <span className="shrink-0 text-xs text-white/50">{t.dashboard.trancheNumber(tranche.tranche_number)}</span>
                     <span className="shrink-0 text-xs font-medium text-white/80">
                       {formatMoney(tranche.amount, projectCurrencyById.get(tranche.project_id))}
                     </span>
                     <span className="shrink-0 text-xs text-white/40">
-                      Confirmed on {formatDateOnly(tranche.confirmed_on as string)}
+                      {t.dashboard.confirmedOn(formatDateOnly(tranche.confirmed_on as string, lang))}
                     </span>
                     <span className="shrink-0 text-xs font-medium text-white/50">
-                      {days} day{days === 1 ? "" : "s"} since confirmed
+                      {t.dashboard.daysSinceConfirmed(days)}
                     </span>
                   </Link>
                 );
@@ -445,9 +450,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
       <div className="mt-6">
         <GlassCard interactive={false} className="p-6">
-          <h2 className="mb-4 text-sm font-medium text-white/70">Projects by Stage</h2>
+          <h2 className="mb-4 text-sm font-medium text-white/70">{t.dashboard.projectsByStage}</h2>
           {projects.length === 0 ? (
-            <p className="text-sm text-white/35">No projects yet.</p>
+            <p className="text-sm text-white/35">{t.dashboard.noProjectsYet}</p>
           ) : (
             <div className="flex flex-col gap-3">
               {STAGES.map((stage) => {
@@ -460,7 +465,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     className="group flex items-center gap-4 rounded-lg px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-white/[0.04]"
                   >
                     <span className="w-36 shrink-0 text-sm text-white/60 group-hover:text-white/90">
-                      {STAGE_LABELS[stage]}
+                      {stageLabel(stage, lang)}
                     </span>
                     <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
                       <span
@@ -490,7 +495,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                       className="group flex items-center gap-4 rounded-lg px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-white/[0.04]"
                     >
                       <span className="w-36 shrink-0 text-sm text-white/60 group-hover:text-white/90">
-                        Active Tranches
+                        {t.dashboard.activeTranches}
                       </span>
                       <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
                         <span
@@ -502,9 +507,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                         {activeTrancheProjectCount}
                       </span>
                     </Link>
-                    <p className="px-2 text-[11px] text-white/30">
-                      Also counted in its stage — not an additional stage.
-                    </p>
+                    <p className="px-2 text-[11px] text-white/30">{t.dashboard.alsoCountedInStage}</p>
                   </div>
                 );
               })()}
@@ -517,10 +520,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <GlassCard interactive={false} className="flex h-full flex-col p-6">
           <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
             <AlertTriangle className="h-4 w-4 text-white/40" />
-            Stuck Projects
+            {t.dashboard.stuckProjectsHeading}
           </h2>
           {stuckProjects.length === 0 ? (
-            <p className="text-sm text-white/35">No stuck projects.</p>
+            <p className="text-sm text-white/35">{t.dashboard.noStuckProjects}</p>
           ) : (
             <div className="flex flex-col gap-2">
               {stuckProjects.map((project) => (
@@ -531,7 +534,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 >
                   <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
                   {project.is_recovery && <RecoveryBadge />}
-                  <span className="shrink-0 text-xs text-white/40">{formatDateTime(project.last_activity_at)}</span>
+                  <span className="shrink-0 text-xs text-white/40">{formatDateTime(project.last_activity_at, lang)}</span>
                 </Link>
               ))}
             </div>
@@ -541,15 +544,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <GlassCard interactive={false} className="flex h-full flex-col p-6">
           <h2 className="mb-4 flex items-center gap-1.5 text-sm font-medium text-white/70">
             <CalendarClock className="h-4 w-4 text-white/40" />
-            Due today & overdue
+            {t.dashboard.dueTodayOverdue}
           </h2>
-          <DueTodayAndOverdue items={dueItems} />
+          <DueTodayAndOverdue items={dueItems} lang={lang} />
         </GlassCard>
 
         <GlassCard interactive={false} className="p-6">
-          <h2 className="mb-4 text-sm font-medium text-white/70">Open Projects by Product</h2>
+          <h2 className="mb-4 text-sm font-medium text-white/70">{t.dashboard.openProjectsByProduct}</h2>
           {openProjects.length === 0 ? (
-            <p className="text-sm text-white/35">No open projects.</p>
+            <p className="text-sm text-white/35">{t.dashboard.noOpenProjects}</p>
           ) : (
             <div className="flex flex-col gap-3">
               {visibleProducts.map((product) => {
@@ -563,7 +566,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   >
                     <span className="w-24 shrink-0 text-sm break-words text-white/60 group-hover:text-white/90">
                       {product.name}
-                      {!product.active && " (hidden)"}
+                      {!product.active && t.dashboard.hiddenSuffix}
                     </span>
                     <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
                       <span

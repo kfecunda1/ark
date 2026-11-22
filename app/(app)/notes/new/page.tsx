@@ -1,6 +1,8 @@
 import { NoteForm } from "@/components/notes/note-form";
 import { createClient } from "@/lib/supabase/server";
 import { contactLabel } from "@/lib/contacts";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { Contact, Project } from "@/lib/types";
 
 interface NewNotePageProps {
@@ -9,6 +11,8 @@ interface NewNotePageProps {
 
 export default async function NewNotePage({ searchParams }: NewNotePageProps) {
   const params = await searchParams;
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
   const supabase = await createClient();
 
   const [{ data: contactsData }, { data: projectsData }] = await Promise.all([
@@ -24,7 +28,7 @@ export default async function NewNotePage({ searchParams }: NewNotePageProps) {
     .filter((contact) => !contact.archived_at || contact.id === params.contact_id)
     .map((contact) => ({
       id: contact.id,
-      label: contactLabel(contact) + (contact.archived_at ? " (Archived)" : ""),
+      label: contactLabel(contact) + (contact.archived_at ? ` (${t.common.archived})` : ""),
     }));
   const projects = (projectsData as Pick<Project, "id" | "name">[] | null) ?? [];
   const projectOptions = projects.map((project) => ({ id: project.id, label: project.name }));
@@ -35,8 +39,8 @@ export default async function NewNotePage({ searchParams }: NewNotePageProps) {
   return (
     <div className="mx-auto max-w-lg">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-white">New Note</h1>
-        <p className="mt-1 text-sm text-white/45">Jot something down, optionally as a reminder.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">{t.notes.newNoteTitle}</h1>
+        <p className="mt-1 text-sm text-white/45">{t.notes.newNoteSubtitle}</p>
       </div>
       <NoteForm
         mode="create"
@@ -44,6 +48,7 @@ export default async function NewNotePage({ searchParams }: NewNotePageProps) {
         contacts={contactOptions}
         defaultLinkType={defaultLinkType}
         defaultLinkId={defaultLinkId}
+        lang={lang}
       />
     </div>
   );

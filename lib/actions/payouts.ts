@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 // table is ever activity-logged, by design: commission figures must
 // never end up in activity_log.
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 export interface PayoutShareInput {
@@ -31,17 +31,22 @@ export async function upsertTranchePayout(
   const trimmedPct = ourPctRaw.trim();
   const ourPct = trimmedPct ? Number(trimmedPct) : null;
   if (trimmedPct && (ourPct === null || !Number.isFinite(ourPct) || ourPct < 0)) {
-    return { error: "Our % must be a number, 0 or greater." };
+    return { error: "ourPctInvalid" };
   }
 
   for (const share of shares) {
     if (!Number.isFinite(share.sharePct) || share.sharePct < 0 || share.sharePct > 100) {
-      return { error: "Each group's share must be a number between 0 and 100." };
+      return { error: "shareInvalid" };
     }
   }
   const shareTotal = shares.reduce((sum, s) => sum + s.sharePct, 0);
   if (shares.length > 0 && Math.abs(shareTotal - 100) > 0.01) {
-    return { error: `Group shares must total 100% — currently ${shareTotal.toFixed(2)}%.` };
+    // The client (components/payouts/payout-row.tsx) already re-derives
+    // and shows the precise "...currently X%" message itself before
+    // ever calling this action — this is just a non-dynamic backstop
+    // for the rare case this is reached some other way (e.g. a stale
+    // client), so a static key is enough; see lib/i18n's `errors`.
+    return { error: "shareTotalMismatch" };
   }
 
   try {

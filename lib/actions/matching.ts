@@ -15,7 +15,7 @@ import { getProjectProductsByProjectIds, countedProducts } from "@/lib/project-p
 import type { Project } from "@/lib/types";
 
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 // Only a bare percentage ("70" / "70%") sorts numerically — anything
@@ -67,7 +67,7 @@ export async function findMatchingReceivers(projectId: string): Promise<FindMatc
     ]);
 
     if (projectError || !projectRow) {
-      return { error: projectError?.message ?? "Project not found.", finalProduct: null, productOptions: [], receivers: [] };
+      return { error: projectError?.message ?? "projectNotFound", finalProduct: null, productOptions: [], receivers: [] };
     }
 
     const finalProduct = (projectRow as { final_product: string | null }).final_product;

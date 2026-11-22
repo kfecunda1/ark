@@ -5,11 +5,12 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isCurrentUserAdmin } from "@/lib/auth";
 import { getContactProductRatio } from "@/lib/actions/contacts";
-import { STAGE_LABELS } from "@/lib/projects";
+import { stageLabel } from "@/lib/projects";
 import { parseMoneyFormValue } from "@/lib/money";
 import { syncProjectIntermediaries } from "@/lib/intermediaries";
 import { withPreservedExtension } from "@/lib/storage";
 import { maybeAutoAdvanceStage } from "@/lib/checklists";
+import { getDictionary, type Lang } from "@/lib/i18n";
 import type { Currency, ProjectDocumentType, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
 
 export interface ProjectFormState {
@@ -24,9 +25,13 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 // genuinely exceptional case (a network failure, Supabase unreachable,
 // …), so that turns into a normal returned error too, rather than an
 // uncaught exception the caller's `if (result.error)` check would never
-// see — which is how a save can fail with nothing visible at all.
+// see — which is how a save can fail with nothing visible at all. The
+// fallback is a KEY (lib/i18n/en.ts's `errors.somethingWentWrong`), not
+// an English sentence — see lib/i18n/index.ts's resolveError; an actual
+// thrown Error's own .message passes through untranslated (rare, and
+// not enumerable up front).
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 const REQUIRED_FIELDS = ["name"] as const;
@@ -112,7 +117,7 @@ export async function createProjectWithId(
     products = parseProductOptions(formData);
     intermediaryPersonIds = parseIntermediaryPersonIds(formData);
   } catch (err) {
-    return { id: null, error: err instanceof Error ? err.message : "Invalid form data." };
+    return { id: null, error: err instanceof Error ? err.message : "invalidFormData" };
   }
 
   try {
@@ -131,7 +136,7 @@ export async function createProjectWithId(
       .single();
 
     if (error || !data) {
-      return { id: null, error: error?.message ?? "Failed to create project." };
+      return { id: null, error: error?.message ?? "failedToCreateProject" };
     }
 
     const projectId = data.id;
@@ -258,7 +263,7 @@ export async function updateProject(
     products = parseProductOptions(formData);
     intermediaryPersonIds = parseIntermediaryPersonIds(formData);
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Invalid form data." };
+    return { error: err instanceof Error ? err.message : "invalidFormData" };
   }
 
   // Deliberately not wrapped in the outer try/catch below: redirect()
@@ -423,7 +428,7 @@ export async function toggleProjectArchived(
 export async function deleteProject(projectId: string): Promise<{ error: string | null }> {
   try {
     if (!(await isCurrentUserAdmin())) {
-      return { error: "Only admins can delete projects." };
+      return { error: "onlyAdminsCanDeleteProjects" };
     }
 
     const supabase = await createClient();
@@ -491,16 +496,16 @@ export async function upsertProjectTranche(
   const paidOutOn = paidOutOnRaw.trim() || null;
 
   if (confirmedOn && !sentOn) {
-    return { error: "A confirmed date requires a sent date — clear the confirmed date first." };
+    return { error: "confirmedRequiresSentDate" };
   }
   if (confirmedOn && sentOn && confirmedOn < sentOn) {
-    return { error: "Confirmed date can't be before the sent date." };
+    return { error: "confirmedBeforeSentDate" };
   }
   if (paidOutOn && !confirmedOn) {
-    return { error: "A paid out date requires a confirmed date — clear the paid out date first." };
+    return { error: "paidOutRequiresConfirmedDate" };
   }
   if (paidOutOn && confirmedOn && paidOutOn < confirmedOn) {
-    return { error: "Paid out date can't be before the confirmed date." };
+    return { error: "paidOutBeforeConfirmedDate" };
   }
 
   try {
@@ -537,7 +542,7 @@ export async function deleteProjectTranche(
   trancheNumber: number
 ): Promise<{ error: string | null }> {
   if (trancheNumber <= 2) {
-    return { error: "Tranche 1 and 2 can't be removed — clear the amount and date instead." };
+    return { error: "tranche12CannotBeRemoved" };
   }
 
   try {
@@ -737,7 +742,7 @@ export async function moveProjectDocument(
 // than a document that silently stops looking like a PDF.
 export async function renameProjectDocument(documentId: string, newName: string): Promise<{ error: string | null }> {
   if (!newName.trim()) {
-    return { error: "Name can't be empty." };
+    return { error: "nameCannotBeEmpty" };
   }
 
   try {
@@ -749,7 +754,7 @@ export async function renameProjectDocument(documentId: string, newName: string)
       .eq("id", documentId)
       .maybeSingle();
     if (readError || !existing) {
-      return { error: readError?.message ?? "Document not found." };
+      return { error: readError?.message ?? "documentNotFound" };
     }
 
     const finalName = withPreservedExtension(existing.file_name, newName);
@@ -848,6 +853,7 @@ export async function findDuplicateProjects(input: {
   matchedContactId: string;
   productOptions: string[];
   excludeProjectId?: string;
+  lang?: Lang;
 }): Promise<DuplicateProjectMatch[]> {
   if (!input.matchedContactId || input.productOptions.length === 0) return [];
 
@@ -892,15 +898,17 @@ export async function findDuplicateProjects(input: {
     const matches = candidates.filter((c) => matchingIds.has(c.id));
     if (matches.length === 0) return [];
 
+    const lang = input.lang ?? "en";
+    const t = getDictionary(lang);
     return matches.map((row) => {
       // row.status already holds the status's own display name directly
       // (supabase/migrations/019_statuses.sql) — no lookup needed, unlike
       // row.stage, which is still a fixed enum.
-      const stageLabel = row.status ?? STAGE_LABELS[row.stage];
+      const label = row.status ?? stageLabel(row.stage, lang);
       return {
         id: row.id,
         label: row.name,
-        meta: row.archived_at ? `Archived · ${stageLabel}` : stageLabel,
+        meta: row.archived_at ? `${t.common.archived} · ${label}` : label,
       };
     });
   } catch (err) {
@@ -996,7 +1004,7 @@ export async function updateProjectMatchedContact(
       .eq("id", projectId)
       .maybeSingle();
     if (readError || !current) {
-      return { error: readError?.message ?? "Project not found.", autoFill: null };
+      return { error: readError?.message ?? "projectNotFound", autoFill: null };
     }
 
     const { error } = await supabase
@@ -1046,7 +1054,7 @@ export async function updateProjectIsRecovery(
       .eq("id", projectId)
       .maybeSingle();
     if (readError || !current) {
-      return { error: readError?.message ?? "Project not found.", autoFill: null };
+      return { error: readError?.message ?? "projectNotFound", autoFill: null };
     }
 
     const { error } = await supabase.from("projects").update({ is_recovery: isRecovery }).eq("id", projectId);
@@ -1143,7 +1151,7 @@ export async function setProjectFinalProduct(
         .eq("product", product)
         .maybeSingle();
       if (!option) {
-        return { error: "That product is not one of this project's options.", autoFill: null };
+        return { error: "productNotAnOption", autoFill: null };
       }
     }
 
@@ -1153,7 +1161,7 @@ export async function setProjectFinalProduct(
       .eq("id", projectId)
       .maybeSingle();
     if (readError || !current) {
-      return { error: readError?.message ?? "Project not found.", autoFill: null };
+      return { error: readError?.message ?? "projectNotFound", autoFill: null };
     }
 
     const { error } = await supabase.from("projects").update({ final_product: product }).eq("id", projectId);

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 export interface DuplicateMatch {
   id: string;
@@ -15,6 +16,7 @@ interface DuplicateWarningBannerProps {
   onAddAnyway: () => void;
   addAnywayLabel?: string;
   disabled?: boolean;
+  lang?: Lang;
 }
 
 // Shared "this looks like something that already exists" banner, used by
@@ -28,9 +30,11 @@ export function DuplicateWarningBanner({
   heading,
   matches,
   onAddAnyway,
-  addAnywayLabel = "Add anyway",
+  addAnywayLabel,
   disabled = false,
+  lang = "en",
 }: DuplicateWarningBannerProps) {
+  const t = getDictionary(lang);
   return (
     <GlassCard interactive={false} className="border-amber-500/25 bg-amber-500/[0.06] p-4">
       <div className="flex items-start gap-2.5">
@@ -48,7 +52,7 @@ export function DuplicateWarningBanner({
                   rel="noopener noreferrer"
                   className="text-xs font-medium text-amber-200 underline decoration-amber-200/30 underline-offset-2 hover:text-amber-100"
                 >
-                  Open existing
+                  {t.common.openExisting}
                 </Link>
               </li>
             ))}
@@ -66,7 +70,7 @@ export function DuplicateWarningBanner({
             disabled={disabled}
             className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-200 transition-colors duration-150 ease-out hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {addAnywayLabel}
+            {addAnywayLabel ?? t.common.addAnyway}
           </button>
         </div>
       </div>

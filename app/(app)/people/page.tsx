@@ -11,6 +11,8 @@ import { createClient } from "@/lib/supabase/server";
 import { compareNullsLast, parseSortDirection } from "@/lib/sort";
 import { formatDateTime } from "@/lib/format";
 import { personLabel } from "@/lib/people";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { Person } from "@/lib/types";
 
 const PERSON_SORT_KEYS = ["name", "created_at"] as const;
@@ -20,11 +22,6 @@ function isPersonSortKey(value: string | undefined): value is PersonSortKey {
   return (PERSON_SORT_KEYS as readonly string[]).includes(value ?? "");
 }
 
-const SORT_OPTIONS: SortOption[] = [
-  { value: "name", label: "Name" },
-  { value: "created_at", label: "Created" },
-];
-
 interface PeoplePageProps {
   searchParams: Promise<{ q?: string; sort?: string; dir?: string; archived?: string }>;
 }
@@ -33,6 +30,12 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
   const params = await searchParams;
   const sort: PersonSortKey = isPersonSortKey(params.sort) ? params.sort : "name";
   const dir = parseSortDirection(params.dir);
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
+  const SORT_OPTIONS: SortOption[] = [
+    { value: "name", label: t.common.columnName },
+    { value: "created_at", label: t.common.columnCreated },
+  ];
 
   const showArchived = params.archived === "true";
 
@@ -67,10 +70,10 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">
-            {showArchived ? "Archived Contacts" : "Contacts"}
+            {showArchived ? t.people.archivedTitle : t.people.title}
           </h1>
           <p className="mt-1 text-sm text-white/45">
-            {showArchived ? "Contacts that have been archived." : "People you can link to Receivers and Projects."}
+            {showArchived ? t.people.archivedSubtitle : t.people.subtitle}
           </p>
         </div>
         <Link
@@ -78,20 +81,20 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
           className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover"
         >
           <Plus className="h-4 w-4" />
-          New Contact
+          {t.people.newContact}
         </Link>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Suspense>
-          <PersonFilters />
-          <MobileSortControl options={SORT_OPTIONS} currentSort={sort} currentDir={dir} />
+          <PersonFilters lang={lang} />
+          <MobileSortControl options={SORT_OPTIONS} currentSort={sort} currentDir={dir} lang={lang} />
         </Suspense>
       </div>
 
       {error && (
         <GlassCard interactive={false} className="p-6 text-sm text-rose-300">
-          Failed to load contacts: {error.message}
+          {t.people.failedToLoad(error.message)}
         </GlassCard>
       )}
 
@@ -104,14 +107,14 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
             <User className="h-5 w-5 text-white/40" />
           </div>
           <p className="text-sm font-medium text-white/70">
-            {searchTerm || showArchived ? "No matching contacts" : "No contacts yet"}
+            {searchTerm || showArchived ? t.people.noMatchingTitle : t.people.noneYetTitle}
           </p>
           <p className="max-w-xs text-xs text-white/35">
             {showArchived
-              ? "No archived contacts."
+              ? t.people.noneArchivedBody
               : searchTerm
-                ? "No contacts match your search."
-                : "Contacts you create here can be linked to Receivers and Projects."}
+                ? t.people.noMatchBody
+                : t.people.defaultEmptyBody}
           </p>
         </GlassCard>
       )}
@@ -122,12 +125,12 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr className="border-b border-white/[0.06] text-xs tracking-wide text-white/40 uppercase">
-                  <SortableHeader sortKey="name" label="Name" currentSort={sort} currentDir={dir} />
-                  <th className="px-4 py-3 font-medium">Phone</th>
-                  <th className="px-4 py-3 font-medium">Email</th>
+                  <SortableHeader sortKey="name" label={t.common.columnName} currentSort={sort} currentDir={dir} />
+                  <th className="px-4 py-3 font-medium">{t.common.columnPhone}</th>
+                  <th className="px-4 py-3 font-medium">{t.common.columnEmail}</th>
                   <SortableHeader
                     sortKey="created_at"
-                    label="Created"
+                    label={t.common.columnCreated}
                     currentSort={sort}
                     currentDir={dir}
                     defaultDir="desc"
@@ -144,12 +147,12 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
                     <td className="px-4 py-3">
                       <span className="flex items-center gap-2">
                         <span className="font-medium text-white/85 group-hover:text-white">{personLabel(person)}</span>
-                        {person.archived_at && <ArchivedBadge />}
+                        {person.archived_at && <ArchivedBadge lang={lang} />}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-white/70">{person.phone ?? "—"}</td>
                     <td className="px-4 py-3 text-white/70">{person.email ?? "—"}</td>
-                    <td className="px-4 py-3 text-white/50">{formatDateTime(person.created_at)}</td>
+                    <td className="px-4 py-3 text-white/50">{formatDateTime(person.created_at, lang)}</td>
                   </ClickableRow>
                 ))}
               </tbody>
@@ -161,10 +164,10 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
               <ClickableCard key={person.id} href={`/people/${person.id}`}>
                 <span className="flex items-center gap-2">
                   <span className="font-medium text-white/85">{personLabel(person)}</span>
-                  {person.archived_at && <ArchivedBadge />}
+                  {person.archived_at && <ArchivedBadge lang={lang} />}
                 </span>
                 <p className="mt-1.5 text-xs text-white/35">
-                  {[person.phone, person.email].filter(Boolean).join(" · ") || "No phone or email on record"}
+                  {[person.phone, person.email].filter(Boolean).join(" · ") || t.common.noPhoneOrEmail}
                 </p>
               </ClickableCard>
             ))}

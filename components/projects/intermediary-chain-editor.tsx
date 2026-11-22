@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { ArrowDown, ArrowUp, Search, UserPlus, X } from "lucide-react";
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 export interface IntermediaryChainEntry {
   // Stable React key — a real project_intermediaries row id in "live"
@@ -41,6 +42,7 @@ interface IntermediaryChainEditorProps {
   // detail page's "live" usage (which persists each change immediately
   // instead) has nothing to submit, so this defaults to false.
   submitAsHiddenFields?: boolean;
+  lang?: Lang;
 }
 
 const fieldClass =
@@ -63,7 +65,9 @@ export function IntermediaryChainEditor({
   disabled,
   error,
   submitAsHiddenFields,
+  lang = "en",
 }: IntermediaryChainEditorProps) {
+  const t = getDictionary(lang);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -95,7 +99,7 @@ export function IntermediaryChainEditor({
   function handleCreate() {
     if (!onQuickCreate) return;
     if (!newName.trim()) {
-      setCreateError("Name is required.");
+      setCreateError(t.common.nameRequired);
       return;
     }
     setCreateError(null);
@@ -103,13 +107,13 @@ export function IntermediaryChainEditor({
       try {
         const result = await onQuickCreate(newName.trim());
         if (result.error || !result.option) {
-          setCreateError(result.error ?? "Could not create contact.");
+          setCreateError(result.error ?? t.common.couldNotCreate(lang === "es" ? "contacto" : "contact"));
           return;
         }
         selectOption(result.option);
         setCreating(false);
       } catch (err) {
-        setCreateError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setCreateError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -127,13 +131,13 @@ export function IntermediaryChainEditor({
             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-sm text-white/80">
               <span>
                 {entry.label}
-                {entry.archived && <span className="ml-1 text-[11px] text-white/40">(Archived)</span>}
+                {entry.archived && <span className="ml-1 text-[11px] text-white/40">({t.common.archived})</span>}
               </span>
               <button
                 type="button"
                 onClick={() => onMoveUp(entry.personId)}
                 disabled={disabled || index === 0}
-                aria-label={`Move ${entry.label} up`}
+                aria-label={t.intermediaries.moveUp(entry.label)}
                 className="text-white/30 transition-colors duration-150 ease-out hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <ArrowUp className="h-3 w-3" />
@@ -142,7 +146,7 @@ export function IntermediaryChainEditor({
                 type="button"
                 onClick={() => onMoveDown(entry.personId)}
                 disabled={disabled || index === entries.length - 1}
-                aria-label={`Move ${entry.label} down`}
+                aria-label={t.intermediaries.moveDown(entry.label)}
                 className="text-white/30 transition-colors duration-150 ease-out hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <ArrowDown className="h-3 w-3" />
@@ -151,7 +155,7 @@ export function IntermediaryChainEditor({
                 type="button"
                 onClick={() => onRemove(entry.personId)}
                 disabled={disabled}
-                aria-label={`Remove ${entry.label}`}
+                aria-label={t.intermediaries.removeEntry(entry.label)}
                 className="text-white/30 transition-colors duration-150 ease-out hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <X className="h-3 w-3" />
@@ -161,7 +165,7 @@ export function IntermediaryChainEditor({
           </span>
         ))}
         <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-sm font-medium text-accent-soft">
-          {receiverLabel ?? "(no receiver yet)"}
+          {receiverLabel ?? t.intermediaries.noReceiverYet}
         </span>
       </div>
 
@@ -177,12 +181,12 @@ export function IntermediaryChainEditor({
             onFocus={() => setOpen(true)}
             onBlur={() => setTimeout(() => setOpen(false), 120)}
             disabled={disabled}
-            placeholder="Add intermediary…"
+            placeholder={t.intermediaries.addPlaceholder}
             className={`${fieldClass} py-1.5 pr-3 pl-8 text-xs disabled:opacity-50`}
           />
           {open && (
             <ul className="absolute z-10 mt-1.5 max-h-56 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0f1420] py-1 shadow-xl">
-              {filtered.length === 0 && <li className="px-3 py-2 text-xs text-white/35">No matching contacts.</li>}
+              {filtered.length === 0 && <li className="px-3 py-2 text-xs text-white/35">{t.common.noMatchingContacts}</li>}
               {filtered.map((option) => (
                 <li
                   key={option.id}
@@ -204,7 +208,8 @@ export function IntermediaryChainEditor({
                   className="flex items-center gap-1.5 border-t border-white/[0.06] px-3 py-1.5 text-xs font-medium text-accent-soft transition-colors duration-100 ease-out hover:bg-white/[0.06]"
                 >
                   <UserPlus className="h-3 w-3" />
-                  New contact{query.trim() ? ` "${query.trim()}"` : ""}
+                  {t.common.newContact}
+                  {query.trim() ? ` "${query.trim()}"` : ""}
                 </li>
               )}
             </ul>
@@ -214,7 +219,7 @@ export function IntermediaryChainEditor({
         <div className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] p-2.5 sm:w-64">
           <input
             autoFocus
-            placeholder="Name *"
+            placeholder={t.common.namePlaceholder}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             disabled={isPending}
@@ -228,7 +233,7 @@ export function IntermediaryChainEditor({
               onClick={handleCreate}
               className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isPending ? "Creating…" : "Create & Add"}
+              {isPending ? t.common.creating : t.intermediaries.createAndAdd}
             </button>
             <button
               type="button"
@@ -239,7 +244,7 @@ export function IntermediaryChainEditor({
               disabled={isPending}
               className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
             >
-              Cancel
+              {t.common.cancel}
             </button>
           </div>
         </div>

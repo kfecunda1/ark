@@ -4,14 +4,17 @@ import { Menu, Bell, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { GlobalSearch } from "@/components/global-search";
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 interface TopBarProps {
   onMenuClick: () => void;
   showRecovery: boolean;
+  lang: Lang;
 }
 
-export function TopBar({ onMenuClick, showRecovery }: TopBarProps) {
+export function TopBar({ onMenuClick, showRecovery, lang }: TopBarProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
 
   async function handleLogout() {
     const supabase = createClient();
@@ -27,7 +30,7 @@ export function TopBar({ onMenuClick, showRecovery }: TopBarProps) {
       <div className="flex items-center gap-2 lg:hidden">
         <button
           onClick={onMenuClick}
-          aria-label="Open menu"
+          aria-label={t.topbar.openMenu}
           className="rounded-lg p-2 text-white/60 transition-colors duration-150 ease-out hover:bg-white/5 hover:text-white"
         >
           <Menu className="h-5 w-5" />
@@ -36,19 +39,19 @@ export function TopBar({ onMenuClick, showRecovery }: TopBarProps) {
         <img src="/brand/ark-mark.svg" alt="ARK" width={28} height={28} className="h-7 w-7 shrink-0 rounded-md" />
       </div>
 
-      <GlobalSearch showRecovery={showRecovery} />
+      <GlobalSearch showRecovery={showRecovery} lang={lang} />
 
       <div className="ml-auto flex items-center gap-2">
         <button
-          aria-label="Notifications"
+          aria-label={t.topbar.notifications}
           className="rounded-lg p-2 text-white/60 transition-colors duration-150 ease-out hover:bg-white/5 hover:text-white"
         >
           <Bell className="h-[18px] w-[18px]" />
         </button>
         <button
           onClick={handleLogout}
-          aria-label="Log out"
-          title="Log out"
+          aria-label={t.topbar.logOut}
+          title={t.topbar.logOut}
           className="rounded-lg p-2 text-white/60 transition-colors duration-150 ease-out hover:bg-white/5 hover:text-white"
         >
           <LogOut className="h-[18px] w-[18px]" />

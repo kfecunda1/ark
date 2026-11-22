@@ -40,6 +40,11 @@ export type StatusColor = "accent" | "cyan" | "teal" | "silver" | "sky" | "emera
 export interface StatusRecord {
   id: string;
   name: string;
+  // supabase/migrations/031_spanish.sql — optional Spanish display
+  // name (Settings → Statuses' "Spanish name" field). lib/i18n's
+  // catalogLabel() is what reads this: a Spanish-language user sees it
+  // when set, the English `name` otherwise.
+  name_es: string | null;
   kind: "open" | "completed" | "lost";
   color: StatusColor;
   active: boolean;
@@ -124,6 +129,11 @@ export interface Profile {
   // false outright, and skips briefing_weekdays_only on a Sat/Sun.
   briefing_enabled: boolean;
   briefing_weekdays_only: boolean;
+  // supabase/migrations/031_spanish.sql — Settings → My Profile's
+  // "Language / Idioma" selector. Read by lib/i18n's getCurrentUserLanguage()
+  // and by anything sending this user Telegram text directly (the
+  // morning briefing, the inbox bot's own replies).
+  language: "en" | "es";
 }
 
 // supabase/migrations/022_telegram_inbox.sql.
@@ -315,6 +325,9 @@ export type ProjectDocumentType = string;
 export interface DocumentTypeRecord {
   id: string;
   name: string;
+  // supabase/migrations/031_spanish.sql — same optional Spanish name
+  // as StatusRecord.name_es above.
+  name_es: string | null;
   active: boolean;
   sort_order: number;
   created_at: string;

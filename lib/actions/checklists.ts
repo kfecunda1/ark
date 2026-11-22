@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isCurrentUserAdmin } from "@/lib/auth";
 
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 // Settings → Document checklists' grid (components/settings/document-
@@ -21,7 +21,7 @@ export async function setProductRequiredDocument(
 ): Promise<{ error: string | null }> {
   try {
     if (!(await isCurrentUserAdmin())) {
-      return { error: "Only admins can edit document checklists." };
+      return { error: "onlyAdminsCanEditChecklists" };
     }
 
     const supabase = await createClient();
@@ -56,7 +56,7 @@ export async function setProductRequiredDocument(
 export async function updateAutoAdvanceOnDocuments(enabled: boolean): Promise<{ error: string | null }> {
   try {
     if (!(await isCurrentUserAdmin())) {
-      return { error: "Only admins can change this setting." };
+      return { error: "onlyAdminsCanChangeThisSetting" };
     }
 
     const supabase = await createClient();

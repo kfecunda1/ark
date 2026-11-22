@@ -6,6 +6,8 @@ import { NoteFilters } from "@/components/notes/note-filters";
 import { ReminderBadge } from "@/components/notes/badges";
 import { DeleteNoteButton } from "@/components/notes/delete-note-button";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { Contact, Note, Project } from "@/lib/types";
 
 interface NotesPageProps {
@@ -14,6 +16,8 @@ interface NotesPageProps {
 
 export default async function NotesPage({ searchParams }: NotesPageProps) {
   const params = await searchParams;
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
   const supabase = await createClient();
 
   let query = supabase.from("notes").select("*").order("created_at", { ascending: false });
@@ -49,11 +53,15 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
   function linkFor(note: Note): { href: string; label: string; icon: typeof ContactIcon } | null {
     if (note.project_id) {
       const project = projectsById.get(note.project_id);
-      return { href: `/projects/${note.project_id}`, label: project?.name ?? "Project", icon: FolderKanban };
+      return { href: `/projects/${note.project_id}`, label: project?.name ?? t.noteForm.project, icon: FolderKanban };
     }
     if (note.contact_id) {
       const contact = contactsById.get(note.contact_id);
-      return { href: `/receivers/${note.contact_id}`, label: contact?.full_name ?? "Receiver", icon: ContactIcon };
+      return {
+        href: `/receivers/${note.contact_id}`,
+        label: contact?.full_name ?? t.noteForm.receiver,
+        icon: ContactIcon,
+      };
     }
     return null;
   }
@@ -62,27 +70,27 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Notes</h1>
-          <p className="mt-1 text-sm text-white/45">Free-form notes and reminders, optionally linked to a project or receiver.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">{t.notes.title}</h1>
+          <p className="mt-1 text-sm text-white/45">{t.notes.subtitle}</p>
         </div>
         <Link
           href="/notes/new"
           className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover"
         >
           <Plus className="h-4 w-4" />
-          New Note
+          {t.notes.newNote}
         </Link>
       </div>
 
       <div className="mb-4">
         <Suspense>
-          <NoteFilters />
+          <NoteFilters lang={lang} />
         </Suspense>
       </div>
 
       {error && (
         <GlassCard interactive={false} className="p-6 text-sm text-rose-300">
-          Failed to load notes: {error.message}
+          {t.notes.failedToLoad(error.message)}
         </GlassCard>
       )}
 
@@ -95,12 +103,10 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
             <StickyNote className="h-5 w-5 text-white/40" />
           </div>
           <p className="text-sm font-medium text-white/70">
-            {params.reminders === "true" || params.type ? "No matching notes" : "No notes yet"}
+            {params.reminders === "true" || params.type ? t.notes.noMatchingNotes : t.notes.noNotesYet}
           </p>
           <p className="max-w-xs text-xs text-white/35">
-            {params.reminders === "true" || params.type
-              ? "No notes match the current filters."
-              : "Notes and reminders you create will show up here."}
+            {params.reminders === "true" || params.type ? t.notes.noMatchFilters : t.notes.emptyHint}
           </p>
         </GlassCard>
       )}
@@ -115,7 +121,7 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
                   <Link href={`/notes/${note.id}/edit`} className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       {note.title && <p className="font-medium text-white/85 hover:text-white">{note.title}</p>}
-                      {note.is_reminder && note.due_date && <ReminderBadge dueDate={note.due_date} />}
+                      {note.is_reminder && note.due_date && <ReminderBadge dueDate={note.due_date} lang={lang} />}
                     </div>
                     <p className="mt-1 line-clamp-2 text-sm text-white/60">{note.content}</p>
                     {link && (
@@ -125,7 +131,7 @@ export default async function NotesPage({ searchParams }: NotesPageProps) {
                       </p>
                     )}
                   </Link>
-                  <DeleteNoteButton noteId={note.id} />
+                  <DeleteNoteButton noteId={note.id} lang={lang} />
                 </div>
               </GlassCard>
             );

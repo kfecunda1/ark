@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 export interface LinkOption {
   id: string;
@@ -15,6 +16,7 @@ interface NoteLinkPickerProps {
   contacts: LinkOption[];
   defaultLinkType?: LinkType;
   defaultLinkId?: string | null;
+  lang?: Lang;
 }
 
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
@@ -29,7 +31,9 @@ export function NoteLinkPicker({
   contacts,
   defaultLinkType = "none",
   defaultLinkId = null,
+  lang = "en",
 }: NoteLinkPickerProps) {
+  const t = getDictionary(lang);
   const [linkType, setLinkType] = useState<LinkType>(defaultLinkType);
   const options = useMemo(
     () => (linkType === "project" ? projects : linkType === "contact" ? contacts : []),
@@ -56,7 +60,7 @@ export function NoteLinkPicker({
 
   return (
     <div>
-      <label className={labelClass}>Link to (optional)</label>
+      <label className={labelClass}>{t.noteForm.linkToLabel}</label>
       <input type="hidden" name="link_type" value={linkType} />
       <input type="hidden" name="link_id" value={selected?.id ?? ""} />
 
@@ -67,13 +71,13 @@ export function NoteLinkPicker({
           className={`${selectClass} sm:w-40`}
         >
           <option value="none" className="bg-[#0a0e17]">
-            No link
+            {t.noteForm.noLink}
           </option>
           <option value="project" className="bg-[#0a0e17]">
-            Project
+            {t.noteForm.project}
           </option>
           <option value="contact" className="bg-[#0a0e17]">
-            Receiver
+            {t.noteForm.receiver}
           </option>
         </select>
 
@@ -89,7 +93,7 @@ export function NoteLinkPicker({
               }}
               onFocus={() => setOpen(true)}
               onBlur={() => setTimeout(() => setOpen(false), 120)}
-              placeholder={linkType === "project" ? "Search projects…" : "Search receivers…"}
+              placeholder={linkType === "project" ? t.noteForm.searchProjects : t.noteForm.searchReceivers}
               className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-2.5 pr-9 pl-9 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]"
             />
             {selected && (
@@ -99,7 +103,7 @@ export function NoteLinkPicker({
                   setSelected(null);
                   setQuery("");
                 }}
-                aria-label="Clear selection"
+                aria-label={t.noteForm.clearSelection}
                 className="absolute top-1/2 right-2.5 -translate-y-1/2 text-white/30 transition-colors duration-150 ease-out hover:text-white/70"
               >
                 <X className="h-4 w-4" />
@@ -108,7 +112,7 @@ export function NoteLinkPicker({
 
             {open && !selected && (
               <ul className="absolute z-10 mt-1.5 max-h-64 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0f1420] py-1 shadow-xl">
-                {filtered.length === 0 && <li className="px-3 py-2 text-sm text-white/35">No matches.</li>}
+                {filtered.length === 0 && <li className="px-3 py-2 text-sm text-white/35">{t.noteForm.noMatches}</li>}
                 {filtered.map((option) => (
                   <li
                     key={option.id}

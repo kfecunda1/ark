@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { LayoutGrid, List as ListIcon } from "lucide-react";
+import { getDictionary, type Lang } from "@/lib/i18n";
 
 const STORAGE_KEY = "ark:projects-view";
 
@@ -12,8 +13,9 @@ const STORAGE_KEY = "ark:projects-view";
 // browser's last choice survives a fresh page load without a link.
 // Wrapped in try/catch throughout: private browsing / disabled storage
 // just means "don't remember," never a thrown error.
-export function ViewToggle() {
+export function ViewToggle({ lang = "en" }: { lang?: Lang } = {}) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const view = searchParams.get("view") === "board" ? "board" : "list";
@@ -61,7 +63,7 @@ export function ViewToggle() {
         }`}
       >
         <ListIcon className="h-3.5 w-3.5" />
-        List
+        {t.viewToggle.list}
       </button>
       <button
         type="button"
@@ -72,7 +74,7 @@ export function ViewToggle() {
         }`}
       >
         <LayoutGrid className="h-3.5 w-3.5" />
-        Board
+        {t.viewToggle.board}
       </button>
     </div>
   );

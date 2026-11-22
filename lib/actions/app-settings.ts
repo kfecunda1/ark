@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Currency } from "@/lib/types";
 
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 export async function updateAppSettings(
@@ -14,7 +14,7 @@ export async function updateAppSettings(
   showRecovery: boolean
 ): Promise<{ error: string | null }> {
   if (!Number.isInteger(stuckAfterDays) || stuckAfterDays <= 0) {
-    return { error: '"Stuck after" must be a whole number of days greater than 0.' };
+    return { error: "stuckAfterInvalid" };
   }
 
   try {

@@ -7,8 +7,8 @@ import { ActivityActionBadge, ActivityEntityBadge } from "@/components/activity/
 import { createClient } from "@/lib/supabase/server";
 import {
   ACTIVITY_FILTER_ENTITY_TYPES,
-  ACTIVITY_FILTER_LABELS,
   activityDetailChips,
+  activityFilterLabel,
   activityHref,
   activityTarget,
   formatActivityTime,
@@ -17,6 +17,8 @@ import {
   targetKey,
   type ActivityTarget,
 } from "@/lib/activity";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { ActivityLog } from "@/lib/types";
 
 // How far back the page reaches in one load. The log grows with every
@@ -31,6 +33,8 @@ interface ActivityPageProps {
 export default async function ActivityPage({ searchParams }: ActivityPageProps) {
   const params = await searchParams;
   const filter = parseActivityFilter(params.type);
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
 
   const supabase = await createClient();
 
@@ -80,26 +84,24 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
     }
   }
 
-  const dayGroups = groupActivityByDay(rows);
+  const dayGroups = groupActivityByDay(rows, lang);
 
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Activity</h1>
-        <p className="mt-1 text-sm text-white/45">
-          Everything created, updated, and deleted across the CRM, newest first.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">{t.nav.activity}</h1>
+        <p className="mt-1 text-sm text-white/45">{t.activity.subtitle}</p>
       </div>
 
       <div className="mb-4">
         <Suspense>
-          <ActivityFilters />
+          <ActivityFilters lang={lang} />
         </Suspense>
       </div>
 
       {error && (
         <GlassCard interactive={false} className="p-6 text-sm text-rose-300">
-          Failed to load activity: {error.message}
+          {t.activity.failedToLoad(error.message)}
         </GlassCard>
       )}
 
@@ -112,12 +114,12 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
             <History className="h-5 w-5 text-white/40" />
           </div>
           <p className="text-sm font-medium text-white/70">
-            {filter ? "No matching activity" : "No activity yet"}
+            {filter ? t.activity.noMatchingActivity : t.activity.noActivityYet}
           </p>
           <p className="max-w-xs text-xs text-white/35">
             {filter
-              ? `Nothing has happened to ${ACTIVITY_FILTER_LABELS[filter].toLowerCase()} yet.`
-              : "Changes to projects, receivers, contacts and documents will show up here."}
+              ? t.activity.nothingHappenedTo(activityFilterLabel(filter, lang).toLowerCase())
+              : t.activity.defaultEmptyHint}
           </p>
         </GlassCard>
       )}
@@ -133,17 +135,17 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-white/[0.06] text-xs tracking-wide text-white/40 uppercase">
-                    <th className="px-4 py-3 font-medium">Time</th>
-                    <th className="px-4 py-3 font-medium">Actor</th>
-                    <th className="px-4 py-3 font-medium">Action</th>
-                    <th className="px-4 py-3 font-medium">Record</th>
-                    <th className="px-4 py-3 font-medium">Details</th>
+                    <th className="px-4 py-3 font-medium">{t.activity.colTime}</th>
+                    <th className="px-4 py-3 font-medium">{t.activity.colActor}</th>
+                    <th className="px-4 py-3 font-medium">{t.activity.colAction}</th>
+                    <th className="px-4 py-3 font-medium">{t.activity.colRecord}</th>
+                    <th className="px-4 py-3 font-medium">{t.activity.colDetails}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {group.rows.map((row) => {
                     const href = activityHref(row, existing);
-                    const chips = activityDetailChips(row);
+                    const chips = activityDetailChips(row, lang);
 
                     return (
                       <tr
@@ -151,15 +153,15 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
                         className="border-b border-white/[0.04] transition-colors duration-150 ease-out last:border-0 hover:bg-white/[0.03]"
                       >
                         <td className="px-4 py-3 whitespace-nowrap text-white/50">
-                          {formatActivityTime(row.created_at)}
+                          {formatActivityTime(row.created_at, lang)}
                         </td>
                         <td className="px-4 py-3 text-white/70">{row.actor_label ?? "—"}</td>
                         <td className="px-4 py-3">
-                          <ActivityActionBadge action={row.action} />
+                          <ActivityActionBadge action={row.action} lang={lang} />
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap items-center gap-2">
-                            <ActivityEntityBadge entityType={row.entity_type} />
+                            <ActivityEntityBadge entityType={row.entity_type} lang={lang} />
                             {href ? (
                               <Link
                                 href={href}
@@ -185,17 +187,17 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
             <div className="flex flex-col gap-3 md:hidden">
               {group.rows.map((row) => {
                 const href = activityHref(row, existing);
-                const chips = activityDetailChips(row);
+                const chips = activityDetailChips(row, lang);
 
                 return (
                   <GlassCard key={row.id} interactive={false} className="p-4">
                     <div className="mb-2 flex items-start justify-between gap-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <ActivityActionBadge action={row.action} />
-                        <ActivityEntityBadge entityType={row.entity_type} />
+                        <ActivityActionBadge action={row.action} lang={lang} />
+                        <ActivityEntityBadge entityType={row.entity_type} lang={lang} />
                       </div>
                       <span className="shrink-0 text-xs text-white/40">
-                        {formatActivityTime(row.created_at)}
+                        {formatActivityTime(row.created_at, lang)}
                       </span>
                     </div>
 

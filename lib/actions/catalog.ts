@@ -24,13 +24,13 @@ export type CatalogTable = "products" | "document_types";
 export type SortableCatalogTable = CatalogTable | "statuses" | "payout_groups";
 
 function unexpectedErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+  return err instanceof Error ? err.message : "somethingWentWrong";
 }
 
 export async function addCatalogItem(table: CatalogTable, name: string): Promise<{ error: string | null }> {
   const trimmed = name.trim();
   if (!trimmed) {
-    return { error: "Name is required." };
+    return { error: "nameRequired" };
   }
 
   try {
@@ -62,12 +62,38 @@ export async function renameCatalogItem(
 ): Promise<{ error: string | null }> {
   const trimmed = name.trim();
   if (!trimmed) {
-    return { error: "Name is required." };
+    return { error: "nameRequired" };
   }
 
   try {
     const supabase = await createClient();
     const { error } = await supabase.from(table).update({ name: trimmed }).eq("id", id);
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/settings");
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// Document Types' own "Spanish name" field (Settings) — deliberately
+// not folded into renameCatalogItem above, which is shared with
+// Products: products have no name_es column at all (supabase/
+// migrations/031_spanish.sql — their codes stay the same in every
+// language), so this only ever targets document_types, never the
+// shared CatalogTable union. Blank clears it back to null (falls back
+// to the English name for a Spanish-language viewer), not an error.
+export async function updateDocumentTypeNameEs(id: string, nameEs: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const trimmed = nameEs.trim();
+    const { error } = await supabase
+      .from("document_types")
+      .update({ name_es: trimmed || null })
+      .eq("id", id);
     if (error) {
       return { error: error.message };
     }
@@ -116,7 +142,7 @@ export async function moveCatalogItem(
   const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order);
   const index = sorted.findIndex((item) => item.id === id);
   if (index === -1) {
-    return { error: "Item not found." };
+    return { error: "itemNotFound" };
   }
 
   const neighborIndex = direction === "up" ? index - 1 : index + 1;

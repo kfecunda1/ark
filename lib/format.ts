@@ -15,6 +15,36 @@
 export const LOCALE = "en-US";
 export const TIME_ZONE = "America/Curacao";
 
+// Re-exported here only so date-formatting call sites don't need a
+// second import just for the lang param's type — lib/i18n/index.ts
+// is still the one real source of this type.
+export type Lang = "en" | "es";
+
+// "Nov" / "nov" — abbreviated, matching the existing English date
+// format's own month style; Spanish month abbreviations are
+// conventionally lowercase and carry no trailing period in current
+// usage (RAE/Fundéu guidance), e.g. "21 nov 2026".
+const MONTH_ABBR: Record<Lang, string[]> = {
+  en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+  es: ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"],
+};
+
+// Joins already-known day/month/year numbers into the one literal date
+// string every date-only display in the app uses, by hand, in
+// whichever order/punctuation the target language expects — never via
+// Intl's own locale string formatting, for the same ICU-version-
+// mismatch reason the file comment above already gives for
+// formatDateTime: a month *name* or date/time connector Intl chooses
+// for you can differ between Node's bundled ICU and a browser's, which
+// is exactly the hydration mismatch this whole file exists to avoid.
+// Intl is still used elsewhere below, but only to extract plain
+// numbers (day/month/year, hour/minute) in the fixed timezone — never
+// to render a name or pick a separator.
+export function formatDateParts(day: number, month: number, year: number, lang: Lang): string {
+  const monthName = MONTH_ABBR[lang][month - 1];
+  return lang === "es" ? `${day} ${monthName} ${year}` : `${monthName} ${day}, ${year}`;
+}
+
 export function truncate(value: string, maxLength = 140): string {
   const trimmed = value.trim().replace(/\s+/g, " ");
   if (trimmed.length <= maxLength) return trimmed;
@@ -42,32 +72,56 @@ export function dateKeyInTimeZone(value: string): string {
 // hours/days/weeks) rather than to-the-second, which both reads better
 // and keeps the gap between a server-rendered value and the moment the
 // client hydrates too small to ever visibly disagree.
-export function relativeTime(value: string): string {
+export function relativeTime(value: string, lang: Lang = "en"): string {
   const diffSec = Math.round((Date.now() - new Date(value).getTime()) / 1000);
-  if (diffSec < 60) return "just now";
+  if (diffSec < 60) return lang === "es" ? "justo ahora" : "just now";
   const diffMin = Math.round(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} min ago`;
+  if (diffMin < 60) return lang === "es" ? `hace ${diffMin} min` : `${diffMin} min ago`;
   const diffHour = Math.round(diffMin / 60);
-  if (diffHour < 24) return `${diffHour} h ago`;
+  if (diffHour < 24) return lang === "es" ? `hace ${diffHour} h` : `${diffHour} h ago`;
   const diffDay = Math.round(diffHour / 24);
-  if (diffDay < 7) return `${diffDay} d ago`;
+  if (diffDay < 7) return lang === "es" ? `hace ${diffDay} d` : `${diffDay} d ago`;
   const diffWeek = Math.round(diffDay / 7);
-  if (diffWeek < 5) return `${diffWeek} w ago`;
-  return formatDateTime(value);
+  if (diffWeek < 5) return lang === "es" ? `hace ${diffWeek} sem` : `${diffWeek} w ago`;
+  return formatDateTime(value, lang);
 }
 
-export function formatDateTime(value: string): string {
+function numericPart(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes): number {
+  return Number(parts.find((p) => p.type === type)?.value);
+}
+
+export function formatDateTime(value: string, lang: Lang = "en"): string {
   const date = new Date(value);
-  const datePart = date.toLocaleDateString(LOCALE, {
+  const dateParts = new Intl.DateTimeFormat("en-US", {
     timeZone: TIME_ZONE,
     year: "numeric",
-    month: "short",
+    month: "numeric",
     day: "numeric",
-  });
-  const timePart = date.toLocaleTimeString(LOCALE, {
+  }).formatToParts(date);
+  const datePart = formatDateParts(
+    numericPart(dateParts, "day"),
+    numericPart(dateParts, "month"),
+    numericPart(dateParts, "year"),
+    lang
+  );
+
+  // 24-hour, built from plain numeric parts same as the date above —
+  // for English this still renders as a 12-hour "2:30 PM" (matching
+  // the format every existing caller already expects); Spanish uses
+  // 24-hour ("14:30"), the conventional style, without relying on
+  // Intl's own AM/PM string for either.
+  const timeParts = new Intl.DateTimeFormat("en-US", {
     timeZone: TIME_ZONE,
+    hourCycle: "h23",
     hour: "numeric",
     minute: "2-digit",
-  });
+  }).formatToParts(date);
+  const hour = numericPart(timeParts, "hour");
+  const minute = String(numericPart(timeParts, "minute")).padStart(2, "0");
+  const timePart =
+    lang === "es"
+      ? `${hour}:${minute}`
+      : `${hour % 12 === 0 ? 12 : hour % 12}:${minute} ${hour >= 12 ? "PM" : "AM"}`;
+
   return `${datePart}, ${timePart}`;
 }

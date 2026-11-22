@@ -31,6 +31,8 @@ import { getReceiverIntermediaryPersonIds } from "@/lib/actions/intermediaries";
 import { computeChecklistStatus, getRequiredDocumentsByProduct } from "@/lib/checklists";
 import { personLabel } from "@/lib/people";
 import { daysSinceInstant } from "@/lib/projects";
+import { getCurrentUserLanguage } from "@/lib/i18n/server";
+import { getDictionary } from "@/lib/i18n";
 import type { Contact, Note, Person, Project, ProjectDocument, ProjectProduct, ProjectStep, ProjectTranche } from "@/lib/types";
 
 interface ProjectDetailPageProps {
@@ -47,6 +49,8 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const { failedDocs, findReceivers, uploadType, composer } = await searchParams;
   const initialComposerKind = isComposerKind(composer) ? composer : null;
   const failedDocNames = failedDocs ? failedDocs.split(",").filter(Boolean) : [];
+  const lang = await getCurrentUserLanguage();
+  const t = getDictionary(lang);
   const supabase = await createClient();
 
   const { data } = await supabase.from("projects").select("*").eq("id", id).maybeSingle();
@@ -86,12 +90,12 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const allPeople = (allPeopleData as Pick<Person, "id" | "first_name" | "last_name" | "archived_at">[] | null) ?? [];
 
   const [intermediaryChain, receiverIntermediaryIds] = await Promise.all([
-    getProjectIntermediaryChain(project.id),
+    getProjectIntermediaryChain(project.id, lang),
     project.matched_contact_id ? getReceiverIntermediaryPersonIds(project.matched_contact_id) : Promise.resolve([]),
   ]);
   const intermediaryPickerOptions = buildIntermediaryPickerOptions(allPeople, new Set(receiverIntermediaryIds));
   const matchedReceiverLabel = matchedContact
-    ? matchedContact.full_name + (matchedContact.archived_at ? " (Archived)" : "")
+    ? matchedContact.full_name + (matchedContact.archived_at ? ` (${t.common.archived})` : "")
     : null;
 
   const [
@@ -134,10 +138,10 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   // every value below is derived from data this page already fetches
   // for its own sections, nothing queried specifically for the header.
   const summaryProductLabel =
-    project.final_product ?? `Options: ${projectProducts.map((p) => p.product).join(" / ")}`;
+    project.final_product ?? t.common.optionsLabel(projectProducts.map((p) => p.product).join(" / "));
   const summaryStatusColor = project.status ? statuses.find((s) => s.name === project.status)?.color ?? null : null;
   const summaryContactPersonLabel = contactPerson
-    ? personLabel(contactPerson) + (contactPerson.archived_at ? " (Archived)" : "")
+    ? personLabel(contactPerson) + (contactPerson.archived_at ? ` (${t.common.archived})` : "")
     : null;
   const summarySoonestNextStep = steps
     .filter((s) => s.kind === "next_step" && !s.done)
@@ -192,7 +196,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     authorNameById = Object.fromEntries(
       ((profilesData as { id: string; full_name: string | null; email: string | null }[] | null) ?? []).map((p) => [
         p.id,
-        p.full_name?.trim() || p.email || "Unknown user",
+        p.full_name?.trim() || p.email || t.projectTimeline.unknownUser,
       ])
     );
   }
@@ -212,31 +216,32 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
 
   const fields: { label: string; value: React.ReactNode }[] = [
     {
-      label: "Contact Person Project",
+      label: t.projectSummary.contactPersonProjectLabel,
       value: (
         <ContactPersonSelect
           entityType="project"
           entityId={project.id}
           people={allPeople}
           currentPerson={contactPerson}
+          lang={lang}
         />
       ),
     },
-    { label: "Ratio Presented", value: project.ratio_presented || "—" },
-    { label: "Ratio Real", value: project.ratio_real || "—" },
+    { label: t.projectSummary.ratioPresented, value: project.ratio_presented || "—" },
+    { label: t.projectSummary.ratioReal, value: project.ratio_real || "—" },
     {
-      label: "Total Face Value",
+      label: t.projectSummary.totalFaceValueLabel,
       value: (
         <>
           {formatMoney(project.total_face_value, project.currency)}
           {project.total_face_value != null && (
-            <p className="mt-0.5 text-xs text-white/40">{amountInWords(project.total_face_value, project.currency)}</p>
+            <p className="mt-0.5 text-xs text-white/40">{amountInWords(project.total_face_value, project.currency, lang)}</p>
           )}
         </>
       ),
     },
-    { label: "Last Activity", value: formatDateTime(project.last_activity_at) },
-    { label: "Created", value: formatDateTime(project.created_at) },
+    { label: t.projectSummary.lastActivityLabel, value: formatDateTime(project.last_activity_at, lang) },
+    { label: t.projectSummary.createdLabel, value: formatDateTime(project.created_at, lang) },
   ];
 
   return (
@@ -258,6 +263,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         tranches={summaryTrancheStats}
         lastActivityDaysAgo={summaryLastActivityDaysAgo}
         stuckAfterDays={appSettings.stuck_after_days}
+        lang={lang}
       />
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -265,34 +271,38 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             href={appSettings.show_recovery && project.is_recovery ? "/recovery" : "/projects"}
             className="text-xs font-medium text-white/40 hover:text-white/70"
           >
-            ← Back to {appSettings.show_recovery && project.is_recovery ? "recovery projects" : "projects"}
+            {t.projectSummary.backTo(
+              appSettings.show_recovery && project.is_recovery
+                ? t.projectsList.recoveryProjectsNoun
+                : t.projectsList.projectsNoun
+            )}
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-tight text-white">{project.name}</h1>
             {project.archived_at && (
               <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-0.5 text-xs font-medium text-white/50">
-                Archived
+                {t.common.archived}
               </span>
             )}
           </div>
           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-white/45">
             {appSettings.show_recovery && project.is_recovery && (
               <>
-                <RecoveryBadge />
+                <RecoveryBadge lang={lang} />
                 <span>·</span>
               </>
             )}
-            <span>{project.final_product ?? "Product not decided"}</span>
+            <span>{project.final_product ?? t.projectSummary.productNotDecided}</span>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <ArchiveProjectButton projectId={project.id} archived={Boolean(project.archived_at)} />
+          <ArchiveProjectButton projectId={project.id} archived={Boolean(project.archived_at)} lang={lang} />
           <Link
             href={`/projects/${project.id}/edit`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
           >
             <Pencil className="h-4 w-4" />
-            Edit
+            {t.common.edit}
           </Link>
           {isAdmin && (
             <DeleteProjectButton
@@ -305,6 +315,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
               productOptionCount={projectProducts.length}
               intermediaryCount={intermediaryChain.length}
               documentCount={projectDocuments.length}
+              lang={lang}
             />
           )}
         </div>
@@ -314,25 +325,25 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         <GlassCard interactive={false} className="mb-6 border-amber-500/25 bg-amber-500/[0.06] p-4">
           <p className="text-sm font-medium text-amber-300">
             {failedDocNames.length === 1
-              ? "1 document failed to attach during project creation:"
-              : `${failedDocNames.length} documents failed to attach during project creation:`}
+              ? t.projectSummary.failedDocsOne
+              : t.projectSummary.failedDocsMany(failedDocNames.length)}
           </p>
           <ul className="mt-1.5 list-inside list-disc text-sm text-amber-200/80">
             {failedDocNames.map((name) => (
               <li key={name}>{name}</li>
             ))}
           </ul>
-          <p className="mt-1.5 text-xs text-amber-200/60">
-            You can add them again using the Documents section below.
-          </p>
+          <p className="mt-1.5 text-xs text-amber-200/60">{t.projectSummary.addAgainHint}</p>
         </GlassCard>
       )}
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <PriorityBadge priority={project.priority} />
-        <StageSelect projectId={project.id} currentStage={project.stage} />
-        <StatusSelect projectId={project.id} currentStatus={project.status} statuses={statuses} />
-        {appSettings.show_recovery && <RecoveryToggle projectId={project.id} isRecovery={project.is_recovery} />}
+        <PriorityBadge priority={project.priority} lang={lang} />
+        <StageSelect projectId={project.id} currentStage={project.stage} lang={lang} />
+        <StatusSelect projectId={project.id} currentStatus={project.status} statuses={statuses} lang={lang} />
+        {appSettings.show_recovery && (
+          <RecoveryToggle projectId={project.id} isRecovery={project.is_recovery} lang={lang} />
+        )}
       </div>
 
       <div className="mb-6">
@@ -341,11 +352,13 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
           productLabel={checklistProductLabel}
           status={checklistStatus}
           isAdmin={isAdmin}
+          documentTypes={documentTypes}
+          lang={lang}
         />
       </div>
 
       <div className="mb-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Products</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.projectSummary.productsHeading}</h2>
         <GlassCard interactive={false} className="p-6">
           <ProjectProductOptions
             projectId={project.id}
@@ -353,23 +366,26 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             finalProduct={project.final_product}
             matchedContactId={project.matched_contact_id}
             isRecovery={project.is_recovery}
+            lang={lang}
           />
         </GlassCard>
       </div>
 
       <div id="matched-with" className="mb-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Matched With</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.projectSummary.matchedWithHeading}</h2>
         <GlassCard interactive={false} className="p-6">
           <MatchedReceiverSelect
             projectId={project.id}
             receivers={allContacts.map((c) => ({ id: c.id, label: c.full_name }))}
             currentReceiver={matchedContact ? { id: matchedContact.id, label: matchedReceiverLabel! } : null}
+            lang={lang}
           />
           <div className="mt-4">
             <FindReceiversPanel
               projectId={project.id}
               hasMatch={Boolean(project.matched_contact_id)}
               defaultOpen={findReceivers === "true"}
+              lang={lang}
             />
           </div>
           <div className="mt-4">
@@ -378,6 +394,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
               entries={intermediaryChain}
               receiverLabel={matchedReceiverLabel}
               pickerOptions={intermediaryPickerOptions}
+              lang={lang}
             />
           </div>
         </GlassCard>
@@ -395,18 +412,19 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       </GlassCard>
 
       <div className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Tranches</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.projectSummary.tranchesHeading}</h2>
         <TranchesSection
           projectId={project.id}
           tranches={tranches}
           currency={project.currency}
           documents={documentsWithUrls}
           documentTypes={documentTypes}
+          lang={lang}
         />
       </div>
 
       <div id="project-documents" className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Documents</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.projectSummary.documentsHeading}</h2>
         <GlassCard interactive={false} className="p-6">
           <ProjectDocuments
             key={uploadType ?? "default"}
@@ -416,12 +434,13 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             tranches={tranches}
             scope={{ kind: "all" }}
             initialDocumentType={uploadType}
+            lang={lang}
           />
         </GlassCard>
       </div>
 
       <div id="project-timeline" className="mt-6">
-        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">Timeline</h2>
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.projectSummary.timelineHeading}</h2>
         <GlassCard interactive={false} className="p-6">
           <ProjectTimeline
             key={composer ?? "default"}
@@ -430,6 +449,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             notes={notes}
             authorNameById={authorNameById}
             initialComposerKind={initialComposerKind}
+            lang={lang}
           />
         </GlassCard>
       </div>

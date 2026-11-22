@@ -3,11 +3,21 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateProjectStage } from "@/lib/actions/projects";
-import { STAGES, STAGE_LABELS } from "@/lib/projects";
+import { STAGES, stageLabel } from "@/lib/projects";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { ProjectStage } from "@/lib/types";
 
-export function StageSelect({ projectId, currentStage }: { projectId: string; currentStage: ProjectStage }) {
+export function StageSelect({
+  projectId,
+  currentStage,
+  lang = "en",
+}: {
+  projectId: string;
+  currentStage: ProjectStage;
+  lang?: Lang;
+}) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -17,12 +27,12 @@ export function StageSelect({ projectId, currentStage }: { projectId: string; cu
       try {
         const result = await updateProjectStage(projectId, stage);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -30,7 +40,7 @@ export function StageSelect({ projectId, currentStage }: { projectId: string; cu
   return (
     <div className="flex items-center gap-2">
       <select
-        aria-label="Change stage"
+        aria-label={t.stageSelect.changeStage}
         value={currentStage}
         disabled={isPending}
         onChange={(e) => handleChange(e.target.value as ProjectStage)}
@@ -38,7 +48,7 @@ export function StageSelect({ projectId, currentStage }: { projectId: string; cu
       >
         {STAGES.map((stage) => (
           <option key={stage} value={stage} className="bg-[#0a0e17]">
-            {STAGE_LABELS[stage]}
+            {stageLabel(stage, lang)}
           </option>
         ))}
       </select>

@@ -1,4 +1,5 @@
-import { PRIORITY_LABELS, STAGE_LABELS } from "@/lib/projects";
+import { priorityLabel, stageLabel } from "@/lib/projects";
+import type { Lang } from "@/lib/i18n";
 import type { ProjectDocumentType, ProjectPriority, ProjectStage, StatusColor } from "@/lib/types";
 
 // A coherent cool palette — steel blue, cyan, teal, silver-grey — so
@@ -10,12 +11,12 @@ const STAGE_STYLES: Record<ProjectStage, string> = {
   status: "bg-silver/15 text-white/70 border-silver/25",
 };
 
-export function StageBadge({ stage }: { stage: ProjectStage }) {
+export function StageBadge({ stage, lang = "en" }: { stage: ProjectStage; lang?: Lang }) {
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${STAGE_STYLES[stage]}`}
     >
-      {STAGE_LABELS[stage]}
+      {stageLabel(stage, lang)}
     </span>
   );
 }
@@ -74,12 +75,12 @@ const PRIORITY_STYLES: Record<ProjectPriority, string> = {
   urgent: "bg-rose-500/15 text-rose-300 border-rose-500/25",
 };
 
-export function PriorityBadge({ priority }: { priority: ProjectPriority }) {
+export function PriorityBadge({ priority, lang = "en" }: { priority: ProjectPriority; lang?: Lang }) {
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${PRIORITY_STYLES[priority]}`}
     >
-      {PRIORITY_LABELS[priority]}
+      {priorityLabel(priority, lang)}
     </span>
   );
 }
@@ -87,10 +88,10 @@ export function PriorityBadge({ priority }: { priority: ProjectPriority }) {
 // Deliberately its own warm color (amber), distinct from every stage/
 // status/priority family above — a project being a recovery is an
 // orthogonal fact about it, not another step in its own progression.
-export function RecoveryBadge() {
+export function RecoveryBadge({ lang = "en" }: { lang?: Lang } = {}) {
   return (
     <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium whitespace-nowrap text-amber-300">
-      Recovery
+      {lang === "es" ? "Recuperación" : "Recovery"}
     </span>
   );
 }
@@ -112,12 +113,18 @@ const DOCUMENT_TYPE_STYLES: Record<string, string> = {
 };
 const DEFAULT_DOCUMENT_TYPE_STYLE = "bg-white/[0.06] text-white/50 border-white/10";
 
-export function ProjectDocumentTypeBadge({ type }: { type: ProjectDocumentType }) {
+// `label` defaults to the raw type/code itself — pass the catalog's
+// own catalogLabel(documentType, lang) result when the caller has the
+// full DocumentTypeRecord on hand, so a Spanish user sees name_es
+// (Settings → Document Types) instead of the English name; the
+// styling lookup always keys off the real `type` (document_type
+// column value), never the possibly-Spanish display label.
+export function ProjectDocumentTypeBadge({ type, label }: { type: ProjectDocumentType; label?: string }) {
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${DOCUMENT_TYPE_STYLES[type] ?? DEFAULT_DOCUMENT_TYPE_STYLE}`}
     >
-      {type}
+      {label ?? type}
     </span>
   );
 }

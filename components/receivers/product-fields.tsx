@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
+import { getDictionary, type Lang } from "@/lib/i18n";
 import type { ContactProduct, Product, ProductType } from "@/lib/types";
 
 interface ProductRow {
@@ -20,12 +21,14 @@ interface ProductFieldsProps {
   // if it's since been hidden; only the "available to add" pool is
   // active-only.
   products: Product[];
+  lang?: Lang;
 }
 
 const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 
-export function ProductFields({ initialProducts = [], products }: ProductFieldsProps) {
+export function ProductFields({ initialProducts = [], products, lang = "en" }: ProductFieldsProps) {
+  const t = getDictionary(lang);
   const [rows, setRows] = useState<ProductRow[]>(
     initialProducts.map((p) => ({
       key: p.id,
@@ -77,7 +80,7 @@ export function ProductFields({ initialProducts = [], products }: ProductFieldsP
               className={fieldClass}
             >
               <option value="" disabled className="bg-[#0a0e17]">
-                Select…
+                {t.receiverForm.selectEllipsis}
               </option>
               {optionsForRow.map((product) => (
                 <option key={product.id} value={product.name} className="bg-[#0a0e17]">
@@ -89,27 +92,27 @@ export function ProductFields({ initialProducts = [], products }: ProductFieldsP
               name="product_ratio"
               value={row.ratio}
               onChange={(e) => updateRow(row.key, { ratio: e.target.value })}
-              placeholder='Ratio, e.g. "2%" or "70/30"'
+              placeholder={t.receiverForm.ratioPlaceholder}
               className={fieldClass}
             />
             <input
               name="product_recovery_ratio"
               value={row.recovery_ratio}
               onChange={(e) => updateRow(row.key, { recovery_ratio: e.target.value })}
-              placeholder='Recovery ratio, e.g. "2%" or "70/30"'
+              placeholder={t.receiverForm.recoveryRatioPlaceholder}
               className={fieldClass}
             />
             <input
               name="product_notes"
               value={row.notes}
               onChange={(e) => updateRow(row.key, { notes: e.target.value })}
-              placeholder="Notes"
+              placeholder={t.receiverForm.notesPlaceholder}
               className={fieldClass}
             />
             <button
               type="button"
               onClick={() => removeRow(row.key)}
-              aria-label="Remove product"
+              aria-label={t.receiverForm.removeProduct}
               className="shrink-0 justify-self-start rounded-md p-2 text-white/40 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white/80"
             >
               <X className="h-4 w-4" />
@@ -125,7 +128,7 @@ export function ProductFields({ initialProducts = [], products }: ProductFieldsP
         className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Plus className="h-3.5 w-3.5" />
-        Add Product
+        {t.receiverForm.addProduct}
       </button>
     </div>
   );

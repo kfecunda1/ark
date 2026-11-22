@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Archive, Search } from "lucide-react";
+import { getDictionary, type Lang } from "@/lib/i18n";
 
-export function PersonFilters() {
+export function PersonFilters({ lang = "en" }: { lang?: Lang } = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const t = getDictionary(lang);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const showArchived = searchParams.get("archived") === "true";
 
@@ -44,10 +46,10 @@ export function PersonFilters() {
         <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/30" />
         <input
           type="text"
-          aria-label="Search contacts"
+          aria-label={t.people.searchAriaLabel}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search name, phone, or email…"
+          placeholder={t.people.searchPlaceholder}
           className="w-72 rounded-lg border border-white/[0.06] bg-white/[0.03] py-2 pr-3 pl-9 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]"
         />
       </div>
@@ -63,7 +65,7 @@ export function PersonFilters() {
         }`}
       >
         <Archive className="h-3.5 w-3.5" />
-        {showArchived ? "Showing Archived" : "Show Archived"}
+        {showArchived ? t.common.showingArchived : t.common.showArchived}
       </button>
     </div>
   );

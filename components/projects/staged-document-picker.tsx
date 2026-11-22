@@ -13,6 +13,7 @@ import {
   formatFileSizeMB,
   isAllowedDocumentFile,
 } from "@/lib/storage";
+import { catalogLabel, getDictionary, type Lang } from "@/lib/i18n";
 import type { DocumentTypeRecord, ProjectDocumentType } from "@/lib/types";
 
 export interface StagedDocument {
@@ -36,9 +37,11 @@ interface StagedDocumentPickerProps {
   documents: StagedDocument[];
   onChange: (documents: StagedDocument[]) => void;
   documentTypes: DocumentTypeRecord[];
+  lang?: Lang;
 }
 
-export function StagedDocumentPicker({ documents, onChange, documentTypes }: StagedDocumentPickerProps) {
+export function StagedDocumentPicker({ documents, onChange, documentTypes, lang = "en" }: StagedDocumentPickerProps) {
+  const t = getDictionary(lang);
   const [documentType, setDocumentType] = useState<ProjectDocumentType>(documentTypes[0]?.name ?? "");
   const [checking, setChecking] = useState(false);
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
@@ -58,14 +61,12 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
     setPending(null);
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      setBlockedMessage(
-        `${file.name} is ${formatFileSizeMB(file.size)} — maximum is ${MAX_FILE_SIZE_MB} MB. Compress it, or save a link instead.`
-      );
+      setBlockedMessage(t.stagedDocuments.fileTooLarge(file.name, formatFileSizeMB(file.size), MAX_FILE_SIZE_MB));
       return;
     }
 
     if (!isAllowedDocumentFile(file)) {
-      setBlockedMessage(`${file.name} isn't a supported file type. Allowed: PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX.`);
+      setBlockedMessage(t.stagedDocuments.unsupportedFileType(file.name));
       return;
     }
 
@@ -79,7 +80,7 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
       // round trip needed.
       const sameBatch = documents.find((d) => d.hash === hash);
       if (sameBatch) {
-        setBlockedMessage(`This file is already attached as "${sameBatch.file.name}".`);
+        setBlockedMessage(t.stagedDocuments.alreadyAttachedAs(sameBatch.file.name));
         return;
       }
 
@@ -102,7 +103,7 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
         })),
       });
     } catch (err) {
-      setBlockedMessage(err instanceof Error ? err.message : "Could not check this file for duplicates.");
+      setBlockedMessage(err instanceof Error ? err.message : t.stagedDocuments.couldNotCheckDuplicates);
     } finally {
       setChecking(false);
     }
@@ -143,7 +144,7 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
               <button
                 type="button"
                 onClick={() => removeDocument(doc.id)}
-                aria-label={`Remove ${doc.file.name}`}
+                aria-label={t.stagedDocuments.removeFile(doc.file.name)}
                 className="shrink-0 rounded-md p-1 text-white/40 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white/80"
               >
                 <X className="h-4 w-4" />
@@ -155,7 +156,7 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
 
       {pending && (
         <DuplicateWarningBanner
-          heading={`"${pending.file.name}" matches a file already attached elsewhere:`}
+          heading={t.stagedDocuments.matchesElsewhere(pending.file.name)}
           matches={pending.otherProjectMatches.map((m) => ({
             id: m.projectId,
             href: `/projects/${m.projectId}`,
@@ -163,7 +164,8 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
             meta: m.fileName,
           }))}
           onAddAnyway={confirmPending}
-          addAnywayLabel="Attach anyway"
+          addAnywayLabel={t.stagedDocuments.attachAnyway}
+          lang={lang}
         />
       )}
       {pending && (
@@ -172,13 +174,13 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
           onClick={cancelPending}
           className="w-fit text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
         >
-          Don&apos;t attach this file
+          {t.stagedDocuments.dontAttachFile}
         </button>
       )}
 
       <div className="flex flex-wrap items-center gap-3">
         <select
-          aria-label="Document type"
+          aria-label={t.stagedDocuments.documentTypeAriaLabel}
           value={documentType}
           onChange={(e) => setDocumentType(e.target.value as ProjectDocumentType)}
           disabled={checking}
@@ -186,7 +188,7 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
         >
           {documentTypes.map((type) => (
             <option key={type.id} value={type.name} className="bg-[#0a0e17]">
-              {type.name}
+              {catalogLabel(type, lang)}
             </option>
           ))}
         </select>
@@ -201,10 +203,7 @@ export function StagedDocumentPicker({ documents, onChange, documentTypes }: Sta
         {checking && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-white/50" />}
       </div>
       {blockedMessage && <p className="text-xs text-rose-300">{blockedMessage}</p>}
-      <p className="text-xs text-white/35">
-        PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX — up to {MAX_FILE_SIZE_MB} MB. Files are uploaded after the project is
-        created — pick as many as you need before saving.
-      </p>
+      <p className="text-xs text-white/35">{t.stagedDocuments.fileTypesHint(MAX_FILE_SIZE_MB)}</p>
     </div>
   );
 }

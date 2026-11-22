@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { telegramDownloadFile, telegramGetFile, telegramSendMessage } from "@/lib/telegram";
+import { getDictionary, isLang } from "@/lib/i18n";
 
 // Needs the full Node runtime (crypto.randomUUID, arbitrary-size
 // ArrayBuffer handling for up to-20MB files) rather than the Edge
@@ -8,8 +9,6 @@ import { telegramDownloadFile, telegramGetFile, telegramSendMessage } from "@/li
 export const runtime = "nodejs";
 
 const MAX_TELEGRAM_FILE_BYTES = 20 * 1024 * 1024; // Telegram bot API's own download ceiling
-const SAVED_REPLY = "✅ Saved to ARK Inbox";
-const TOO_LARGE_REPLY = "Too large for Telegram — upload it in ARK directly";
 
 interface TelegramUser {
   id: number;
@@ -164,7 +163,7 @@ export async function POST(request: Request) {
   // chat) is silently ignored.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id")
+    .select("id, language")
     .eq("telegram_user_id", message.from.id)
     .eq("active", true)
     .maybeSingle();
@@ -172,6 +171,10 @@ export async function POST(request: Request) {
   if (!profile) {
     return NextResponse.json({ ok: true });
   }
+
+  const profileRow = profile as { id: string; language: string | null };
+  const lang = isLang(profileRow.language) ? profileRow.language : "en";
+  const t = getDictionary(lang);
 
   // Dedupe on update_id — Telegram redelivers an update that didn't
   // get a timely 200 back. The unique index on telegram_update_id is
@@ -245,7 +248,7 @@ export async function POST(request: Request) {
     }
   } else {
     try {
-      await telegramSendMessage(message.chat.id, tooLarge ? TOO_LARGE_REPLY : SAVED_REPLY);
+      await telegramSendMessage(message.chat.id, tooLarge ? t.telegram.tooLarge : t.telegram.saved);
     } catch (err) {
       console.error("[telegram inbox] reply failed:", err instanceof Error ? err.message : "unknown error");
     }

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { deletePerson } from "@/lib/actions/people";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 
 interface DeletePersonButtonProps {
   personId: string;
@@ -15,6 +16,7 @@ interface DeletePersonButtonProps {
   // actually deletes anything.
   linkedProjectCount: number;
   linkedReceiverCount: number;
+  lang?: Lang;
 }
 
 // Rendered only for admins — see app/(app)/people/[id]/page.tsx, which
@@ -26,17 +28,15 @@ export function DeletePersonButton({
   redirectTo,
   linkedProjectCount,
   linkedReceiverCount,
+  lang = "en",
 }: DeletePersonButtonProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [confirming, setConfirming] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const blocked = linkedProjectCount > 0 || linkedReceiverCount > 0;
-  const linkParts = [
-    linkedProjectCount > 0 ? `${linkedProjectCount} project${linkedProjectCount === 1 ? "" : "s"}` : null,
-    linkedReceiverCount > 0 ? `${linkedReceiverCount} receiver${linkedReceiverCount === 1 ? "" : "s"}` : null,
-  ].filter((part): part is string => Boolean(part));
 
   function handleDelete() {
     setError(null);
@@ -44,12 +44,16 @@ export function DeletePersonButton({
       try {
         const result = await deletePerson(personId);
         if (result.error) {
-          setError(result.error);
+          setError(
+            result.error === "linkedToCannotDelete" && result.linkedCounts
+              ? t.people.linkedToCannotDelete(result.linkedCounts.projectCount, result.linkedCounts.receiverCount)
+              : resolveError(result.error, lang)
+          );
           return;
         }
         router.push(redirectTo);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -61,21 +65,19 @@ export function DeletePersonButton({
           <div className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
             <div>
-              <p className="text-sm text-amber-200">
-                Linked to {linkParts.join(" and ")}. Archive instead, or unlink first.
-              </p>
+              <p className="text-sm text-amber-200">{t.people.linkedToCannotDelete(linkedProjectCount, linkedReceiverCount)}</p>
               <button
                 type="button"
                 onClick={() => setConfirming(false)}
                 className="mt-2 text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
               >
-                Cancel
+                {t.common.cancel}
               </button>
             </div>
           </div>
         ) : (
           <div className="rounded-lg border border-rose-500/25 bg-rose-500/10 p-3">
-            <p className="text-sm text-rose-200">This permanently deletes this contact. This cannot be undone.</p>
+            <p className="text-sm text-rose-200">{t.people.deleteConfirmBody}</p>
             <div className="mt-2 flex items-center gap-3">
               <button
                 type="button"
@@ -84,7 +86,7 @@ export function DeletePersonButton({
                 className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500 px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Trash2 className="h-4 w-4" />
-                {isPending ? "Deleting…" : "Confirm delete"}
+                {isPending ? t.people.deleting : t.people.confirmDelete}
               </button>
               <button
                 type="button"
@@ -92,7 +94,7 @@ export function DeletePersonButton({
                 disabled={isPending}
                 className="text-sm font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
               >
-                Cancel
+                {t.common.cancel}
               </button>
             </div>
           </div>
@@ -109,7 +111,7 @@ export function DeletePersonButton({
       className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/25 bg-rose-500/10 px-3.5 py-2 text-sm font-medium text-rose-300 transition-colors duration-150 ease-out hover:bg-rose-500/20"
     >
       <Trash2 className="h-4 w-4" />
-      Delete
+      {t.common.delete}
     </button>
   );
 }

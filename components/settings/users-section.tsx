@@ -6,6 +6,7 @@ import { Check, Copy, Eye, EyeOff, Plus } from "lucide-react";
 import { addUser, resetUserPassword, setUserActive, setUserRole, type UserRow } from "@/lib/actions/users";
 import { generateTemporaryPassword } from "@/lib/password";
 import { formatDateTime } from "@/lib/format";
+import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { UserRole } from "@/lib/types";
 
 interface UsersSectionProps {
@@ -15,14 +16,15 @@ interface UsersSectionProps {
   // disabling the control is the visible, don't-let-me-shoot-myself
   // version of the same rule.
   currentUserId: string;
+  lang?: Lang;
 }
 
 const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
-function displayName(user: Pick<UserRow, "full_name" | "email">): string {
-  return user.full_name?.trim() || user.email || "User";
+function displayName(user: Pick<UserRow, "full_name" | "email">, defaultLabel: string): string {
+  return user.full_name?.trim() || user.email || defaultLabel;
 }
 
 interface RevealedPassword {
@@ -34,7 +36,16 @@ interface RevealedPassword {
   isTemporary: boolean;
 }
 
-function PasswordRevealPanel({ reveal, onDismiss }: { reveal: RevealedPassword; onDismiss: () => void }) {
+function PasswordRevealPanel({
+  reveal,
+  onDismiss,
+  lang = "en",
+}: {
+  reveal: RevealedPassword;
+  onDismiss: () => void;
+  lang?: Lang;
+}) {
+  const t = getDictionary(lang);
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
@@ -51,7 +62,9 @@ function PasswordRevealPanel({ reveal, onDismiss }: { reveal: RevealedPassword; 
   return (
     <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-4">
       <p className="text-sm font-medium text-amber-200">
-        {reveal.isTemporary ? "Temporary password" : "Password"} for {reveal.userLabel}
+        {reveal.isTemporary
+          ? t.settingsUsers.temporaryPasswordFor(reveal.userLabel)
+          : t.settingsUsers.passwordFor(reveal.userLabel)}
       </p>
       <div className="mt-2 flex items-center gap-2">
         <code className="flex-1 overflow-x-auto rounded-md bg-black/30 px-3 py-2 text-sm text-white select-all">
@@ -63,16 +76,16 @@ function PasswordRevealPanel({ reveal, onDismiss }: { reveal: RevealedPassword; 
           className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
         >
           {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          {copied ? "Copied" : "Copy"}
+          {copied ? t.settingsUsers.copied : t.settingsUsers.copy}
         </button>
       </div>
-      <p className="mt-2 text-xs text-amber-200/70">Send this separately from the link.</p>
+      <p className="mt-2 text-xs text-amber-200/70">{t.settingsUsers.sendSeparately}</p>
       <button
         type="button"
         onClick={onDismiss}
         className="mt-3 text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
       >
-        Done
+        {t.settingsUsers.done}
       </button>
     </div>
   );
@@ -84,19 +97,22 @@ function TempPasswordField({
   onChange,
   mustChangePassword,
   onMustChangePasswordChange,
+  lang = "en",
 }: {
   id: string;
   value: string;
   onChange: (value: string) => void;
   mustChangePassword: boolean;
   onMustChangePasswordChange: (value: boolean) => void;
+  lang?: Lang;
 }) {
+  const t = getDictionary(lang);
   const [visible, setVisible] = useState(false);
 
   return (
     <div>
       <label className={labelClass} htmlFor={id}>
-        Password
+        {t.settingsUsers.passwordLabel}
       </label>
       <div className="flex gap-2">
         <div className="relative flex-1">
@@ -114,7 +130,7 @@ function TempPasswordField({
           <button
             type="button"
             onClick={() => setVisible((v) => !v)}
-            aria-label={visible ? "Hide password" : "Show password"}
+            aria-label={visible ? t.settingsUsers.hidePassword : t.settingsUsers.showPassword}
             className="absolute top-1/2 right-2.5 -translate-y-1/2 text-white/40 transition-colors duration-150 ease-out hover:text-white/80"
           >
             {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -128,10 +144,10 @@ function TempPasswordField({
           }}
           className="shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white"
         >
-          Generate
+          {t.settingsUsers.generate}
         </button>
       </div>
-      <p className="mt-1.5 text-xs text-white/35">At least 12 characters — generate one, or type your own.</p>
+      <p className="mt-1.5 text-xs text-white/35">{t.settingsUsers.passwordHint}</p>
 
       <label className="mt-3 flex items-center gap-2.5 text-sm text-white/80">
         <input
@@ -140,14 +156,15 @@ function TempPasswordField({
           onChange={(e) => onMustChangePasswordChange(e.target.checked)}
           className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
         />
-        Require password change at next login
+        {t.settingsUsers.requireChangeAtLogin}
       </label>
     </div>
   );
 }
 
-export function UsersSection({ users, currentUserId }: UsersSectionProps) {
+export function UsersSection({ users, currentUserId, lang = "en" }: UsersSectionProps) {
   const router = useRouter();
+  const t = getDictionary(lang);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [reveal, setReveal] = useState<RevealedPassword | null>(null);
@@ -173,11 +190,11 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
       try {
         const result = await addUser(newName, newEmail, newRole, newPassword, newMustChangePassword);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setReveal({
-          userLabel: displayName({ full_name: newName, email: newEmail }),
+          userLabel: displayName({ full_name: newName, email: newEmail }, t.settingsUsers.defaultUserLabel),
           password: newPassword,
           isTemporary: newMustChangePassword,
         });
@@ -189,7 +206,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
         setNewMustChangePassword(true);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       }
     });
   }
@@ -202,16 +219,20 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
       try {
         const result = await resetUserPassword(user.id, resetPassword, resetMustChangePassword);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
-        setReveal({ userLabel: displayName(user), password: resetPassword, isTemporary: resetMustChangePassword });
+        setReveal({
+          userLabel: displayName(user, t.settingsUsers.defaultUserLabel),
+          password: resetPassword,
+          isTemporary: resetMustChangePassword,
+        });
         setResettingId(null);
         setResetPassword("");
         setResetMustChangePassword(true);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setBusyId(null);
       }
@@ -225,13 +246,13 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
       try {
         const result = await setUserActive(user.id, active);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         setConfirmingDeactivateId(null);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setBusyId(null);
       }
@@ -245,12 +266,12 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
       try {
         const result = await setUserRole(user.id, role);
         if (result.error) {
-          setError(result.error);
+          setError(resolveError(result.error, lang));
           return;
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
       } finally {
         setBusyId(null);
       }
@@ -259,7 +280,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      {reveal && <PasswordRevealPanel reveal={reveal} onDismiss={() => setReveal(null)} />}
+      {reveal && <PasswordRevealPanel reveal={reveal} onDismiss={() => setReveal(null)} lang={lang} />}
 
       <div className="flex flex-col gap-3">
         {users.map((user) => {
@@ -271,24 +292,24 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
               <div className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-white/85">
-                    {displayName(user)}
-                    {isSelf && <span className="ml-1.5 text-xs text-white/35">(you)</span>}
+                    {displayName(user, t.settingsUsers.defaultUserLabel)}
+                    {isSelf && <span className="ml-1.5 text-xs text-white/35">{t.settingsUsers.youSuffix}</span>}
                   </p>
                   <p className="truncate text-xs text-white/40">{user.email ?? "—"}</p>
                 </div>
 
                 <select
-                  aria-label={`Role for ${displayName(user)}`}
+                  aria-label={t.settingsUsers.roleLabel(displayName(user, t.settingsUsers.defaultUserLabel))}
                   value={user.role ?? "member"}
                   onChange={(e) => handleSetRole(user, e.target.value as UserRole)}
                   disabled={isSelf || rowBusy}
                   className={`${fieldClass} w-32 shrink-0 disabled:cursor-not-allowed disabled:opacity-50`}
                 >
                   <option value="member" className="bg-[#0a0e17]">
-                    Member
+                    {t.settingsUsers.member}
                   </option>
                   <option value="admin" className="bg-[#0a0e17]">
-                    Admin
+                    {t.settingsUsers.admin}
                   </option>
                 </select>
 
@@ -299,11 +320,11 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
                       : "border-red-500/25 bg-red-500/10 text-red-300"
                   }`}
                 >
-                  {user.active ? "Active" : "Deactivated"}
+                  {user.active ? t.settingsUsers.active : t.settingsUsers.deactivated}
                 </span>
 
                 <span className="shrink-0 text-xs text-white/40">
-                  {user.last_sign_in_at ? formatDateTime(user.last_sign_in_at) : "Never signed in"}
+                  {user.last_sign_in_at ? formatDateTime(user.last_sign_in_at, lang) : t.settingsUsers.neverSignedIn}
                 </span>
               </div>
 
@@ -317,6 +338,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
                         onChange={setResetPassword}
                         mustChangePassword={resetMustChangePassword}
                         onMustChangePasswordChange={setResetMustChangePassword}
+                        lang={lang}
                       />
                     </div>
                     <div className="flex gap-2">
@@ -326,7 +348,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
                         disabled={rowBusy}
                         className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {rowBusy ? "Resetting…" : "Confirm reset"}
+                        {rowBusy ? t.settingsUsers.resetting : t.settingsUsers.confirmReset}
                       </button>
                       <button
                         type="button"
@@ -338,7 +360,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
                         disabled={rowBusy}
                         className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
                       >
-                        Cancel
+                        {t.common.cancel}
                       </button>
                     </div>
                   </div>
@@ -354,7 +376,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
                     disabled={rowBusy}
                     className="rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Reset Password
+                    {t.settingsUsers.resetPassword}
                   </button>
                 )}
 
@@ -367,7 +389,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
                         disabled={rowBusy}
                         className="rounded-md bg-red-500 px-2.5 py-1 text-xs font-medium whitespace-nowrap text-white transition-colors duration-150 ease-out hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {rowBusy ? "Deactivating…" : "Confirm deactivate"}
+                        {rowBusy ? t.settingsUsers.deactivating : t.settingsUsers.confirmDeactivate}
                       </button>
                       <button
                         type="button"
@@ -375,7 +397,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
                         disabled={rowBusy}
                         className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
                       >
-                        Cancel
+                        {t.common.cancel}
                       </button>
                     </>
                   ) : (
@@ -385,7 +407,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
                       disabled={isSelf || rowBusy}
                       className="rounded-md border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-300 transition-colors duration-150 ease-out hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Deactivate
+                      {t.settingsUsers.deactivate}
                     </button>
                   )
                 ) : (
@@ -395,7 +417,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
                     disabled={rowBusy}
                     className="rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 transition-colors duration-150 ease-out hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {rowBusy ? "Reactivating…" : "Reactivate"}
+                    {rowBusy ? t.settingsUsers.reactivating : t.settingsUsers.reactivate}
                   </button>
                 )}
               </div>
@@ -408,7 +430,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
         <div className="flex flex-col gap-4 rounded-lg border border-white/[0.06] bg-white/[0.03] p-4">
           <div>
             <label className={labelClass} htmlFor="new_user_name">
-              Full Name
+              {t.settingsUsers.fullNameLabel}
             </label>
             <input
               id="new_user_name"
@@ -419,7 +441,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
           </div>
           <div>
             <label className={labelClass} htmlFor="new_user_email">
-              Email
+              {t.settingsUsers.emailLabel}
             </label>
             <input
               id="new_user_email"
@@ -431,7 +453,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
           </div>
           <div>
             <label className={labelClass} htmlFor="new_user_role">
-              Role
+              {t.settingsUsers.roleFieldLabel}
             </label>
             <select
               id="new_user_role"
@@ -440,10 +462,10 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
               className={fieldClass}
             >
               <option value="member" className="bg-[#0a0e17]">
-                Member
+                {t.settingsUsers.member}
               </option>
               <option value="admin" className="bg-[#0a0e17]">
-                Admin
+                {t.settingsUsers.admin}
               </option>
             </select>
           </div>
@@ -453,6 +475,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
             onChange={setNewPassword}
             mustChangePassword={newMustChangePassword}
             onMustChangePasswordChange={setNewMustChangePassword}
+            lang={lang}
           />
           <div className="flex items-center gap-3">
             <button
@@ -461,7 +484,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
               disabled={isPending}
               className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isPending ? "Creating…" : "Create user"}
+              {isPending ? t.common.creating : t.settingsUsers.createUser}
             </button>
             <button
               type="button"
@@ -469,7 +492,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
               disabled={isPending}
               className="text-sm font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
             >
-              Cancel
+              {t.common.cancel}
             </button>
           </div>
         </div>
@@ -485,7 +508,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
           className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/70 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white"
         >
           <Plus className="h-3.5 w-3.5" />
-          Add User
+          {t.settingsUsers.addUser}
         </button>
       )}
 
