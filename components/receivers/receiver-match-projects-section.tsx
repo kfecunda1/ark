@@ -84,8 +84,12 @@ export function ReceiverMatchProjectsSection({
           key={project.id}
           className="flex flex-wrap items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5"
         >
-          <Link href={`/projects/${project.id}`} className="min-w-0 flex-1 truncate text-sm text-white/80 hover:underline">
-            {project.name}
+          <Link
+            href={`/projects/${project.id}`}
+            title={project.displayName !== project.name ? project.name : undefined}
+            className="min-w-0 flex-1 truncate text-sm text-white/80 hover:underline"
+          >
+            {project.displayName}
           </Link>
           {project.isRecovery && <RecoveryBadge lang={lang} />}
           <span className="shrink-0 text-xs text-white/40">{project.product}</span>

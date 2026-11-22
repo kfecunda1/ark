@@ -176,6 +176,9 @@ export interface Contact {
   id: string;
   created_at: string;
   full_name: string;
+  // supabase/migrations/033_nicknames.sql — optional short name shown
+  // in place of full_name throughout the app; see lib/display-name.ts.
+  nickname: string | null;
   notes: string | null;
   // supabase/migrations/016_receivers_and_people.sql. Optional link to
   // a `people` row — the UI's "Contacts" tab (not the same thing as
@@ -245,6 +248,9 @@ export interface ContactProduct {
 export interface Project {
   id: string;
   name: string;
+  // supabase/migrations/033_nicknames.sql — optional short name shown
+  // in place of name throughout the app; see lib/display-name.ts.
+  nickname: string | null;
   stage: ProjectStage;
   // Only meaningful once stage === "status" — the DB enforces "required
   // when stage = status" but not the reverse, so this can still be set
@@ -481,6 +487,9 @@ export interface ActivityDetails {
   archived?: [boolean, boolean];
   is_recovery?: [boolean, boolean];
   full_name?: [string | null, string | null];
+  // projects and contacts (supabase/migrations/033_nicknames.sql) — a
+  // pair on update, same shape as full_name above.
+  nickname?: [string | null, string | null];
   parent_type?: "project" | "contact";
   parent_id?: string;
   document_type?: ProjectDocumentType;

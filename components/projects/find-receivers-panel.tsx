@@ -73,7 +73,11 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false, l
     return data.receivers.filter((r) => {
       if (productFilter && !r.matchingProducts.some((m) => m.product === productFilter)) return false;
       if (!q) return true;
-      return r.fullName.toLowerCase().includes(q) || (r.notes ?? "").toLowerCase().includes(q);
+      return (
+        r.fullName.toLowerCase().includes(q) ||
+        r.displayName.toLowerCase().includes(q) ||
+        (r.notes ?? "").toLowerCase().includes(q)
+      );
     });
   }, [data, search, productFilter]);
 
@@ -209,13 +213,14 @@ export function FindReceiversPanel({ projectId, hasMatch, defaultOpen = false, l
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <Link
                               href={`/receivers/${r.id}`}
+                              title={r.displayName !== r.fullName ? r.fullName : undefined}
                               className="text-sm font-medium text-white hover:underline"
                             >
-                              {r.fullName}
+                              {r.displayName}
                             </Link>
                             <button
                               type="button"
-                              onClick={() => match(projectId, r.id, r.fullName)}
+                              onClick={() => match(projectId, r.id, r.displayName)}
                               disabled={isPending}
                               className="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
                             >

@@ -13,6 +13,7 @@ import { countedProducts, getProjectProductsByProjectIds } from "@/lib/project-p
 import { getAppSettings } from "@/lib/app-settings";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
+import { projectDisplayName, receiverDisplayName } from "@/lib/display-name";
 import type { Project, ProjectStage, ProjectTranche } from "@/lib/types";
 
 const STAGE_BAR_COLORS: Record<ProjectStage, string> = {
@@ -155,7 +156,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   // contact, or unlinked, carry no "archived" concept and are always
   // included).
   const todayKey = dateKeyInTimeZone(new Date().toISOString());
-  const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
+  const projectNameById = new Map(projects.map((p) => [p.id, projectDisplayName(p)]));
+  const projectFullNameById = new Map(projects.map((p) => [p.id, p.name]));
   const projectIsRecoveryById = new Map(projects.map((p) => [p.id, p.is_recovery]));
   const projectCurrencyById = new Map(projects.map((p) => [p.id, p.currency]));
 
@@ -207,6 +209,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       kind: "step" as const,
       projectId: step.project_id,
       parentName: projectNameById.get(step.project_id) ?? "Project",
+      parentFullName: projectFullNameById.get(step.project_id),
       body: step.body,
       dueDate: step.due_date,
       href: `/projects/${step.project_id}`,
@@ -232,11 +235,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   ];
   const { data: reminderContactsData } =
     reminderContactIds.length > 0
-      ? await supabase.from("contacts").select("id, full_name").in("id", reminderContactIds)
+      ? await supabase.from("contacts").select("id, full_name, nickname").in("id", reminderContactIds)
       : { data: [] };
-  const contactNameById = new Map(
-    ((reminderContactsData as { id: string; full_name: string }[] | null) ?? []).map((c) => [c.id, c.full_name])
-  );
+  const reminderContacts = (reminderContactsData as { id: string; full_name: string; nickname: string | null }[] | null) ?? [];
+  const contactNameById = new Map(reminderContacts.map((c) => [c.id, receiverDisplayName(c)]));
+  const contactFullNameById = new Map(reminderContacts.map((c) => [c.id, c.full_name]));
 
   const noteDueItems: DueItem[] = reminderNotes
     // A project-linked reminder whose project is archived (or otherwise
@@ -253,6 +256,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         : note.contact_id
           ? contactNameById.get(note.contact_id) ?? "Receiver"
           : "—",
+      parentFullName: note.project_id
+        ? projectFullNameById.get(note.project_id)
+        : note.contact_id
+          ? contactFullNameById.get(note.contact_id)
+          : undefined,
       href: note.project_id
         ? `/projects/${note.project_id}`
         : note.contact_id
@@ -426,7 +434,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     href={`/projects/${tranche.project_id}`}
                     className="flex flex-wrap items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
                   >
-                    <span className="min-w-0 flex-1 truncate text-sm text-white/80">
+                    <span
+                      title={
+                        projectFullNameById.get(tranche.project_id) &&
+                        projectFullNameById.get(tranche.project_id) !== projectNameById.get(tranche.project_id)
+                          ? projectFullNameById.get(tranche.project_id)
+                          : undefined
+                      }
+                      className="min-w-0 flex-1 truncate text-sm text-white/80"
+                    >
                       {projectNameById.get(tranche.project_id) ?? "Project"}
                     </span>
                     {projectIsRecoveryById.get(tranche.project_id) && <RecoveryBadge />}
@@ -532,7 +548,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   href={`/projects/${project.id}`}
                   className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
                 >
-                  <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
+                  <span
+                    title={project.nickname ? project.name : undefined}
+                    className="min-w-0 flex-1 truncate text-sm text-white/80"
+                  >
+                    {projectDisplayName(project)}
+                  </span>
                   {project.is_recovery && <RecoveryBadge />}
                   <span className="shrink-0 text-xs text-white/40">{formatDateTime(project.last_activity_at, lang)}</span>
                 </Link>

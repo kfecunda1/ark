@@ -31,6 +31,9 @@ export interface SummaryTrancheStats {
 interface ProjectSummaryHeaderProps {
   projectId: string;
   projectName: string;
+  // The project's full name — a hover title on projectName when it
+  // differs (nickname in play, supabase/migrations/033_nicknames.sql).
+  projectFullName?: string;
   // The final product, or "Options: X / Y" when undecided — computed
   // by the page, not here, since it already has projectProducts on
   // hand.
@@ -40,7 +43,7 @@ interface ProjectSummaryHeaderProps {
   statusLabel: string | null;
   statusColor: StatusColor | null;
   totalFaceValueLabel: string;
-  matchedReceiver: { id: string; label: string } | null;
+  matchedReceiver: { id: string; label: string; fullName?: string } | null;
   contactPersonLabel: string | null;
   checklist: ChecklistStatus;
   nextStep: SummaryNextStep | null;
@@ -85,6 +88,7 @@ function lastActivityLabel(days: number, t: ReturnType<typeof getDictionary>): s
 export function ProjectSummaryHeader({
   projectId,
   projectName,
+  projectFullName,
   productLabel,
   showRecoveryBadge,
   stage,
@@ -141,7 +145,12 @@ export function ProjectSummaryHeader({
             below this still carries the one semantic <h1> for the
             page. */}
         <div className="flex flex-wrap items-center gap-2">
-          <p className="min-w-0 truncate text-lg font-semibold text-white sm:text-xl">{projectName}</p>
+          <p
+            title={projectFullName && projectFullName !== projectName ? projectFullName : undefined}
+            className="min-w-0 truncate text-lg font-semibold text-white sm:text-xl"
+          >
+            {projectName}
+          </p>
           <span className="text-sm text-white/50">{productLabel}</span>
           {showRecoveryBadge && <RecoveryBadge />}
           <StageBadge stage={stage} lang={lang} />
@@ -154,7 +163,15 @@ export function ProjectSummaryHeader({
           {matchedReceiver ? (
             <Chip>
               {t.projectSummary.matchedWithPrefix}{" "}
-              <Link href={`/receivers/${matchedReceiver.id}`} className="font-semibold hover:underline">
+              <Link
+                href={`/receivers/${matchedReceiver.id}`}
+                title={
+                  matchedReceiver.fullName && matchedReceiver.fullName !== matchedReceiver.label
+                    ? matchedReceiver.fullName
+                    : undefined
+                }
+                className="font-semibold hover:underline"
+              >
                 {matchedReceiver.label}
               </Link>
             </Chip>
@@ -251,7 +268,12 @@ export function ProjectSummaryHeader({
         }`}
       >
         <div className="mx-auto flex max-w-4xl items-center gap-3 px-1 py-2.5">
-          <span className="min-w-0 truncate text-sm font-medium text-white">{projectName}</span>
+          <span
+            title={projectFullName && projectFullName !== projectName ? projectFullName : undefined}
+            className="min-w-0 truncate text-sm font-medium text-white"
+          >
+            {projectName}
+          </span>
           <StageBadge stage={stage} lang={lang} />
           {statusLabel && statusColor && <StatusBadge label={statusLabel} color={statusColor} />}
           <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-white/60">

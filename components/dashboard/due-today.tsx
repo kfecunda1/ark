@@ -18,6 +18,9 @@ export interface DueItem {
   dueDate: string;
   href: string;
   parentName: string;
+  // The parent's full name (project or receiver) — shown as a hover
+  // title when it differs from parentName's short display name.
+  parentFullName?: string;
   // Only steps need this — setProjectStepDone takes the owning project
   // id as well as the step id; setNoteReminderDone only needs the note.
   projectId?: string;
@@ -92,7 +95,12 @@ export function DueTodayAndOverdue({ items, lang = "en" }: { items: DueItem[]; l
               {item.body}
             </Link>
             <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/40">
-              <span className="truncate">{item.parentName}</span>
+              <span
+                title={item.parentFullName && item.parentFullName !== item.parentName ? item.parentFullName : undefined}
+                className="truncate"
+              >
+                {item.parentName}
+              </span>
               <DueDateBadge dueDate={item.dueDate} lang={lang} />
             </p>
           </div>

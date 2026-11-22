@@ -7,7 +7,7 @@ import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
 import type { Project, ProjectTranche, TranchePayout, TranchePayoutShare } from "@/lib/types";
 
-type ProjectSummary = Pick<Project, "id" | "name" | "currency" | "is_recovery">;
+type ProjectSummary = Pick<Project, "id" | "name" | "nickname" | "currency" | "is_recovery">;
 
 export default async function PayoutsPage() {
   // Admin-only route — everyone else is bounced server-side, before
@@ -38,7 +38,7 @@ export default async function PayoutsPage() {
 
   const [{ data: projectsData }, { data: payoutsData }] = await Promise.all([
     projectIds.length > 0
-      ? supabase.from("projects").select("id, name, currency, is_recovery").in("id", projectIds)
+      ? supabase.from("projects").select("id, name, nickname, currency, is_recovery").in("id", projectIds)
       : Promise.resolve({ data: [] as ProjectSummary[] }),
     trancheIds.length > 0
       ? supabase.from("tranche_payouts").select("*").in("tranche_id", trancheIds)

@@ -37,7 +37,9 @@ export function MatchedReceiverSelect({ projectId, receivers, currentReceiver, l
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const pool = q ? receivers.filter((r) => r.label.toLowerCase().includes(q)) : receivers;
+    const pool = q
+      ? receivers.filter((r) => r.label.toLowerCase().includes(q) || (r.sublabel?.toLowerCase().includes(q) ?? false))
+      : receivers;
     return pool.slice(0, 20);
   }, [receivers, query]);
 
@@ -97,6 +99,7 @@ export function MatchedReceiverSelect({ projectId, receivers, currentReceiver, l
         <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
         <input
           value={currentReceiver && !open ? currentReceiver.label : query}
+          title={currentReceiver && !open ? currentReceiver.sublabel : undefined}
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
@@ -131,7 +134,10 @@ export function MatchedReceiverSelect({ projectId, receivers, currentReceiver, l
                 }}
                 className="cursor-pointer px-3 py-1.5 text-xs text-white/75 transition-colors duration-100 ease-out hover:bg-white/[0.06] hover:text-white"
               >
-                {receiver.label}
+                <span className="block truncate">{receiver.label}</span>
+                {receiver.sublabel && receiver.sublabel !== receiver.label && (
+                  <span className="block truncate text-[11px] text-white/35">{receiver.sublabel}</span>
+                )}
               </li>
             ))}
           </ul>

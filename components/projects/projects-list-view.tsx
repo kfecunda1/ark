@@ -24,6 +24,7 @@ import { STAGES } from "@/lib/projects";
 import { personLabel } from "@/lib/people";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
+import { projectDisplayName, receiverDisplayName } from "@/lib/display-name";
 import type { Person, Project, ProjectStep } from "@/lib/types";
 
 const PROJECT_SORT_KEYS = [
@@ -267,8 +268,8 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
     ];
     const [{ data: matchedContactsData }, { data: boardTranchesData }] = await Promise.all([
       matchedContactIds.length > 0
-        ? supabase.from("contacts").select("id, full_name").in("id", matchedContactIds)
-        : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+        ? supabase.from("contacts").select("id, full_name, nickname").in("id", matchedContactIds)
+        : Promise.resolve({ data: [] as { id: string; full_name: string; nickname: string | null }[] }),
       supabase
         .from("project_tranches")
         .select("project_id")
@@ -280,7 +281,10 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
         ),
     ]);
     matchedContactNameById = new Map(
-      ((matchedContactsData as { id: string; full_name: string }[] | null) ?? []).map((c) => [c.id, c.full_name])
+      ((matchedContactsData as { id: string; full_name: string; nickname: string | null }[] | null) ?? []).map((c) => [
+        c.id,
+        receiverDisplayName(c),
+      ])
     );
     for (const row of (boardTranchesData as { project_id: string }[] | null) ?? []) {
       activeTrancheCountByProjectId.set(row.project_id, (activeTrancheCountByProjectId.get(row.project_id) ?? 0) + 1);
@@ -290,7 +294,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
   function sortValue(project: Project, key: ProjectSortKey): number | string | null {
     switch (key) {
       case "name":
-        return project.name.toLowerCase();
+        return projectDisplayName(project).toLowerCase();
       case "product": {
         const value = displayProduct(project.final_product, projectProductsByProjectId.get(project.id) ?? []);
         return value ? value.toLowerCase() : null;
@@ -320,7 +324,8 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
           const nextStep = nextStepByProjectId.get(p.id);
           return {
             id: p.id,
-            name: p.name,
+            name: projectDisplayName(p),
+            fullName: p.name,
             stage: p.stage,
             status: p.status,
             isRecovery: p.is_recovery,
@@ -483,7 +488,12 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                       href={`/projects/${project.id}`}
                       className="border-b border-white/[0.04] transition-colors duration-150 ease-out last:border-0 hover:bg-white/[0.03]"
                     >
-                      <td className="px-4 py-3 text-white/80 group-hover:text-white">{project.name}</td>
+                      <td
+                        title={project.nickname ? project.name : undefined}
+                        className="px-4 py-3 text-white/80 group-hover:text-white"
+                      >
+                        {projectDisplayName(project)}
+                      </td>
                       <td className="px-4 py-3 text-white/70 group-hover:text-white">
                         <span className="flex flex-wrap items-center gap-1.5">
                           {project.is_recovery && <RecoveryBadge lang={lang} />}
@@ -567,7 +577,12 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
               return (
                 <ClickableCard key={project.id} href={`/projects/${project.id}`}>
                   <div className="mb-3 flex items-start justify-between gap-3">
-                    <span className="text-sm font-medium text-white/85">{project.name}</span>
+                    <span
+                      title={project.nickname ? project.name : undefined}
+                      className="text-sm font-medium text-white/85"
+                    >
+                      {projectDisplayName(project)}
+                    </span>
                     <StageBadge stage={project.stage} lang={lang} />
                   </div>
 

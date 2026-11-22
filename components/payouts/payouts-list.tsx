@@ -8,9 +8,10 @@ import { toCsv } from "@/lib/csv";
 import { formatMoney } from "@/lib/money";
 import { CURRENCIES } from "@/lib/projects";
 import { getDictionary, type Lang } from "@/lib/i18n";
+import { projectDisplayName } from "@/lib/display-name";
 import type { PayoutGroup, Project, ProjectTranche, TranchePayout, TranchePayoutShare } from "@/lib/types";
 
-type ProjectSummary = Pick<Project, "id" | "name" | "currency" | "is_recovery">;
+type ProjectSummary = Pick<Project, "id" | "name" | "nickname" | "currency" | "is_recovery">;
 
 interface PayoutsListProps {
   tranches: ProjectTranche[];
@@ -105,7 +106,7 @@ export function PayoutsList({ tranches, projects, groups, payouts, shares, lang 
       const shareByGroupId = new Map(trancheShares.map((s) => [s.group_id, s.share_pct]));
 
       const row: Record<string, unknown> = {
-        [t.payoutsCsv.project]: project?.name ?? t.payoutsCsv.unknownProject,
+        [t.payoutsCsv.project]: project ? projectDisplayName(project) : t.payoutsCsv.unknownProject,
         [t.payoutsCsv.tranche]: tranche.tranche_number,
         [t.payoutsCsv.amount]: tranche.amount,
         [t.payoutsCsv.currency]: project?.currency ?? "",

@@ -18,6 +18,7 @@ import { getActiveDocumentTypes } from "@/lib/document-types";
 import { getProjectProductsByProjectIds, displayProduct } from "@/lib/project-products";
 import { getReceiverIntermediaries } from "@/lib/intermediaries";
 import { findProjectsNeedingReceiver } from "@/lib/actions/matching";
+import { projectDisplayName, receiverDisplayName } from "@/lib/display-name";
 import { personLabel } from "@/lib/people";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
@@ -120,6 +121,14 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-tight text-white">{contact.full_name}</h1>
+            {contact.nickname && (
+              <span
+                title={t.common.nicknameLabel}
+                className="inline-flex items-center rounded-full border border-accent/25 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent-soft"
+              >
+                {contact.nickname}
+              </span>
+            )}
             {contact.archived_at && <ArchivedBadge lang={lang} />}
           </div>
         </div>
@@ -228,9 +237,10 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
               <Link
                 key={project.id}
                 href={`/projects/${project.id}`}
+                title={project.nickname ? project.name : undefined}
                 className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
               >
-                <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-white/80">{projectDisplayName(project)}</span>
                 <span className="shrink-0 text-xs text-white/35">
                   {displayProduct(project.final_product, matchedProjectProductsById.get(project.id) ?? []) ?? "—"}
                 </span>
@@ -246,7 +256,7 @@ export default async function ReceiverDetailPage({ params, searchParams }: Recei
         </h2>
         <ReceiverMatchProjectsSection
           receiverId={contact.id}
-          receiverLabel={contact.full_name}
+          receiverLabel={receiverDisplayName(contact)}
           projects={projectsNeedingReceiver}
           lang={lang}
         />

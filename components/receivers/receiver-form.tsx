@@ -13,6 +13,7 @@ import {
   updateContact,
   type ContactFormState,
 } from "@/lib/actions/contacts";
+import { findNicknameDuplicates, type NicknameMatch } from "@/lib/actions/nicknames";
 import { quickCreatePerson } from "@/lib/actions/people";
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
@@ -76,6 +77,19 @@ export function ReceiverForm({
     null
   );
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  // Purely advisory — checked on blur, never gates saving (see lib/
+  // actions/nicknames.ts).
+  const [nicknameMatches, setNicknameMatches] = useState<NicknameMatch[]>([]);
+  async function handleNicknameBlur(e: React.FocusEvent<HTMLInputElement>) {
+    const value = e.target.value.trim();
+    if (!value) {
+      setNicknameMatches([]);
+      return;
+    }
+    const matches = await findNicknameDuplicates(value, contact ? { type: "contact", id: contact.id } : undefined);
+    setNicknameMatches(matches);
+  }
 
   async function handleCreateSubmit(e: React.FormEvent<HTMLFormElement>) {
     disableSubmitButton(submitButtonRef);
@@ -149,6 +163,34 @@ export function ReceiverForm({
             defaultValue={contact?.full_name ?? ""}
             className={fieldClass}
           />
+        </div>
+
+        <div>
+          <label className={labelClass} htmlFor="nickname">
+            {t.common.nicknameLabel}
+          </label>
+          <input
+            id="nickname"
+            name="nickname"
+            maxLength={40}
+            defaultValue={contact?.nickname ?? ""}
+            onBlur={handleNicknameBlur}
+            className={fieldClass}
+          />
+          <p className="mt-1.5 text-xs text-white/35">{t.common.nicknameHint}</p>
+          {nicknameMatches.length > 0 && (
+            <p className="mt-1.5 text-xs text-amber-300">
+              {t.common.nicknameAlreadyUsedBy}{" "}
+              {nicknameMatches.map((m, i) => (
+                <span key={m.id}>
+                  {i > 0 && ", "}
+                  <Link href={m.href} target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-200">
+                    {m.label}
+                  </Link>
+                </span>
+              ))}
+            </p>
+          )}
         </div>
 
         <div>

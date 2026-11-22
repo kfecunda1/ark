@@ -8,11 +8,12 @@ import { upsertTranchePayout, type PayoutShareInput } from "@/lib/actions/payout
 import { formatDateOnly } from "@/lib/projects";
 import { formatMoney } from "@/lib/money";
 import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
+import { projectDisplayName } from "@/lib/display-name";
 import type { PayoutGroup, ProjectTranche, TranchePayout, TranchePayoutShare } from "@/lib/types";
 
 interface PayoutRowProps {
   tranche: ProjectTranche;
-  project: { id: string; name: string; currency: string; is_recovery: boolean } | undefined;
+  project: { id: string; name: string; nickname?: string | null; currency: string; is_recovery: boolean } | undefined;
   allGroups: PayoutGroup[];
   payout: TranchePayout | undefined;
   shares: TranchePayoutShare[];
@@ -126,8 +127,12 @@ export function PayoutRow({ tranche, project, allGroups, payout, shares, lang = 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {project ? (
-            <Link href={`/projects/${project.id}`} className="truncate text-sm font-medium text-white/85 hover:underline">
-              {project.name}
+            <Link
+              href={`/projects/${project.id}`}
+              title={project.nickname ? project.name : undefined}
+              className="truncate text-sm font-medium text-white/85 hover:underline"
+            >
+              {projectDisplayName(project)}
             </Link>
           ) : (
             <span className="truncate text-sm font-medium text-white/85">{t.payoutRow.unknownProject}</span>

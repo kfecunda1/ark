@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { NoteForm } from "@/components/notes/note-form";
 import { createClient } from "@/lib/supabase/server";
 import { contactLabel } from "@/lib/contacts";
+import { hasDisplayNickname, projectDisplayName, receiverDisplayName } from "@/lib/display-name";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
 import type { Contact, Note, Project } from "@/lib/types";
@@ -24,8 +25,8 @@ export default async function EditNotePage({ params }: EditNotePageProps) {
   }
 
   const [{ data: contactsData }, { data: projectsData }] = await Promise.all([
-    supabase.from("contacts").select("id, full_name, archived_at"),
-    supabase.from("projects").select("id, name"),
+    supabase.from("contacts").select("id, full_name, nickname, archived_at"),
+    supabase.from("projects").select("id, name, nickname"),
   ]);
   const contacts = (contactsData as Contact[] | null) ?? [];
   // Archived receivers are excluded, except the one this note is
@@ -35,10 +36,17 @@ export default async function EditNotePage({ params }: EditNotePageProps) {
     .filter((contact) => !contact.archived_at || contact.id === note.contact_id)
     .map((contact) => ({
       id: contact.id,
-      label: contactLabel(contact) + (contact.archived_at ? ` (${t.common.archived})` : ""),
+      label: receiverDisplayName(contact) + (contact.archived_at ? ` (${t.common.archived})` : ""),
+      sublabel: hasDisplayNickname(contact.nickname)
+        ? contactLabel(contact) + (contact.archived_at ? ` (${t.common.archived})` : "")
+        : undefined,
     }));
-  const projects = (projectsData as Pick<Project, "id" | "name">[] | null) ?? [];
-  const projectOptions = projects.map((project) => ({ id: project.id, label: project.name }));
+  const projects = (projectsData as Pick<Project, "id" | "name" | "nickname">[] | null) ?? [];
+  const projectOptions = projects.map((project) => ({
+    id: project.id,
+    label: projectDisplayName(project),
+    sublabel: hasDisplayNickname(project.nickname) ? project.name : undefined,
+  }));
 
   return (
     <div className="mx-auto max-w-lg">

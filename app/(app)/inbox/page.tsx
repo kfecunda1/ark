@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { isCurrentUserAdmin } from "@/lib/auth";
 import { buildInboxSuggestions, suggestDocumentType } from "@/lib/inbox-suggestions";
+import { hasDisplayNickname, projectDisplayName, receiverDisplayName } from "@/lib/display-name";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
 import type { InboxItem } from "@/lib/types";
@@ -26,8 +27,8 @@ export default async function InboxPage() {
   ] = await Promise.all([
     supabase.from("inbox_items").select("*").order("received_at", { ascending: false }),
     supabase.from("profiles").select("id, full_name, email"),
-    supabase.from("projects").select("id, name").is("archived_at", null).order("name"),
-    supabase.from("contacts").select("id, full_name").is("archived_at", null).order("full_name"),
+    supabase.from("projects").select("id, name, nickname").is("archived_at", null).order("name"),
+    supabase.from("contacts").select("id, full_name, nickname").is("archived_at", null).order("full_name"),
     supabase.from("people").select("id, first_name, last_name").is("archived_at", null),
     supabase.from("receiver_intermediaries").select("person_id, receiver_id"),
     supabase.from("project_intermediaries").select("person_id, project_id"),
@@ -37,8 +38,8 @@ export default async function InboxPage() {
 
   const items = (itemsData as InboxItem[] | null) ?? [];
   const profiles = (profilesData as { id: string; full_name: string | null; email: string | null }[] | null) ?? [];
-  const projects = (projectsData as { id: string; name: string }[] | null) ?? [];
-  const contacts = (contactsData as { id: string; full_name: string }[] | null) ?? [];
+  const projects = (projectsData as { id: string; name: string; nickname: string | null }[] | null) ?? [];
+  const contacts = (contactsData as { id: string; full_name: string; nickname: string | null }[] | null) ?? [];
   const people = (peopleData as { id: string; first_name: string; last_name: string | null }[] | null) ?? [];
   const receiverIntermediaries =
     (receiverIntermediariesData as { person_id: string; receiver_id: string }[] | null) ?? [];
@@ -82,23 +83,24 @@ export default async function InboxPage() {
 
   const [{ data: filedProjectsData }, { data: filedContactsData }] = await Promise.all([
     filedProjectIds.length > 0
-      ? supabase.from("projects").select("id, name").in("id", filedProjectIds)
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      ? supabase.from("projects").select("id, name, nickname").in("id", filedProjectIds)
+      : Promise.resolve({ data: [] as { id: string; name: string; nickname: string | null }[] }),
     filedContactIds.length > 0
-      ? supabase.from("contacts").select("id, full_name").in("id", filedContactIds)
-      : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+      ? supabase.from("contacts").select("id, full_name, nickname").in("id", filedContactIds)
+      : Promise.resolve({ data: [] as { id: string; full_name: string; nickname: string | null }[] }),
   ]);
 
   const projectNameById = Object.fromEntries([
-    ...projects.map((p): [string, string] => [p.id, p.name]),
-    ...((filedProjectsData as { id: string; name: string }[] | null) ?? []).map((p): [string, string] => [p.id, p.name]),
+    ...projects.map((p): [string, string] => [p.id, projectDisplayName(p)]),
+    ...((filedProjectsData as { id: string; name: string; nickname: string | null }[] | null) ?? []).map(
+      (p): [string, string] => [p.id, projectDisplayName(p)]
+    ),
   ]);
   const contactNameById = Object.fromEntries([
-    ...contacts.map((c): [string, string] => [c.id, c.full_name]),
-    ...((filedContactsData as { id: string; full_name: string }[] | null) ?? []).map((c): [string, string] => [
-      c.id,
-      c.full_name,
-    ]),
+    ...contacts.map((c): [string, string] => [c.id, receiverDisplayName(c)]),
+    ...((filedContactsData as { id: string; full_name: string; nickname: string | null }[] | null) ?? []).map(
+      (c): [string, string] => [c.id, receiverDisplayName(c)]
+    ),
   ]);
 
   // Signed URLs for files still sitting in the inbox bucket — only
@@ -204,8 +206,16 @@ export default async function InboxPage() {
         <InboxTabs
           items={items}
           userNameById={userNameById}
-          projectOptions={projects.map((p) => ({ id: p.id, label: p.name }))}
-          contactOptions={contacts.map((c) => ({ id: c.id, label: c.full_name }))}
+          projectOptions={projects.map((p) => ({
+            id: p.id,
+            label: projectDisplayName(p),
+            sublabel: hasDisplayNickname(p.nickname) ? p.name : undefined,
+          }))}
+          contactOptions={contacts.map((c) => ({
+            id: c.id,
+            label: receiverDisplayName(c),
+            sublabel: hasDisplayNickname(c.nickname) ? c.full_name : undefined,
+          }))}
           projectNameById={projectNameById}
           contactNameById={contactNameById}
           signedUrlByPath={inboxSignedUrlByPath}

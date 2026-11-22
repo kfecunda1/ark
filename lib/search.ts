@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { personLabel } from "@/lib/people";
+import { projectDisplayName, receiverDisplayName } from "@/lib/display-name";
 import { getDictionary, type Lang } from "@/lib/i18n";
 
 // UI: Receivers for "contact", Contacts for "person" — see AGENTS.md's
@@ -44,25 +45,27 @@ function sanitizeForOrFilter(text: string): string {
 interface ProjectFields {
   id: string;
   name: string;
+  nickname: string | null;
   final_product: string | null;
   is_recovery: boolean;
 }
 
 async function fetchProjectsByIds(supabase: SupabaseBrowserClient, ids: string[]): Promise<ProjectFields[]> {
   if (ids.length === 0) return [];
-  const { data } = await supabase.from("projects").select("id, name, final_product, is_recovery").in("id", ids);
+  const { data } = await supabase.from("projects").select("id, name, nickname, final_product, is_recovery").in("id", ids);
   return (data as ProjectFields[] | null) ?? [];
 }
 
 interface ContactFields {
   id: string;
   full_name: string;
+  nickname: string | null;
   archived_at?: string | null;
 }
 
 async function fetchContactsByIds(supabase: SupabaseBrowserClient, ids: string[]): Promise<ContactFields[]> {
   if (ids.length === 0) return [];
-  const { data } = await supabase.from("contacts").select("id, full_name, archived_at").in("id", ids);
+  const { data } = await supabase.from("contacts").select("id, full_name, nickname, archived_at").in("id", ids);
   return (data as ContactFields[] | null) ?? [];
 }
 
@@ -78,9 +81,9 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
   const [contactsRes, projectDocsRes, notesRes, peopleRes] = await Promise.all([
     supabase
       .from("contacts")
-      .select("id, full_name")
+      .select("id, full_name, nickname")
       .is("archived_at", null)
-      .ilike("full_name", likePattern)
+      .or(`full_name.ilike.${orSafePattern},nickname.ilike.${orSafePattern}`)
       .limit(RESULT_LIMIT),
     supabase
       .from("project_documents")
@@ -107,7 +110,7 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
       .limit(RESULT_LIMIT),
   ]);
 
-  const contactMatches = (contactsRes.data as { id: string; full_name: string }[] | null) ?? [];
+  const contactMatches = (contactsRes.data as { id: string; full_name: string; nickname: string | null }[] | null) ?? [];
   const projectDocMatches =
     (projectDocsRes.data as
       | { id: string; file_name: string; project_id: string; document_type: string; tranche_id: string | null }[]
@@ -146,7 +149,11 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
   // (supabase/migrations/013_projects_restructure.sql dropped
   // client_contact_id/assigned_contact_id), so a contact-name match
   // surfaces the projects matched with them.
-  const projectFilters = [`name.ilike.${orSafePattern}`, `final_product.ilike.${orSafePattern}`];
+  const projectFilters = [
+    `name.ilike.${orSafePattern}`,
+    `nickname.ilike.${orSafePattern}`,
+    `final_product.ilike.${orSafePattern}`,
+  ];
   if (contactIds.length > 0) {
     projectFilters.push(`matched_contact_id.in.(${contactIds.join(",")})`);
   }
@@ -166,7 +173,7 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
     await Promise.all([
       supabase
         .from("projects")
-        .select("id, name, final_product, is_recovery")
+        .select("id, name, nickname, final_product, is_recovery")
         .or(projectFilters.join(","))
         .limit(RESULT_LIMIT),
       fetchProjectsByIds(supabase, [...new Set(projectDocMatches.map((d) => d.project_id))]),
@@ -198,7 +205,7 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
   const projectResults: SearchResult[] = projectMatches.map((project) => ({
     type: "project",
     id: project.id,
-    title: project.name,
+    title: projectDisplayName(project),
     subtitle: project.final_product ?? t.projectSummary.productNotDecided,
     isRecovery: project.is_recovery,
   }));
@@ -206,7 +213,7 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
   const contactResults: SearchResult[] = [...contactMatches, ...intermediaryContactMatches].map((contact) => ({
     type: "contact",
     id: contact.id,
-    title: contact.full_name,
+    title: receiverDisplayName(contact),
     subtitle: t.search.receiverLabel,
   }));
 
@@ -230,7 +237,11 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
       type: "document",
       id: doc.id,
       title: doc.file_name,
-      subtitle: t.search.documentSubtitle(trancheLabel, doc.document_type, project?.name ?? t.payoutRow.unknownProject),
+      subtitle: t.search.documentSubtitle(
+        trancheLabel,
+        doc.document_type,
+        project ? projectDisplayName(project) : t.payoutRow.unknownProject
+      ),
       parentId: doc.project_id,
       parentType: "project",
     };
@@ -244,7 +255,7 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
         type: "note",
         id: note.id,
         title,
-        subtitle: t.search.noteOnProject(project?.name ?? t.payoutRow.unknownProject),
+        subtitle: t.search.noteOnProject(project ? projectDisplayName(project) : t.payoutRow.unknownProject),
         parentId: note.project_id,
         parentType: "project",
       };
@@ -255,7 +266,7 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
         type: "note",
         id: note.id,
         title,
-        subtitle: t.search.noteOnReceiver(contact?.full_name ?? t.search.unknownReceiver),
+        subtitle: t.search.noteOnReceiver(contact ? receiverDisplayName(contact) : t.search.unknownReceiver),
         parentId: note.contact_id,
         parentType: "contact",
       };

@@ -7,6 +7,12 @@ import { getDictionary, type Lang } from "@/lib/i18n";
 export interface EntityOption {
   id: string;
   label: string;
+  // The full name, when `label` is a nickname that differs from it —
+  // shown as a smaller second line in the open dropdown and as the
+  // input's own title attribute (supabase/migrations/033_nicknames.sql).
+  // Omitted (or equal to label) for anything with no nickname in play,
+  // and always omitted for People, which have no nicknames at all.
+  sublabel?: string;
 }
 
 interface EntityPickerProps {
@@ -72,7 +78,11 @@ export function EntityPicker({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const pool = q ? allOptions.filter((o) => o.label.toLowerCase().includes(q)) : allOptions;
+    const pool = q
+      ? allOptions.filter(
+          (o) => o.label.toLowerCase().includes(q) || (o.sublabel?.toLowerCase().includes(q) ?? false)
+        )
+      : allOptions;
     return pool.slice(0, 20);
   }, [allOptions, query]);
 
@@ -135,6 +145,7 @@ export function EntityPicker({
           <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/30" />
           <input
             value={selected ? selected.label : query}
+            title={selected?.sublabel}
             onChange={(e) => {
               setSelected(null);
               setQuery(e.target.value);
@@ -170,7 +181,10 @@ export function EntityPicker({
                   }}
                   className="cursor-pointer px-3 py-2 text-sm text-white/75 transition-colors duration-100 ease-out hover:bg-white/[0.06] hover:text-white"
                 >
-                  {option.label}
+                  <span className="block truncate">{option.label}</span>
+                  {option.sublabel && option.sublabel !== option.label && (
+                    <span className="block truncate text-xs text-white/35">{option.sublabel}</span>
+                  )}
                 </li>
               ))}
               {onQuickCreate && (

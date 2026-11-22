@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAllStatuses, isClosedStatus } from "@/lib/statuses";
 import { getAppSettings } from "@/lib/app-settings";
 import { getProjectProductsByProjectIds, countedProducts } from "@/lib/project-products";
+import { projectDisplayName, receiverDisplayName } from "@/lib/display-name";
 import type { Project } from "@/lib/types";
 
 function unexpectedErrorMessage(err: unknown): string {
@@ -37,6 +38,9 @@ export interface ReceiverMatchProduct {
 export interface ReceiverMatch {
   id: string;
   fullName: string;
+  // Short name (nickname when set, fullName otherwise — see lib/
+  // display-name.ts). Equal to fullName when there's no nickname.
+  displayName: string;
   notes: string | null;
   matchingProducts: ReceiverMatchProduct[];
   documentTypesOnFile: string[];
@@ -102,14 +106,16 @@ export async function findMatchingReceivers(projectId: string): Promise<FindMatc
 
     const [{ data: contactsData }, { data: contactDocsData }, { data: intermediariesData }, { data: matchedProjectsData }] =
       await Promise.all([
-        supabase.from("contacts").select("id, full_name, notes").in("id", candidateIds).is("archived_at", null),
+        supabase.from("contacts").select("id, full_name, nickname, notes").in("id", candidateIds).is("archived_at", null),
         supabase.from("contact_documents").select("contact_id, document_type").in("contact_id", candidateIds),
         supabase.from("receiver_intermediaries").select("receiver_id").in("receiver_id", candidateIds),
         supabase.from("projects").select("matched_contact_id, archived_at, status").in("matched_contact_id", candidateIds),
       ]);
 
     const contactsById = new Map(
-      ((contactsData as { id: string; full_name: string; notes: string | null }[] | null) ?? []).map((c) => [c.id, c])
+      (
+        (contactsData as { id: string; full_name: string; nickname: string | null; notes: string | null }[] | null) ?? []
+      ).map((c) => [c.id, c])
     );
 
     const docTypesByContact = new Map<string, Set<string>>();
@@ -148,6 +154,7 @@ export async function findMatchingReceivers(projectId: string): Promise<FindMatc
       return {
         id: contactId,
         fullName: contact.full_name,
+        displayName: receiverDisplayName(contact),
         notes: contact.notes,
         matchingProducts,
         documentTypesOnFile: [...(docTypesByContact.get(contactId) ?? new Set<string>())].sort(),
@@ -171,7 +178,7 @@ export async function findMatchingReceivers(projectId: string): Promise<FindMatc
       if (aMin != null && bMin != null && aMin !== bMin) return aMin - bMin;
       if (aMin != null && bMin == null) return -1;
       if (aMin == null && bMin != null) return 1;
-      return a.fullName.localeCompare(b.fullName);
+      return a.displayName.localeCompare(b.displayName);
     });
 
     return { error: null, finalProduct, productOptions, receivers };
@@ -183,6 +190,7 @@ export async function findMatchingReceivers(projectId: string): Promise<FindMatc
 export interface ProjectNeedingReceiver {
   id: string;
   name: string;
+  displayName: string;
   product: string;
   isRecovery: boolean;
 }
@@ -232,11 +240,17 @@ export async function findProjectsNeedingReceiver(contactId: string): Promise<Fi
       const counted = countedProducts(project.final_product, projectProductsById.get(project.id) ?? []);
       const matchingProduct = counted.find((p) => offeredProducts.has(p));
       if (matchingProduct) {
-        matches.push({ id: project.id, name: project.name, product: matchingProduct, isRecovery: project.is_recovery });
+        matches.push({
+          id: project.id,
+          name: project.name,
+          displayName: projectDisplayName(project),
+          product: matchingProduct,
+          isRecovery: project.is_recovery,
+        });
       }
     }
 
-    matches.sort((a, b) => a.name.localeCompare(b.name));
+    matches.sort((a, b) => a.displayName.localeCompare(b.displayName));
     return { error: null, projects: matches };
   } catch (err) {
     return { error: unexpectedErrorMessage(err), projects: [] };

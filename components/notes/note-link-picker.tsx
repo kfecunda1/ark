@@ -7,6 +7,10 @@ import { getDictionary, type Lang } from "@/lib/i18n";
 export interface LinkOption {
   id: string;
   label: string;
+  // The full name, shown as a smaller second line and as the input's
+  // title when it differs from `label` (nickname in play — see lib/
+  // display-name.ts).
+  sublabel?: string;
 }
 
 type LinkType = "none" | "project" | "contact";
@@ -48,7 +52,9 @@ export function NoteLinkPicker({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const matches = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
+    const matches = q
+      ? options.filter((o) => o.label.toLowerCase().includes(q) || (o.sublabel?.toLowerCase().includes(q) ?? false))
+      : options;
     return matches.slice(0, 20);
   }, [query, options]);
 
@@ -86,6 +92,7 @@ export function NoteLinkPicker({
             <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/30" />
             <input
               value={selected ? selected.label : query}
+              title={selected?.sublabel}
               onChange={(e) => {
                 setSelected(null);
                 setQuery(e.target.value);
@@ -124,7 +131,10 @@ export function NoteLinkPicker({
                     }}
                     className="cursor-pointer px-3 py-2 text-sm text-white/75 transition-colors duration-100 ease-out hover:bg-white/[0.06] hover:text-white"
                   >
-                    {option.label}
+                    <span className="block truncate">{option.label}</span>
+                    {option.sublabel && option.sublabel !== option.label && (
+                      <span className="block truncate text-xs text-white/35">{option.sublabel}</span>
+                    )}
                   </li>
                 ))}
               </ul>

@@ -13,6 +13,7 @@ import { compareNullsLast, parseSortDirection } from "@/lib/sort";
 import { formatDateTime } from "@/lib/format";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
+import { receiverDisplayName } from "@/lib/display-name";
 import type { Contact, ContactProduct, ProductType } from "@/lib/types";
 
 const RECEIVER_SORT_KEYS = ["name", "products_count", "matched_count", "created_at"] as const;
@@ -78,6 +79,7 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
     if (searchTerm) {
       return (
         contact.full_name.toLowerCase().includes(searchTerm) ||
+        (contact.nickname ?? "").toLowerCase().includes(searchTerm) ||
         (contact.notes ?? "").toLowerCase().includes(searchTerm)
       );
     }
@@ -87,7 +89,7 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
   function sortValue(contact: Contact, key: ReceiverSortKey): number | string | null {
     switch (key) {
       case "name":
-        return contact.full_name.toLowerCase();
+        return receiverDisplayName(contact).toLowerCase();
       case "products_count":
         return (productsByContactId.get(contact.id) ?? []).length;
       case "matched_count":
@@ -195,8 +197,11 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
                     >
                       <td className="px-4 py-3">
                         <span className="flex items-center gap-2">
-                          <span className="font-medium text-white/85 group-hover:text-white">
-                            {contact.full_name}
+                          <span
+                            title={contact.nickname ? contact.full_name : undefined}
+                            className="font-medium text-white/85 group-hover:text-white"
+                          >
+                            {receiverDisplayName(contact)}
                           </span>
                           {contact.archived_at && <ArchivedBadge lang={lang} />}
                         </span>
@@ -233,7 +238,12 @@ export default async function ReceiversPage({ searchParams }: ReceiversPageProps
               return (
                 <ClickableCard key={contact.id} href={`/receivers/${contact.id}`}>
                   <span className="flex items-center gap-2">
-                    <span className="font-medium text-white/85">{contact.full_name}</span>
+                    <span
+                      title={contact.nickname ? contact.full_name : undefined}
+                      className="font-medium text-white/85"
+                    >
+                      {receiverDisplayName(contact)}
+                    </span>
                     {contact.archived_at && <ArchivedBadge lang={lang} />}
                   </span>
                   {contactProducts.length > 0 && (

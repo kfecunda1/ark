@@ -9,6 +9,7 @@ import { EntityPicker, type EntityOption } from "@/components/entity-picker";
 import { ProductOptionsPicker } from "@/components/projects/product-options-picker";
 import { StagedDocumentPicker, type StagedDocument } from "@/components/projects/staged-document-picker";
 import { DuplicateWarningBanner } from "@/components/duplicate-warning-banner";
+import { findNicknameDuplicates, type NicknameMatch } from "@/lib/actions/nicknames";
 import {
   IntermediaryChainEditor,
   type IntermediaryChainEntry,
@@ -115,6 +116,21 @@ export function ProjectForm({
   // Create again.
   const lastFormDataRef = useRef<FormData | null>(null);
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  // Purely advisory — checked on blur, never gates saving either mode
+  // (see lib/actions/nicknames.ts). Unrelated to duplicateMatches
+  // above, which is the existing matched-receiver+product check that
+  // still only runs (and still blocks until "Add anyway") on create.
+  const [nicknameMatches, setNicknameMatches] = useState<NicknameMatch[]>([]);
+  async function handleNicknameBlur(e: React.FocusEvent<HTMLInputElement>) {
+    const value = e.target.value.trim();
+    if (!value) {
+      setNicknameMatches([]);
+      return;
+    }
+    const matches = await findNicknameDuplicates(value, project ? { type: "project", id: project.id } : undefined);
+    setNicknameMatches(matches);
+  }
 
   // Stage is only tracked locally so the Status field can show/hide
   // itself live as the user picks a different stage, before anything is
@@ -366,6 +382,34 @@ export function ProjectForm({
             defaultValue={project?.name ?? ""}
             className={fieldClass}
           />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className={labelClass} htmlFor="nickname">
+            {t.common.nicknameLabel}
+          </label>
+          <input
+            id="nickname"
+            name="nickname"
+            maxLength={40}
+            defaultValue={project?.nickname ?? ""}
+            onBlur={handleNicknameBlur}
+            className={fieldClass}
+          />
+          <p className="mt-1.5 text-xs text-white/35">{t.common.nicknameHint}</p>
+          {nicknameMatches.length > 0 && (
+            <p className="mt-1.5 text-xs text-amber-300">
+              {t.common.nicknameAlreadyUsedBy}{" "}
+              {nicknameMatches.map((m, i) => (
+                <span key={m.id}>
+                  {i > 0 && ", "}
+                  <Link href={m.href} target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-200">
+                    {m.label}
+                  </Link>
+                </span>
+              ))}
+            </p>
+          )}
         </div>
 
         <div className="sm:col-span-2">

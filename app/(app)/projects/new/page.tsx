@@ -4,6 +4,7 @@ import { getAllProducts } from "@/lib/products";
 import { getAllStatuses } from "@/lib/statuses";
 import { getActiveDocumentTypes } from "@/lib/document-types";
 import { getAppSettings } from "@/lib/app-settings";
+import { hasDisplayNickname, receiverDisplayName } from "@/lib/display-name";
 import { personLabel } from "@/lib/people";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
@@ -20,7 +21,7 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
   const supabase = await createClient();
   const [{ data: receiversData }, { data: peopleData }, products, statuses, documentTypes, appSettings] =
     await Promise.all([
-      supabase.from("contacts").select("id, full_name").is("archived_at", null).order("full_name"),
+      supabase.from("contacts").select("id, full_name, nickname").is("archived_at", null).order("full_name"),
       supabase.from("people").select("id, first_name, last_name").is("archived_at", null).order("first_name"),
       getAllProducts(),
       getAllStatuses(),
@@ -28,7 +29,13 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
       getAppSettings(),
     ]);
 
-  const receivers = (receiversData ?? []).map((r) => ({ id: r.id, label: r.full_name }));
+  const receivers = (
+    (receiversData as { id: string; full_name: string; nickname: string | null }[] | null) ?? []
+  ).map((r) => ({
+    id: r.id,
+    label: receiverDisplayName(r),
+    sublabel: hasDisplayNickname(r.nickname) ? r.full_name : undefined,
+  }));
   const people = ((peopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? []).map((p) => ({
     id: p.id,
     label: personLabel(p),

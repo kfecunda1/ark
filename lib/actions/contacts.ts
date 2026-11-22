@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isCurrentUserAdmin } from "@/lib/auth";
 import { withPreservedExtension } from "@/lib/storage";
 import { getDictionary, type Lang } from "@/lib/i18n";
+import { receiverDisplayName } from "@/lib/display-name";
 import type { Contact, ContactDocumentType, ProductType } from "@/lib/types";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -28,8 +29,14 @@ function buildContactPayload(formData: FormData) {
     throw new Error("fullNameRequired");
   }
 
+  const nickname = formData.get("nickname")?.toString().trim() || null;
+  if (nickname && nickname.length > 40) {
+    throw new Error("nicknameTooLong");
+  }
+
   return {
     full_name: fullName,
+    nickname,
     notes: formData.get("notes")?.toString().trim() || null,
     contact_person_id: formData.get("contact_person_id")?.toString().trim() || null,
   };
@@ -555,9 +562,15 @@ export async function findContactDocumentsByHash(
     if (rows.length === 0) return [];
 
     const contactIds = [...new Set(rows.map((r) => r.contact_id))];
-    const { data: contactsData } = await supabase.from("contacts").select("id, full_name").in("id", contactIds);
+    const { data: contactsData } = await supabase
+      .from("contacts")
+      .select("id, full_name, nickname")
+      .in("id", contactIds);
     const contactNameById = new Map(
-      ((contactsData as { id: string; full_name: string }[] | null) ?? []).map((c) => [c.id, c.full_name])
+      ((contactsData as { id: string; full_name: string; nickname: string | null }[] | null) ?? []).map((c) => [
+        c.id,
+        receiverDisplayName(c),
+      ])
     );
 
     return rows.map((row) => ({
@@ -649,13 +662,14 @@ export async function getContactProductRatio(
         .eq("contact_id", contactId)
         .eq("product_type", productType)
         .maybeSingle(),
-      supabase.from("contacts").select("full_name").eq("id", contactId).maybeSingle(),
+      supabase.from("contacts").select("full_name, nickname").eq("id", contactId).maybeSingle(),
     ]);
 
     const row = product as { ratio: string | null; recovery_ratio: string | null } | null;
+    const contactRow = contact as { full_name: string; nickname: string | null } | null;
     return {
       ratio: (isRecovery ? row?.recovery_ratio : row?.ratio) ?? null,
-      contactName: (contact as { full_name: string } | null)?.full_name ?? null,
+      contactName: contactRow ? receiverDisplayName(contactRow) : null,
     };
   } catch (err) {
     console.error("[getContactProductRatio] unexpected error:", unexpectedErrorMessage(err));

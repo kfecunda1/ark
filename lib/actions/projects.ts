@@ -11,6 +11,7 @@ import { syncProjectIntermediaries } from "@/lib/intermediaries";
 import { withPreservedExtension } from "@/lib/storage";
 import { maybeAutoAdvanceStage } from "@/lib/checklists";
 import { getDictionary, type Lang } from "@/lib/i18n";
+import { projectDisplayName } from "@/lib/display-name";
 import type { Currency, ProjectDocumentType, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
 
 export interface ProjectFormState {
@@ -56,8 +57,14 @@ function buildProjectPayload(formData: FormData) {
 
   const matchedContactId = formData.get("matched_contact_id")?.toString().trim();
 
+  const nickname = formData.get("nickname")?.toString().trim() || null;
+  if (nickname && nickname.length > 40) {
+    throw new Error("nicknameTooLong");
+  }
+
   return {
     name: (formData.get("name") as string).trim(),
+    nickname,
     stage,
     status,
     matched_contact_id: matchedContactId || null,
@@ -814,9 +821,12 @@ export async function findProjectDocumentsByHash(hash: string): Promise<ProjectD
     if (rows.length === 0) return [];
 
     const projectIds = [...new Set(rows.map((r) => r.project_id))];
-    const { data: projectsData } = await supabase.from("projects").select("id, name").in("id", projectIds);
+    const { data: projectsData } = await supabase.from("projects").select("id, name, nickname").in("id", projectIds);
     const projectNameById = new Map(
-      ((projectsData as { id: string; name: string }[] | null) ?? []).map((p) => [p.id, p.name])
+      ((projectsData as { id: string; name: string; nickname: string | null }[] | null) ?? []).map((p) => [
+        p.id,
+        projectDisplayName(p),
+      ])
     );
 
     return rows.map((row) => ({

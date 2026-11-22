@@ -5,6 +5,7 @@ import { dueDateLabel, followUpLabel } from "@/lib/projects";
 import { formatMoney } from "@/lib/money";
 import { computeChecklistStatus, getChecklistCatalog, type Requirement } from "@/lib/checklists";
 import { getDictionary, type Lang } from "@/lib/i18n";
+import { projectDisplayName, receiverDisplayName } from "@/lib/display-name";
 import type { Currency, Project, ProjectTranche } from "@/lib/types";
 
 // Everything behind the ARK Telegram bot's morning briefing — shared
@@ -97,7 +98,7 @@ export async function getBriefingSnapshot(supabase: SupabaseClient, lang: Lang =
   // same as the Dashboard.
   const projects = appSettings.show_recovery ? allProjects : allProjects.filter((p) => !p.is_recovery);
   const openProjects = projects.filter((p) => !isClosedStatus(p.status, statuses));
-  const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
+  const projectNameById = new Map(projects.map((p) => [p.id, projectDisplayName(p)]));
 
   const todayKey = dateKeyInTimeZone(new Date().toISOString());
 
@@ -132,10 +133,13 @@ export async function getBriefingSnapshot(supabase: SupabaseClient, lang: Lang =
   const reminderContactIds = [...new Set(reminderRows.map((n) => n.contact_id).filter((id): id is string => Boolean(id)))];
   const { data: reminderContactsData } =
     reminderContactIds.length > 0
-      ? await supabase.from("contacts").select("id, full_name").in("id", reminderContactIds)
-      : { data: [] as { id: string; full_name: string }[] };
+      ? await supabase.from("contacts").select("id, full_name, nickname").in("id", reminderContactIds)
+      : { data: [] as { id: string; full_name: string; nickname: string | null }[] };
   const contactNameById = new Map(
-    ((reminderContactsData as { id: string; full_name: string }[] | null) ?? []).map((c) => [c.id, c.full_name])
+    ((reminderContactsData as { id: string; full_name: string; nickname: string | null }[] | null) ?? []).map((c) => [
+      c.id,
+      receiverDisplayName(c),
+    ])
   );
 
   interface RawDueItem extends BriefingDueItem {
@@ -177,7 +181,7 @@ export async function getBriefingSnapshot(supabase: SupabaseClient, lang: Lang =
     )
     .sort((a, b) => new Date(a.last_activity_at).getTime() - new Date(b.last_activity_at).getTime())
     .slice(0, STUCK_PROJECTS_LIMIT)
-    .map((p) => ({ href: `/projects/${p.id}`, name: p.name }));
+    .map((p) => ({ href: `/projects/${p.id}`, name: projectDisplayName(p) }));
 
   const openProjectIds = new Set(openProjects.map((p) => p.id));
   const projectCurrencyById = new Map(projects.map((p) => [p.id, p.currency]));

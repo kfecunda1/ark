@@ -111,6 +111,7 @@ const FIELDS_DESCRIBED_SEPARATELY = new Set([
   "priority",
   "archived",
   "full_name",
+  "nickname",
   "done",
   "name",
   "active",
@@ -202,6 +203,15 @@ export function activityDetailChips(row: ActivityLog, lang: Lang = "en"): string
   if (details.name) {
     const [before, after] = details.name;
     if (before !== after) chips.push(c.renamed(before ?? "—", after ?? "—"));
+  }
+
+  if (details.nickname) {
+    const [before, after] = details.nickname;
+    if (before !== after) {
+      if (after && !before) chips.push(c.nicknameSet(after));
+      else if (before && !after) chips.push(c.nicknameRemoved(before));
+      else if (before && after) chips.push(c.nicknameChanged(before, after));
+    }
   }
 
   if (details.active) {

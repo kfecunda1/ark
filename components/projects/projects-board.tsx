@@ -25,7 +25,10 @@ import type { ProjectStage, StatusColor, StatusRecord } from "@/lib/types";
 
 export interface BoardProject {
   id: string;
+  // The short name (lib/display-name.ts) — fullName is only carried
+  // along to show as a hover title when it differs.
   name: string;
+  fullName: string;
   stage: ProjectStage;
   status: string | null;
   isRecovery: boolean;
@@ -160,7 +163,12 @@ function ProjectBoardCard({
       } ${dragEnabled ? "touch-none" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="min-w-0 truncate text-sm font-medium text-white/85">{project.name}</p>
+        <p
+          title={project.fullName !== project.name ? project.fullName : undefined}
+          className="min-w-0 truncate text-sm font-medium text-white/85"
+        >
+          {project.name}
+        </p>
         {project.isRecovery && <RecoveryBadge lang={lang} />}
       </div>
       <p className="mt-0.5 truncate text-xs text-white/45">{project.productLabel}</p>

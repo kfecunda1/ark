@@ -31,6 +31,7 @@ import { getReceiverIntermediaryPersonIds } from "@/lib/actions/intermediaries";
 import { computeChecklistStatus, getChecklistCatalog } from "@/lib/checklists";
 import { personLabel } from "@/lib/people";
 import { daysSinceInstant } from "@/lib/projects";
+import { hasDisplayNickname, projectDisplayName, receiverDisplayName } from "@/lib/display-name";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
 import type { Contact, Note, Person, Project, ProjectDocument, ProjectProduct, ProjectStep, ProjectTranche } from "@/lib/types";
@@ -83,10 +84,10 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   // selection, if any, is tracked separately above regardless of its
   // own archived state, so it's never at risk of disappearing here.
   const [{ data: allContactsData }, { data: allPeopleData }] = await Promise.all([
-    supabase.from("contacts").select("id, full_name").is("archived_at", null).order("full_name"),
+    supabase.from("contacts").select("id, full_name, nickname").is("archived_at", null).order("full_name"),
     supabase.from("people").select("id, first_name, last_name, archived_at").is("archived_at", null).order("first_name"),
   ]);
-  const allContacts = (allContactsData as { id: string; full_name: string }[] | null) ?? [];
+  const allContacts = (allContactsData as { id: string; full_name: string; nickname: string | null }[] | null) ?? [];
   const allPeople = (allPeopleData as Pick<Person, "id" | "first_name" | "last_name" | "archived_at">[] | null) ?? [];
 
   const [intermediaryChain, receiverIntermediaryIds] = await Promise.all([
@@ -95,8 +96,12 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   ]);
   const intermediaryPickerOptions = buildIntermediaryPickerOptions(allPeople, new Set(receiverIntermediaryIds));
   const matchedReceiverLabel = matchedContact
-    ? matchedContact.full_name + (matchedContact.archived_at ? ` (${t.common.archived})` : "")
+    ? receiverDisplayName(matchedContact) + (matchedContact.archived_at ? ` (${t.common.archived})` : "")
     : null;
+  const matchedReceiverSublabel =
+    matchedContact && hasDisplayNickname(matchedContact.nickname)
+      ? matchedContact.full_name + (matchedContact.archived_at ? ` (${t.common.archived})` : "")
+      : undefined;
 
   const [
     { data: projectDocumentsData },
@@ -249,14 +254,17 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       <SetProjectSection isRecovery={project.is_recovery} />
       <ProjectSummaryHeader
         projectId={project.id}
-        projectName={project.name}
+        projectName={projectDisplayName(project)}
+        projectFullName={project.name}
         productLabel={summaryProductLabel}
         showRecoveryBadge={appSettings.show_recovery && project.is_recovery}
         stage={project.stage}
         statusLabel={project.status}
         statusColor={summaryStatusColor}
         totalFaceValueLabel={formatMoney(project.total_face_value, project.currency)}
-        matchedReceiver={matchedContact ? { id: matchedContact.id, label: matchedReceiverLabel! } : null}
+        matchedReceiver={
+          matchedContact ? { id: matchedContact.id, label: matchedReceiverLabel!, fullName: matchedContact.full_name } : null
+        }
         contactPersonLabel={summaryContactPersonLabel}
         checklist={checklistStatus}
         nextStep={summaryNextStep}
@@ -279,6 +287,14 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-tight text-white">{project.name}</h1>
+            {project.nickname && (
+              <span
+                title={t.common.nicknameLabel}
+                className="inline-flex items-center rounded-full border border-accent/25 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent-soft"
+              >
+                {project.nickname}
+              </span>
+            )}
             {project.archived_at && (
               <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-0.5 text-xs font-medium text-white/50">
                 {t.common.archived}
@@ -376,8 +392,16 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         <GlassCard interactive={false} className="p-6">
           <MatchedReceiverSelect
             projectId={project.id}
-            receivers={allContacts.map((c) => ({ id: c.id, label: c.full_name }))}
-            currentReceiver={matchedContact ? { id: matchedContact.id, label: matchedReceiverLabel! } : null}
+            receivers={allContacts.map((c) => ({
+              id: c.id,
+              label: receiverDisplayName(c),
+              sublabel: hasDisplayNickname(c.nickname) ? c.full_name : undefined,
+            }))}
+            currentReceiver={
+              matchedContact
+                ? { id: matchedContact.id, label: matchedReceiverLabel!, sublabel: matchedReceiverSublabel }
+                : null
+            }
             lang={lang}
           />
           <div className="mt-4">

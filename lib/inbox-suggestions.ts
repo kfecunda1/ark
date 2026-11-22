@@ -4,6 +4,7 @@
 // suggestions are produced: a filing destination (buildInboxSuggestions)
 // and a document type (suggestDocumentType) — see components/inbox/
 // inbox-tabs.tsx for how they're shown ("Suggested: X — File here").
+import { projectDisplayName, receiverDisplayName } from "@/lib/display-name";
 import type { DocumentTypeRecord, InboxItem } from "@/lib/types";
 
 // Generic words common in company/entity names that would otherwise
@@ -51,8 +52,8 @@ export interface SuggestedDestination {
 }
 
 export interface InboxSuggestionInput {
-  projects: { id: string; name: string }[];
-  contacts: { id: string; full_name: string }[];
+  projects: { id: string; name: string; nickname?: string | null }[];
+  contacts: { id: string; full_name: string; nickname?: string | null }[];
   people: { id: string; first_name: string; last_name: string | null }[];
   receiverIntermediaries: { person_id: string; receiver_id: string }[];
   projectIntermediaries: { person_id: string; project_id: string }[];
@@ -96,13 +97,16 @@ export function buildInboxSuggestions(
   }
 
   for (const project of input.projects) {
-    const words = distinctiveWords(project.name);
-    consider({ type: "project", id: project.id, label: project.name }, scoreAgainst(words, itemWords));
+    const words = [...distinctiveWords(project.name), ...(project.nickname ? distinctiveWords(project.nickname) : [])];
+    consider({ type: "project", id: project.id, label: projectDisplayName(project) }, scoreAgainst(words, itemWords));
   }
 
   for (const contact of input.contacts) {
-    const words = distinctiveWords(contact.full_name);
-    consider({ type: "contact", id: contact.id, label: contact.full_name }, scoreAgainst(words, itemWords));
+    const words = [
+      ...distinctiveWords(contact.full_name),
+      ...(contact.nickname ? distinctiveWords(contact.nickname) : []),
+    ];
+    consider({ type: "contact", id: contact.id, label: receiverDisplayName(contact) }, scoreAgainst(words, itemWords));
   }
 
   const receiverIdsByPerson = new Map<string, string[]>();
@@ -113,8 +117,8 @@ export function buildInboxSuggestions(
   for (const pi of input.projectIntermediaries) {
     projectIdsByPerson.set(pi.person_id, [...(projectIdsByPerson.get(pi.person_id) ?? []), pi.project_id]);
   }
-  const contactById = new Map(input.contacts.map((c) => [c.id, c.full_name]));
-  const projectById = new Map(input.projects.map((p) => [p.id, p.name]));
+  const contactById = new Map(input.contacts.map((c) => [c.id, receiverDisplayName(c)]));
+  const projectById = new Map(input.projects.map((p) => [p.id, projectDisplayName(p)]));
 
   for (const person of input.people) {
     const fullName = [person.first_name, person.last_name].filter(Boolean).join(" ");
