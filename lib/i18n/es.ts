@@ -970,6 +970,13 @@ const es: Dictionary = {
     basedOnOptions: (productLabel: string) => `Según las opciones: ${productLabel}`,
     completeOf: (complete: number, total: number) => `${complete} de ${total} completo${total === 1 ? "" : "s"}`,
     upload: "Subir",
+    groupMissingPrefix: (group: string) => `${group}: uno de`,
+    groupsHeading: "Grupos de documentos",
+    groupsHint: "Un grupo se completa cuando está presente CUALQUIERA de sus documentos.",
+    groupBadgeLabel: "Grupo",
+    addMemberPlaceholder: "Agregar tipo de documento…",
+    noMembersYet: "Este grupo aún no tiene tipos de documento.",
+    removeMemberAria: (type: string) => `Quitar ${type} de este grupo`,
   },
   tranches: {
     paidOutOnBadge: (date: string) => `Pagado el ${date}`,

@@ -132,7 +132,6 @@ export function ProjectSummaryHeader({
     });
   }
 
-  const completeCount = checklist.requiredTypes.length - checklist.missingTypes.length;
   const docsVisible = checklist.hasChecklist;
 
   return (
@@ -173,7 +172,7 @@ export function ProjectSummaryHeader({
           <Chip>{t.projectSummary.contactPerson(contactPersonLabel ?? "—")}</Chip>
           {docsVisible && (
             <Chip tone={checklist.isComplete ? "emerald" : undefined}>
-              {t.projectSummary.docsCount(completeCount, checklist.requiredTypes.length)}
+              {t.projectSummary.docsCount(checklist.completeCount, checklist.totalCount)}
             </Chip>
           )}
         </div>

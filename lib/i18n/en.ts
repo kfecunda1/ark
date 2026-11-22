@@ -979,6 +979,13 @@ const en = {
     basedOnOptions: (productLabel: string) => `Based on options: ${productLabel}`,
     completeOf: (complete: number, total: number) => `${complete} of ${total} complete`,
     upload: "Upload",
+    groupMissingPrefix: (group: string) => `${group}: one of`,
+    groupsHeading: "Document Groups",
+    groupsHint: "A group is complete when ANY one of its documents is present.",
+    groupBadgeLabel: "Group",
+    addMemberPlaceholder: "Add document type…",
+    noMembersYet: "No document types in this group yet.",
+    removeMemberAria: (type: string) => `Remove ${type} from this group`,
   },
   tranches: {
     paidOutOnBadge: (date: string) => `Paid out on ${date}`,

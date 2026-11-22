@@ -8,6 +8,7 @@ import {
   moveCatalogItem,
   renameCatalogItem,
   setCatalogItemActive,
+  updateDocumentTypeGroupNameEs,
   updateDocumentTypeNameEs,
   type CatalogTable,
 } from "@/lib/actions/catalog";
@@ -31,18 +32,24 @@ interface ManageableListProps {
   // ITEM_LABEL_ES below) when lang is "es", so callers never need to
   // pass a second, pre-translated noun.
   itemLabel: string;
-  // true for Document Types only — shows/edits name_es.
+  // true for Document Types and Document Groups — shows/edits name_es.
   withSpanishName?: boolean;
+  // Optional extra content rendered below an item's own row (not shown
+  // while that row is being renamed) — Document Groups' own member-
+  // document-types editor is the one user of this; Products/Document
+  // Types pass nothing and render exactly as before.
+  renderExtra?: (item: CatalogItem) => React.ReactNode;
   lang?: Lang;
 }
 
 // English itemLabel -> Spanish singular/plural. Add an entry here if
-// ManageableList is ever parameterized over a third table — an
+// ManageableList is ever parameterized over a new table — an
 // unrecognized itemLabel just falls back to the English noun itself
 // (with a blind "+s" plural) rather than crashing.
 const ITEM_LABEL_ES: Record<string, { singular: string; plural: string }> = {
   product: { singular: "producto", plural: "productos" },
   "document type": { singular: "tipo de documento", plural: "tipos de documento" },
+  "document group": { singular: "grupo de documentos", plural: "grupos de documentos" },
 };
 
 const fieldClass =
@@ -52,7 +59,14 @@ const fieldClass =
 // both tables are the same shape (name/active/sort_order), so this is
 // one admin list UI with Add, Rename, Hide/Show, and Up/Down reorder,
 // parameterized by which table to write to.
-export function ManageableList({ table, items, itemLabel, withSpanishName = false, lang = "en" }: ManageableListProps) {
+export function ManageableList({
+  table,
+  items,
+  itemLabel,
+  withSpanishName = false,
+  renderExtra,
+  lang = "en",
+}: ManageableListProps) {
   const router = useRouter();
   const t = getDictionary(lang);
   const singularNoun = lang === "es" ? ITEM_LABEL_ES[itemLabel]?.singular ?? itemLabel : itemLabel;
@@ -108,7 +122,10 @@ export function ManageableList({ table, items, itemLabel, withSpanishName = fals
           return;
         }
         if (withSpanishName) {
-          const nameEsResult = await updateDocumentTypeNameEs(id, editingNameEs);
+          const nameEsResult =
+            table === "document_type_groups"
+              ? await updateDocumentTypeGroupNameEs(id, editingNameEs)
+              : await updateDocumentTypeNameEs(id, editingNameEs);
           if (nameEsResult.error) {
             setError(resolveError(nameEsResult.error, lang));
             return;
@@ -169,10 +186,9 @@ export function ManageableList({ table, items, itemLabel, withSpanishName = fals
       {sorted.map((item, index) => (
         <div
           key={item.id}
-          className={`flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 ${
-            item.active ? "" : "opacity-50"
-          }`}
+          className={`rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 ${item.active ? "" : "opacity-50"}`}
         >
+          <div className="flex items-center gap-2">
           <div className="flex shrink-0 flex-col">
             <button
               type="button"
@@ -258,6 +274,8 @@ export function ManageableList({ table, items, itemLabel, withSpanishName = fals
               </button>
             </>
           )}
+          </div>
+          {editingId !== item.id && renderExtra?.(item)}
         </div>
       ))}
 

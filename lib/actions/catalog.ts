@@ -3,15 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
-// Products and document_types (011_settings_tables.sql) are identically
-// shaped admin-managed lists — one name, one active flag, one
-// sort_order — so one set of add/rename actions serves the Settings
-// page's Products and Document Types sections instead of duplicating
-// the same two functions twice. RLS itself (both tables' insert/update
+// Products, document_types (011_settings_tables.sql), and document_type_
+// groups (032_checklist_groups.sql) are identically shaped admin-managed
+// lists — one name, one active flag, one sort_order — so one set of
+// add/rename actions serves the Settings page's Products, Document
+// Types, and Document Groups sections instead of duplicating the same
+// two functions three times. RLS itself (every table's insert/update
 // policies require is_admin()) is the real gate; these actions don't
 // re-check admin-ness themselves, same as every other action in this
 // app that relies on RLS rather than an app-level check.
-export type CatalogTable = "products" | "document_types";
+export type CatalogTable = "products" | "document_types" | "document_type_groups";
 
 // statuses (019_statuses.sql) and payout_groups (025_payouts.sql) share
 // that same active/sort_order shape for hide-show and reorder purposes
@@ -92,6 +93,28 @@ export async function updateDocumentTypeNameEs(id: string, nameEs: string): Prom
     const trimmed = nameEs.trim();
     const { error } = await supabase
       .from("document_types")
+      .update({ name_es: trimmed || null })
+      .eq("id", id);
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/settings");
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// Document Groups' own "Spanish name" field — same shape/reasoning as
+// updateDocumentTypeNameEs above, just targeting document_type_groups
+// instead (supabase/migrations/032_checklist_groups.sql).
+export async function updateDocumentTypeGroupNameEs(id: string, nameEs: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const trimmed = nameEs.trim();
+    const { error } = await supabase
+      .from("document_type_groups")
       .update({ name_es: trimmed || null })
       .eq("id", id);
     if (error) {

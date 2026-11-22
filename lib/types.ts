@@ -334,6 +334,21 @@ export interface DocumentTypeRecord {
   updated_at: string;
 }
 
+// supabase/migrations/032_checklist_groups.sql — an admin-managed named
+// group ("DOA") of document types that satisfy the same checklist
+// requirement interchangeably (Settings → Document checklists' own
+// "Document Groups" area). Same shape/hide-don't-delete rule as
+// DocumentTypeRecord above.
+export interface DocumentTypeGroupRecord {
+  id: string;
+  name: string;
+  name_es: string | null;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // file_path/url are mutually exclusive (supabase/migrations/020_media_
 // uploads.sql's check constraint): an uploaded file has file_path set and
 // url null; a link to a file kept elsewhere (e.g. Google Drive) has url

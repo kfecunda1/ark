@@ -14,6 +14,16 @@ function unexpectedErrorMessage(err: unknown): string {
 // admins; the isCurrentUserAdmin() check just turns a denied RLS
 // write into a clean message instead of a raw Postgres error, same
 // reasoning as deleteProject/deleteContact.
+//
+// Plain insert rather than upsert: product_required_documents' own
+// uniqueness (supabase/migrations/032_checklist_groups.sql) is now two
+// *partial* unique indexes (one per requirement form, since document_
+// type/group_id are each nullable) — Postgres can only infer a partial
+// index as an ON CONFLICT target when the predicate is repeated in the
+// query, which postgrest-js's upsert() has no way to express. Simplest
+// fix: insert plainly and treat a 23505 (unique_violation) as the
+// success it actually is — the desired end state ("this requirement
+// exists") already holds.
 export async function setProductRequiredDocument(
   product: string,
   documentType: string,
@@ -26,16 +36,49 @@ export async function setProductRequiredDocument(
 
     const supabase = await createClient();
     const { error } = required
-      ? await supabase
-          .from("product_required_documents")
-          .upsert({ product, document_type: documentType }, { onConflict: "product,document_type" })
+      ? await supabase.from("product_required_documents").insert({ product, document_type: documentType })
       : await supabase
           .from("product_required_documents")
           .delete()
           .eq("product", product)
           .eq("document_type", documentType);
 
-    if (error) {
+    if (error && error.code !== "23505") {
+      return { error: error.message };
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/projects");
+    revalidatePath("/recovery");
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+// Same as setProductRequiredDocument above, but for a requirement on a
+// whole document_type_groups row instead of one plain document_type —
+// the grid's "Group" rows call this one instead.
+export async function setProductRequiredGroup(
+  product: string,
+  groupId: string,
+  required: boolean
+): Promise<{ error: string | null }> {
+  try {
+    if (!(await isCurrentUserAdmin())) {
+      return { error: "onlyAdminsCanEditChecklists" };
+    }
+
+    const supabase = await createClient();
+    const { error } = required
+      ? await supabase.from("product_required_documents").insert({ product, group_id: groupId })
+      : await supabase
+          .from("product_required_documents")
+          .delete()
+          .eq("product", product)
+          .eq("group_id", groupId);
+
+    if (error && error.code !== "23505") {
       return { error: error.message };
     }
 

@@ -2,6 +2,7 @@ import { GlassCard } from "@/components/glass-card";
 import { ManageableList } from "@/components/settings/manageable-list";
 import { ManageableStatusList } from "@/components/settings/manageable-status-list";
 import { ManageablePayoutGroupList } from "@/components/settings/manageable-payout-group-list";
+import { DocumentTypeGroupsManager } from "@/components/settings/document-type-groups-manager";
 import { DefaultsForm } from "@/components/settings/defaults-form";
 import { MyProfileForm } from "@/components/settings/my-profile-form";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
@@ -15,9 +16,10 @@ import { getAllProducts, getActiveProducts } from "@/lib/products";
 import { getAllStatuses } from "@/lib/statuses";
 import { getAllPayoutGroups } from "@/lib/payout-groups";
 import { getAllDocumentTypes, getActiveDocumentTypes } from "@/lib/document-types";
+import { getAllDocumentTypeGroups, getActiveDocumentTypeGroups, getDocumentTypeGroupMembers } from "@/lib/document-type-groups";
 import { getAppSettings } from "@/lib/app-settings";
 import { getStorageUsedBytes } from "@/lib/storage-usage";
-import { getRequiredDocumentsByProduct } from "@/lib/checklists";
+import { getChecklistCatalog } from "@/lib/checklists";
 import { listUsers } from "@/lib/actions/users";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary, resolveError } from "@/lib/i18n";
@@ -65,7 +67,10 @@ export default async function SettingsPage() {
     storageUsedBytes,
     activeProducts,
     activeDocumentTypes,
-    requiredByProduct,
+    checklistCatalog,
+    allDocumentTypeGroups,
+    activeDocumentTypeGroups,
+    documentTypeGroupMembers,
   ] = isAdmin
     ? await Promise.all([
         getAllProducts(),
@@ -77,9 +82,26 @@ export default async function SettingsPage() {
         getStorageUsedBytes(),
         getActiveProducts(),
         getActiveDocumentTypes(),
-        getRequiredDocumentsByProduct(supabase),
+        getChecklistCatalog(supabase),
+        getAllDocumentTypeGroups(),
+        getActiveDocumentTypeGroups(),
+        getDocumentTypeGroupMembers(),
       ])
-    : [[], [], [], [], null, { users: [], error: null }, 0, [], [], new Map<string, string[]>()];
+    : [
+        [],
+        [],
+        [],
+        [],
+        null,
+        { users: [], error: null },
+        0,
+        [],
+        [],
+        { requirementsByProduct: new Map() },
+        [],
+        [],
+        new Map<string, string[]>(),
+      ];
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -130,11 +152,22 @@ export default async function SettingsPage() {
             <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">
               {t.settings.documentChecklists}
             </h2>
+            <GlassCard interactive={false} className="mb-4 p-6">
+              <h3 className="mb-1 text-sm font-medium text-white/80">{t.documentChecklist.groupsHeading}</h3>
+              <p className="mb-3 text-xs text-white/35">{t.documentChecklist.groupsHint}</p>
+              <DocumentTypeGroupsManager
+                groups={allDocumentTypeGroups}
+                documentTypes={documentTypes}
+                membersByGroup={documentTypeGroupMembers}
+                lang={lang}
+              />
+            </GlassCard>
             <GlassCard interactive={false} className="p-6">
               <DocumentChecklistGrid
                 products={activeProducts}
                 documentTypes={activeDocumentTypes}
-                requiredByProduct={requiredByProduct}
+                groups={activeDocumentTypeGroups}
+                requirementsByProduct={checklistCatalog.requirementsByProduct}
                 autoAdvanceOnDocuments={appSettings?.auto_advance_on_documents ?? true}
                 lang={lang}
               />

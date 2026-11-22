@@ -16,7 +16,7 @@ import { getAllProducts } from "@/lib/products";
 import { getAllStatuses, isClosedStatus } from "@/lib/statuses";
 import { getAppSettings } from "@/lib/app-settings";
 import { getProjectProductsByProjectIds, countedProducts, displayProduct } from "@/lib/project-products";
-import { computeChecklistStatus, getRequiredDocumentsByProduct, type ChecklistStatus } from "@/lib/checklists";
+import { computeChecklistStatus, getChecklistCatalog, missingRequirementLabels, type ChecklistStatus } from "@/lib/checklists";
 import { compareNullsLast, parseSortDirection } from "@/lib/sort";
 import { formatDateTime } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
@@ -199,7 +199,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
   // column and the "Missing documents" filter below both read this
   // same map, computed for whatever `projects` already survived every
   // other filter above.
-  const requiredByProduct = await getRequiredDocumentsByProduct(supabase);
+  const checklistCatalog = await getChecklistCatalog(supabase);
   const { data: checklistDocsData } =
     projects.length > 0
       ? await supabase.from("project_documents").select("project_id, document_type").in(
@@ -219,7 +219,7 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
       computeChecklistStatus(
         p.final_product,
         projectProductsByProjectId.get(p.id)?.map((o) => o.product) ?? [],
-        requiredByProduct,
+        checklistCatalog,
         documentTypesByProjectId.get(p.id) ?? new Set<string>()
       ),
     ])
@@ -333,8 +333,8 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
             checklist:
               checklist && checklist.hasChecklist
                 ? {
-                    complete: checklist.requiredTypes.length - checklist.missingTypes.length,
-                    total: checklist.requiredTypes.length,
+                    complete: checklist.completeCount,
+                    total: checklist.totalCount,
                     isComplete: checklist.isComplete,
                   }
                 : null,
@@ -505,17 +505,17 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                         {(() => {
                           const checklist = checklistStatusByProjectId.get(project.id);
                           if (!checklist?.hasChecklist) return <span className="text-white/30">—</span>;
-                          const complete = checklist.requiredTypes.length - checklist.missingTypes.length;
+                          const missing = missingRequirementLabels(checklist, lang);
                           return (
                             <span
                               title={
-                                checklist.missingTypes.length > 0
-                                  ? t.projectsList.missingLabel(checklist.missingTypes.join(", "))
+                                missing.length > 0
+                                  ? t.projectsList.missingLabel(missing.join(", "))
                                   : t.projectsList.complete
                               }
                               className={`font-medium ${checklist.isComplete ? "text-emerald-300" : "text-white/60"}`}
                             >
-                              {complete}/{checklist.requiredTypes.length}
+                              {checklist.completeCount}/{checklist.totalCount}
                             </span>
                           );
                         })()}
@@ -596,17 +596,17 @@ export async function ProjectsListView({ searchParams: params, isRecovery }: Pro
                         <dd className="mt-0.5">
                           {(() => {
                             const checklist = checklistStatusByProjectId.get(project.id)!;
-                            const complete = checklist.requiredTypes.length - checklist.missingTypes.length;
+                            const missing = missingRequirementLabels(checklist, lang);
                             return (
                               <span
                                 title={
-                                  checklist.missingTypes.length > 0
-                                    ? t.projectsList.missingLabel(checklist.missingTypes.join(", "))
+                                  missing.length > 0
+                                    ? t.projectsList.missingLabel(missing.join(", "))
                                     : t.projectsList.complete
                                 }
                                 className={`font-medium ${checklist.isComplete ? "text-emerald-300" : "text-white/70"}`}
                               >
-                                {complete}/{checklist.requiredTypes.length}
+                                {checklist.completeCount}/{checklist.totalCount}
                               </span>
                             );
                           })()}

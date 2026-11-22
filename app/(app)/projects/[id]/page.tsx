@@ -28,7 +28,7 @@ import { formatDateTime } from "@/lib/format";
 import { amountInWords, formatMoney } from "@/lib/money";
 import { buildIntermediaryPickerOptions, getProjectIntermediaryChain } from "@/lib/intermediaries";
 import { getReceiverIntermediaryPersonIds } from "@/lib/actions/intermediaries";
-import { computeChecklistStatus, getRequiredDocumentsByProduct } from "@/lib/checklists";
+import { computeChecklistStatus, getChecklistCatalog } from "@/lib/checklists";
 import { personLabel } from "@/lib/people";
 import { daysSinceInstant } from "@/lib/projects";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
@@ -125,11 +125,11 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const notes = (notesData as Note[] | null) ?? [];
   const projectProducts = (projectProductsData as ProjectProduct[] | null) ?? [];
 
-  const requiredByProduct = await getRequiredDocumentsByProduct(supabase);
+  const checklistCatalog = await getChecklistCatalog(supabase);
   const checklistStatus = computeChecklistStatus(
     project.final_product,
     projectProducts.map((p) => p.product),
-    requiredByProduct,
+    checklistCatalog,
     new Set(projectDocuments.map((d) => d.document_type))
   );
   const checklistProductLabel = project.final_product ?? projectProducts.map((p) => p.product).join(", ");

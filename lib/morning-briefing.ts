@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { TIME_ZONE, dateKeyInTimeZone, truncate } from "@/lib/format";
 import { dueDateLabel, followUpLabel } from "@/lib/projects";
 import { formatMoney } from "@/lib/money";
-import { computeChecklistStatus, getRequiredDocumentsByProduct } from "@/lib/checklists";
+import { computeChecklistStatus, getChecklistCatalog, type Requirement } from "@/lib/checklists";
 import { getDictionary, type Lang } from "@/lib/i18n";
 import type { Currency, Project, ProjectTranche } from "@/lib/types";
 
@@ -203,17 +203,17 @@ export async function getBriefingSnapshot(supabase: SupabaseClient, lang: Lang =
   // "N projects missing documents" — same checklist math as the
   // Project page/Projects list (lib/checklists.ts), scoped to the same
   // open-projects set as everything else in this briefing.
-  const [requiredByProduct, { data: openProjectProductsData }, { data: openProjectDocsData }] =
+  const [checklistCatalog, { data: openProjectProductsData }, { data: openProjectDocsData }] =
     openProjects.length > 0
       ? await Promise.all([
-          getRequiredDocumentsByProduct(supabase),
+          getChecklistCatalog(supabase),
           supabase.from("project_products").select("project_id, product").in("project_id", openProjects.map((p) => p.id)),
           supabase
             .from("project_documents")
             .select("project_id, document_type")
             .in("project_id", openProjects.map((p) => p.id)),
         ])
-      : [new Map<string, string[]>(), { data: [] }, { data: [] }];
+      : [{ requirementsByProduct: new Map<string, Requirement[]>() }, { data: [] }, { data: [] }];
 
   const optionsByProjectId = new Map<string, string[]>();
   for (const row of (openProjectProductsData as { project_id: string; product: string }[] | null) ?? []) {
@@ -229,7 +229,7 @@ export async function getBriefingSnapshot(supabase: SupabaseClient, lang: Lang =
     const status = computeChecklistStatus(
       p.final_product,
       optionsByProjectId.get(p.id) ?? [],
-      requiredByProduct,
+      checklistCatalog,
       docTypesByProjectId.get(p.id) ?? new Set<string>()
     );
     return status.hasChecklist && !status.isComplete;
