@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Inbox, Landmark, Layers, RotateCcw, Unlink } from "lucide-react";
+import { AlertTriangle, Archive, Briefcase, CalendarClock, CheckCircle2, Inbox, Landmark, Layers, RotateCcw, Unlink } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { RecoveryBadge } from "@/components/projects/badges";
 import { DueTodayAndOverdue, type DueItem } from "@/components/dashboard/due-today";
@@ -11,6 +11,7 @@ import { getAllProducts } from "@/lib/products";
 import { getAllStatuses, isClosedStatus } from "@/lib/statuses";
 import { countedProducts, getProjectProductsByProjectIds } from "@/lib/project-products";
 import { getAppSettings } from "@/lib/app-settings";
+import { isOpportunityStale } from "@/lib/opportunities";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
 import { projectDisplayName, receiverDisplayName } from "@/lib/display-name";
@@ -43,13 +44,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const { data, error } = await supabase.from("projects").select("*").is("archived_at", null);
   const allProjects = (data as Project[] | null) ?? [];
 
-  const [products, statuses, appSettings, { count: inboxNewCount }, { data: activeTranchesData }] = await Promise.all([
-    getAllProducts(),
-    getAllStatuses(),
-    getAppSettings(),
-    supabase.from("inbox_items").select("*", { count: "exact", head: true }).eq("status", "new"),
-    supabase.from("project_tranches").select("*").not("confirmed_on", "is", null).is("paid_out_on", null),
-  ]);
+  const [products, statuses, appSettings, { count: inboxNewCount }, { data: activeTranchesData }, { data: openOpportunitiesData }] =
+    await Promise.all([
+      getAllProducts(),
+      getAllStatuses(),
+      getAppSettings(),
+      supabase.from("inbox_items").select("*", { count: "exact", head: true }).eq("status", "new"),
+      supabase.from("project_tranches").select("*").not("confirmed_on", "is", null).is("paid_out_on", null),
+      supabase.from("opportunities").select("last_activity_at").eq("status", "open"),
+    ]);
 
   // Settings → Defaults' "Show Recovery" toggle (supabase/migrations/
   // 024_show_recovery.sql): off means every count/list on this page
@@ -219,7 +222,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const { data: reminderNotesData } = await supabase
     .from("notes")
-    .select("id, content, due_date, project_id, contact_id")
+    .select("id, content, due_date, project_id, contact_id, opportunity_id")
     .eq("is_reminder", true)
     .eq("reminder_done", false)
     .lte("due_date", todayKey)
@@ -227,7 +230,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const reminderNotes =
     (reminderNotesData as
-      | { id: string; content: string; due_date: string; project_id: string | null; contact_id: string | null }[]
+      | {
+          id: string;
+          content: string;
+          due_date: string;
+          project_id: string | null;
+          contact_id: string | null;
+          opportunity_id: string | null;
+        }[]
       | null) ?? [];
 
   const reminderContactIds = [
@@ -240,6 +250,17 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const reminderContacts = (reminderContactsData as { id: string; full_name: string; nickname: string | null }[] | null) ?? [];
   const contactNameById = new Map(reminderContacts.map((c) => [c.id, receiverDisplayName(c)]));
   const contactFullNameById = new Map(reminderContacts.map((c) => [c.id, c.full_name]));
+
+  const reminderOpportunityIds = [
+    ...new Set(reminderNotes.map((n) => n.opportunity_id).filter((id): id is string => Boolean(id))),
+  ];
+  const { data: reminderOpportunitiesData } =
+    reminderOpportunityIds.length > 0
+      ? await supabase.from("opportunities").select("id, title").in("id", reminderOpportunityIds)
+      : { data: [] };
+  const opportunityTitleById = new Map(
+    ((reminderOpportunitiesData as { id: string; title: string }[] | null) ?? []).map((o) => [o.id, o.title])
+  );
 
   const noteDueItems: DueItem[] = reminderNotes
     // A project-linked reminder whose project is archived (or otherwise
@@ -255,7 +276,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         ? projectNameById.get(note.project_id) ?? "Project"
         : note.contact_id
           ? contactNameById.get(note.contact_id) ?? "Receiver"
-          : "—",
+          : note.opportunity_id
+            ? opportunityTitleById.get(note.opportunity_id) ?? "Opportunity"
+            : "—",
       parentFullName: note.project_id
         ? projectFullNameById.get(note.project_id)
         : note.contact_id
@@ -265,11 +288,17 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         ? `/projects/${note.project_id}`
         : note.contact_id
           ? `/receivers/${note.contact_id}`
-          : `/notes/${note.id}/edit`,
+          : note.opportunity_id
+            ? `/opportunities/${note.opportunity_id}`
+            : `/notes/${note.id}/edit`,
       isRecovery: note.project_id ? projectIsRecoveryById.get(note.project_id) : undefined,
     }));
 
   dueItems = [...dueItems, ...noteDueItems].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+  const openOpportunityRows = (openOpportunitiesData as { last_activity_at: string }[] | null) ?? [];
+  const openOpportunitiesCount = openOpportunityRows.length;
+  const untouchedOpportunitiesCount = openOpportunityRows.filter((o) => isOpportunityStale(o.last_activity_at)).length;
 
   const backupTone: "ok" | "warning" | "danger" =
     daysSinceBackup === null ? "danger" : daysSinceBackup > 14 ? "danger" : daysSinceBackup > 7 ? "warning" : "ok";
@@ -363,6 +392,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       href: "#active-tranches",
       suffix: null,
       extra: activeTrancheTotalsLabel || null,
+    },
+    {
+      label: t.dashboard.openOpportunities,
+      value: openOpportunitiesCount,
+      icon: Briefcase,
+      tone: "text-violet-300",
+      href: "/opportunities",
+      suffix: null,
+      extra: t.dashboard.untouchedDays(untouchedOpportunitiesCount),
     },
   ];
 

@@ -5,9 +5,10 @@ import { getActiveDocumentTypes } from "@/lib/document-types";
 import { isCurrentUserAdmin } from "@/lib/auth";
 import { buildInboxSuggestions, suggestDocumentType } from "@/lib/inbox-suggestions";
 import { hasDisplayNickname, projectDisplayName, receiverDisplayName } from "@/lib/display-name";
+import { personLabel } from "@/lib/people";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
-import type { InboxItem } from "@/lib/types";
+import type { InboxItem, Person } from "@/lib/types";
 
 export default async function InboxPage() {
   const supabase = await createClient();
@@ -22,6 +23,7 @@ export default async function InboxPage() {
     { data: peopleData },
     { data: receiverIntermediariesData },
     { data: projectIntermediariesData },
+    { data: openOpportunitiesData },
     documentTypes,
     isAdmin,
   ] = await Promise.all([
@@ -32,6 +34,7 @@ export default async function InboxPage() {
     supabase.from("people").select("id, first_name, last_name").is("archived_at", null),
     supabase.from("receiver_intermediaries").select("person_id, receiver_id"),
     supabase.from("project_intermediaries").select("person_id, project_id"),
+    supabase.from("opportunities").select("id, title, intermediary_person_id").eq("status", "open").order("title"),
     getActiveDocumentTypes(),
     isCurrentUserAdmin(),
   ]);
@@ -45,17 +48,44 @@ export default async function InboxPage() {
     (receiverIntermediariesData as { person_id: string; receiver_id: string }[] | null) ?? [];
   const projectIntermediaries =
     (projectIntermediariesData as { person_id: string; project_id: string }[] | null) ?? [];
+  const openOpportunities =
+    (openOpportunitiesData as { id: string; title: string; intermediary_person_id: string | null }[] | null) ?? [];
+
+  // Intermediary names for the open opportunities above — a separate,
+  // by-id lookup rather than reusing the active-only `people` list,
+  // since an opportunity's intermediary can be an archived person
+  // (their name still matters for matching, even if they'd never show
+  // up in a picker anymore).
+  const opportunityIntermediaryIds = [
+    ...new Set(openOpportunities.map((o) => o.intermediary_person_id).filter((id): id is string => Boolean(id))),
+  ];
+  const { data: opportunityIntermediaryPeopleData } =
+    opportunityIntermediaryIds.length > 0
+      ? await supabase.from("people").select("id, first_name, last_name").in("id", opportunityIntermediaryIds)
+      : { data: [] as Pick<Person, "id" | "first_name" | "last_name">[] };
+  const opportunityIntermediaryNameById = new Map(
+    ((opportunityIntermediaryPeopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? []).map((p) => [
+      p.id,
+      personLabel(p),
+    ])
+  );
+  const opportunitiesForSuggestions = openOpportunities.map((o) => ({
+    id: o.id,
+    title: o.title,
+    intermediaryName: o.intermediary_person_id ? opportunityIntermediaryNameById.get(o.intermediary_person_id) ?? null : null,
+  }));
 
   // Suggested filing destination/document type for every "To file"
   // item — pure read-only matching (lib/inbox-suggestions.ts); filed
   // and dismissed items never need one.
   const toFileItems = items.filter((i) => i.status === "new");
-  const suggestionsByItemId: Record<string, { type: "project" | "contact"; id: string; label: string }[]> = {};
+  const suggestionsByItemId: Record<string, { type: "project" | "contact" | "opportunity"; id: string; label: string }[]> = {};
   const suggestedDocTypeByItemId: Record<string, string> = {};
   for (const item of toFileItems) {
     suggestionsByItemId[item.id] = buildInboxSuggestions(item, {
       projects,
       contacts,
+      opportunities: opportunitiesForSuggestions,
       people,
       receiverIntermediaries,
       projectIntermediaries,
@@ -80,14 +110,20 @@ export default async function InboxPage() {
   const filedContactIds = items
     .filter((i) => i.filed_to_type === "contact" && i.filed_to_id)
     .map((i) => i.filed_to_id as string);
+  const filedOpportunityIds = items
+    .filter((i) => i.filed_to_type === "opportunity" && i.filed_to_id)
+    .map((i) => i.filed_to_id as string);
 
-  const [{ data: filedProjectsData }, { data: filedContactsData }] = await Promise.all([
+  const [{ data: filedProjectsData }, { data: filedContactsData }, { data: filedOpportunitiesData }] = await Promise.all([
     filedProjectIds.length > 0
       ? supabase.from("projects").select("id, name, nickname").in("id", filedProjectIds)
       : Promise.resolve({ data: [] as { id: string; name: string; nickname: string | null }[] }),
     filedContactIds.length > 0
       ? supabase.from("contacts").select("id, full_name, nickname").in("id", filedContactIds)
       : Promise.resolve({ data: [] as { id: string; full_name: string; nickname: string | null }[] }),
+    filedOpportunityIds.length > 0
+      ? supabase.from("opportunities").select("id, title").in("id", filedOpportunityIds)
+      : Promise.resolve({ data: [] as { id: string; title: string }[] }),
   ]);
 
   const projectNameById = Object.fromEntries([
@@ -101,6 +137,10 @@ export default async function InboxPage() {
     ...((filedContactsData as { id: string; full_name: string; nickname: string | null }[] | null) ?? []).map(
       (c): [string, string] => [c.id, receiverDisplayName(c)]
     ),
+  ]);
+  const opportunityNameById = Object.fromEntries([
+    ...openOpportunities.map((o): [string, string] => [o.id, o.title]),
+    ...((filedOpportunitiesData as { id: string; title: string }[] | null) ?? []).map((o): [string, string] => [o.id, o.title]),
   ]);
 
   // Signed URLs for files still sitting in the inbox bucket — only
@@ -216,8 +256,11 @@ export default async function InboxPage() {
             label: receiverDisplayName(c),
             sublabel: hasDisplayNickname(c.nickname) ? c.full_name : undefined,
           }))}
+          opportunityOptions={openOpportunities.map((o) => ({ id: o.id, label: o.title }))}
+          peopleOptions={people.map((p) => ({ id: p.id, label: personLabel(p) }))}
           projectNameById={projectNameById}
           contactNameById={contactNameById}
+          opportunityNameById={opportunityNameById}
           signedUrlByPath={inboxSignedUrlByPath}
           documentTypes={documentTypes}
           filedOpenUrlByItemId={filedOpenUrlByItemId}

@@ -46,7 +46,7 @@ function distinctiveWords(name: string): string[] {
 }
 
 export interface SuggestedDestination {
-  type: "project" | "contact";
+  type: "project" | "contact" | "opportunity";
   id: string;
   label: string;
 }
@@ -54,6 +54,11 @@ export interface SuggestedDestination {
 export interface InboxSuggestionInput {
   projects: { id: string; name: string; nickname?: string | null }[];
   contacts: { id: string; full_name: string; nickname?: string | null }[];
+  // Open opportunities only — a converted/closed one is never offered
+  // as a filing suggestion. intermediaryName is already resolved by
+  // the caller (app/(app)/inbox/page.tsx), since the person records
+  // themselves aren't otherwise part of this input.
+  opportunities: { id: string; title: string; intermediaryName: string | null }[];
   people: { id: string; first_name: string; last_name: string | null }[];
   receiverIntermediaries: { person_id: string; receiver_id: string }[];
   projectIntermediaries: { person_id: string; project_id: string }[];
@@ -107,6 +112,18 @@ export function buildInboxSuggestions(
       ...(contact.nickname ? distinctiveWords(contact.nickname) : []),
     ];
     consider({ type: "contact", id: contact.id, label: receiverDisplayName(contact) }, scoreAgainst(words, itemWords));
+  }
+
+  // Opportunities match on both their own title and their
+  // intermediary's name — a holding place that arrived before a real
+  // project/receiver exists is exactly the case where the only clue in
+  // the message is who referred it.
+  for (const opportunity of input.opportunities) {
+    const words = [
+      ...distinctiveWords(opportunity.title),
+      ...(opportunity.intermediaryName ? distinctiveWords(opportunity.intermediaryName) : []),
+    ];
+    consider({ type: "opportunity", id: opportunity.id, label: opportunity.title }, scoreAgainst(words, itemWords));
   }
 
   const receiverIdsByPerson = new Map<string, string[]>();

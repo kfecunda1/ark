@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isCurrentUserAdmin } from "@/lib/auth";
 import { addProjectDocument, findProjectDocumentsByHash } from "@/lib/actions/projects";
 import { addContactDocument, findContactDocumentsByHash } from "@/lib/actions/contacts";
+import { addOpportunityDocument, findOpportunityDocumentsByHash } from "@/lib/actions/opportunities";
 import { buildDocumentPath, computeFileHash, withPreservedExtension } from "@/lib/storage";
 import type { InboxItem } from "@/lib/types";
 
@@ -14,7 +15,8 @@ function unexpectedErrorMessage(err: unknown): string {
 
 export type InboxFileTarget =
   | { type: "project"; id: string; trancheId: string | null }
-  | { type: "contact"; id: string };
+  | { type: "contact"; id: string }
+  | { type: "opportunity"; id: string };
 
 export interface InboxDuplicateMatch {
   label: string;
@@ -57,7 +59,7 @@ async function loadInboxItem(
 async function markFiled(
   supabase: Awaited<ReturnType<typeof createClient>>,
   item: InboxItem,
-  target: { type: "project" | "contact"; id: string },
+  target: { type: "project" | "contact" | "opportunity"; id: string },
   documentId: string | null
 ): Promise<void> {
   if (item.storage_path) {
@@ -171,9 +173,15 @@ function noteContent(item: InboxItem): string {
   return "(Forwarded from Telegram.)";
 }
 
+const TARGET_HREF_PREFIX: Record<"project" | "contact" | "opportunity", string> = {
+  project: "/projects",
+  contact: "/receivers",
+  opportunity: "/opportunities",
+};
+
 export async function fileInboxItemAsNote(
   itemId: string,
-  target: { type: "project" | "contact"; id: string }
+  target: { type: "project" | "contact" | "opportunity"; id: string }
 ): Promise<{ error: string | null }> {
   try {
     const supabase = await createClient();
@@ -189,6 +197,7 @@ export async function fileInboxItemAsNote(
       content: noteContent(item),
       project_id: target.type === "project" ? target.id : null,
       contact_id: target.type === "contact" ? target.id : null,
+      opportunity_id: target.type === "opportunity" ? target.id : null,
       created_by: user?.id ?? null,
     });
     if (insertError) return { error: insertError.message };
@@ -196,7 +205,7 @@ export async function fileInboxItemAsNote(
     await markFiled(supabase, item, target, null);
 
     revalidatePath("/inbox");
-    revalidatePath(target.type === "project" ? `/projects/${target.id}` : `/receivers/${target.id}`);
+    revalidatePath(`${TARGET_HREF_PREFIX[target.type]}/${target.id}`);
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
@@ -224,12 +233,18 @@ export async function fileInboxItemAsDocument(
     const hash = await computeFileHash(blob);
 
     const matches =
-      target.type === "project" ? await findProjectDocumentsByHash(hash) : await findContactDocumentsByHash(hash);
+      target.type === "project"
+        ? await findProjectDocumentsByHash(hash)
+        : target.type === "contact"
+          ? await findContactDocumentsByHash(hash)
+          : await findOpportunityDocumentsByHash(hash);
 
     const sameTarget =
       target.type === "project"
         ? matches.find((m) => "projectId" in m && m.projectId === target.id)
-        : matches.find((m) => "contactId" in m && m.contactId === target.id);
+        : target.type === "contact"
+          ? matches.find((m) => "contactId" in m && m.contactId === target.id)
+          : matches.find((m) => "opportunityId" in m && m.opportunityId === target.id);
     if (sameTarget) {
       return { error: "duplicateSameTarget", duplicateFileName: sameTarget.fileName };
     }
@@ -238,18 +253,19 @@ export async function fileInboxItemAsDocument(
       return {
         error: null,
         needsConfirm: true,
-        matches: matches.map((m) =>
-          target.type === "project" && "projectId" in m
-            ? { label: m.projectLabel, fileName: m.fileName, href: `/projects/${m.projectId}` }
-            : "contactId" in m
-              ? { label: m.contactLabel, fileName: m.fileName, href: `/receivers/${m.contactId}` }
-              : { label: "Unknown", fileName: m.fileName, href: "#" }
-        ),
+        matches: matches.map((m) => {
+          const fileName = m.fileName;
+          if ("projectId" in m) return { label: m.projectLabel, fileName, href: `/projects/${m.projectId}` };
+          if ("contactId" in m) return { label: m.contactLabel, fileName, href: `/receivers/${m.contactId}` };
+          if ("opportunityId" in m) return { label: m.opportunityLabel, fileName, href: `/opportunities/${m.opportunityId}` };
+          return { label: "Unknown", fileName, href: "#" };
+        }),
       };
     }
 
     const path = buildDocumentPath(item.file_name ?? "file");
-    const bucket = target.type === "project" ? "project-documents" : "contact-documents";
+    const bucket =
+      target.type === "project" ? "project-documents" : target.type === "contact" ? "contact-documents" : "opportunity-documents";
     const { error: uploadError } = await supabase.storage
       .from(bucket)
       .upload(path, blob, { contentType: item.mime_type ?? "application/octet-stream" });
@@ -258,7 +274,9 @@ export async function fileInboxItemAsDocument(
     const addResult =
       target.type === "project"
         ? await addProjectDocument(target.id, documentType, path, item.file_name ?? "file", hash, target.trancheId)
-        : await addContactDocument(target.id, documentType, path, item.file_name ?? "file", hash);
+        : target.type === "contact"
+          ? await addContactDocument(target.id, documentType, path, item.file_name ?? "file", hash)
+          : await addOpportunityDocument(target.id, documentType, path, item.file_name ?? "file", hash);
 
     if (addResult.error) {
       await supabase.storage.from(bucket).remove([path]);
@@ -268,7 +286,7 @@ export async function fileInboxItemAsDocument(
     await markFiled(supabase, item, target, addResult.id ?? null);
 
     revalidatePath("/inbox");
-    revalidatePath(target.type === "project" ? `/projects/${target.id}` : `/receivers/${target.id}`);
+    revalidatePath(`${TARGET_HREF_PREFIX[target.type]}/${target.id}`);
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };

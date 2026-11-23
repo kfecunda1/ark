@@ -26,6 +26,7 @@ import {
 import { getContactProductRatio, getContactProductRatios, quickCreateContact } from "@/lib/actions/contacts";
 import { quickCreatePerson } from "@/lib/actions/people";
 import { getReceiverIntermediaryPersonIds } from "@/lib/actions/intermediaries";
+import { convertOpportunityToProject } from "@/lib/actions/opportunities";
 import { createClient } from "@/lib/supabase/client";
 import { buildDocumentPath, uploadFileWithProgress } from "@/lib/storage";
 import { disableSubmitButton } from "@/lib/forms";
@@ -63,6 +64,17 @@ interface ProjectFormProps {
   // Recovery Projects tab's "New Project" link (app/(app)/projects/
   // new/page.tsx reads ?recovery=true) — unticked otherwise.
   defaultRecovery?: boolean;
+  // Create mode only — arriving from an Opportunity's "Convert to
+  // project" action (app/(app)/projects/new/page.tsx reads
+  // ?fromOpportunity=<id>): defaultName/defaultProductOptions seed the
+  // Name field and product picker the same way edit mode's own
+  // project/projectProducts props would, and fromOpportunityId is
+  // carried through so that, once the project is actually saved,
+  // convertOpportunityToProject can move the opportunity's documents/
+  // notes over and mark it converted.
+  defaultName?: string;
+  defaultProductOptions?: string[];
+  fromOpportunityId?: string;
   // Settings → Defaults' "Show Recovery" toggle (supabase/migrations/
   // 024_show_recovery.sql) — off hides the Recovery checkbox entirely.
   // An already-recovery project being edited keeps its is_recovery
@@ -92,6 +104,9 @@ export function ProjectForm({
   documentTypes,
   defaultCurrency,
   defaultRecovery,
+  defaultName,
+  defaultProductOptions,
+  fromOpportunityId,
   showRecovery,
   lang = "en",
 }: ProjectFormProps) {
@@ -139,7 +154,11 @@ export function ProjectForm({
 
   // ---- Product options + ratio auto-fill (snapshot, not live) -------
   const [productOptions, setProductOptions] = useState<string[]>(
-    projectProducts.length > 0 ? projectProducts.map((p) => p.product) : [""]
+    projectProducts.length > 0
+      ? projectProducts.map((p) => p.product)
+      : defaultProductOptions && defaultProductOptions.length > 0
+        ? defaultProductOptions
+        : [""]
   );
   const [matchedContactId, setMatchedContactId] = useState<string | null>(project?.matched_contact_id ?? null);
   const [ratioReal, setRatioReal] = useState(project?.ratio_real ?? "");
@@ -350,6 +369,18 @@ export function ProjectForm({
 
     const params = new URLSearchParams();
     if (failedNames.length > 0) params.set("failedDocs", failedNames.join(","));
+
+    if (fromOpportunityId) {
+      try {
+        const convertResult = await convertOpportunityToProject(fromOpportunityId, projectId);
+        if (convertResult.error) {
+          params.set("opportunityMoveError", resolveError(convertResult.error, lang) ?? convertResult.error);
+        }
+      } catch (err) {
+        params.set("opportunityMoveError", err instanceof Error ? err.message : t.common.somethingWentWrong);
+      }
+    }
+
     const query = params.toString() ? `?${params.toString()}` : "";
     router.push(`/projects/${projectId}${query}`);
   }
@@ -379,7 +410,7 @@ export function ProjectForm({
             id="name"
             name="name"
             required
-            defaultValue={project?.name ?? ""}
+            defaultValue={project?.name ?? defaultName ?? ""}
             className={fieldClass}
           />
         </div>

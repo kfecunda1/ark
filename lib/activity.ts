@@ -28,6 +28,11 @@ export function activityFilterLabel(filter: ActivityFilter, lang: Lang): string 
   return getDictionary(lang).activity.filters[filter];
 }
 
+// Opportunities (supabase/migrations/034_opportunities.sql) have no
+// filter bucket of their own here — rows for 'opportunity'/
+// 'opportunity_document' only show up under "All" (no filter applied),
+// same as a handful of other entity types (backup, password_change, …)
+// that predate this file's three-bucket filter.
 export const ACTIVITY_FILTER_ENTITY_TYPES: Record<ActivityFilter, ActivityEntityType[]> = {
   project: ["project", "project_step", "project_product", "project_intermediary", "project_tranche"],
   contact: ["contact", "contact_product", "receiver_intermediary"],
@@ -60,6 +65,8 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   project_intermediary: "Project intermediary",
   status: "Status",
   project_tranche: "Tranche",
+  opportunity: "Opportunity",
+  opportunity_document: "Opportunity document",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -88,7 +95,8 @@ export function isDocumentEntity(entityType: ActivityEntityType): boolean {
     entityType === "note" ||
     entityType === "receiver_intermediary" ||
     entityType === "project_intermediary" ||
-    entityType === "project_tranche"
+    entityType === "project_tranche" ||
+    entityType === "opportunity_document"
   );
 }
 
@@ -127,6 +135,19 @@ const FIELDS_DESCRIBED_SEPARATELY = new Set([
   // Tranche N" / "moved to General") — see log_project_document_
   // activity() in supabase/migrations/021_tranche_documents.sql.
   "tranche_id",
+  // opportunities (supabase/migrations/034_opportunities.sql) —
+  // converted_to_type gets its own dedicated chip below, and
+  // converted_to_id is just its id counterpart, not worth repeating.
+  // "title" is NOT listed here even though opportunities' own trigger
+  // gives it the generic "name" chip treatment (its own details key is
+  // literally 'name', not 'title' — see log_opportunity_activity()):
+  // this set has no per-entity-type scoping, and notes also have a
+  // `title` column that is NOT given a dedicated pair chip, so a
+  // blanket exclusion would silently drop note title changes instead.
+  // activityDetailChips filters 'title' out of the generic list itself,
+  // scoped to entity_type === "opportunity" only.
+  "converted_to_type",
+  "converted_to_id",
 ]);
 
 function asPair<T>(value: T | [T, T] | undefined): [T, T] | null {
@@ -166,7 +187,20 @@ export function activityDetailChips(row: ActivityLog, lang: Lang = "en"): string
   }
 
   if (Array.isArray(details.status)) {
-    chips.push(c.statusTransition(details.status[0] ?? "—", details.status[1] ?? "—"));
+    // Opportunities (supabase/migrations/034_opportunities.sql) reuse
+    // this same generic details.status pair, but their status values
+    // ('open'/'converted'/'closed') need their own translated labels —
+    // every other entity_type using this field (projects) already
+    // carries admin-managed, already-display-ready status names.
+    const opportunityStatusLabels: Record<string, string> =
+      row.entity_type === "opportunity" ? c.opportunityStatusLabels : {};
+    const from = opportunityStatusLabels[details.status[0] ?? ""] ?? details.status[0] ?? "—";
+    const to = opportunityStatusLabels[details.status[1] ?? ""] ?? details.status[1] ?? "—";
+    chips.push(c.statusTransition(from, to));
+  }
+
+  if (details.converted_to_type) {
+    chips.push(details.converted_to_type === "project" ? c.convertedToProject : c.convertedToReceiver);
   }
 
   const priorityPair = asPair(details.priority);
@@ -265,7 +299,9 @@ export function activityDetailChips(row: ActivityLog, lang: Lang = "en"): string
     chips.push(c.movedPosition(String(details.position[0]), String(details.position[1])));
   }
 
-  const rest = (details.fields ?? []).filter((f) => !FIELDS_DESCRIBED_SEPARATELY.has(f));
+  const rest = (details.fields ?? []).filter(
+    (f) => !FIELDS_DESCRIBED_SEPARATELY.has(f) && !(f === "title" && row.entity_type === "opportunity")
+  );
   if (rest.length > 0) {
     chips.push(c.fieldsChanged(rest.map((f) => fieldLabel(f, row.entity_type, lang)).join(", ")));
   }
@@ -275,7 +311,7 @@ export function activityDetailChips(row: ActivityLog, lang: Lang = "en"): string
 
 /** The row an activity row points at. */
 export interface ActivityTarget {
-  table: "projects" | "contacts" | "people";
+  table: "projects" | "contacts" | "people" | "opportunities";
   id: string;
 }
 
@@ -285,6 +321,8 @@ export function activityTarget(row: ActivityLog): ActivityTarget | null {
       return { table: "projects", id: row.entity_id };
     case "contact":
       return { table: "contacts", id: row.entity_id };
+    case "opportunity":
+      return { table: "opportunities", id: row.entity_id };
     // Documents and products have no page of their own, so they point
     // at their owner.
     case "project_document":
@@ -297,13 +335,16 @@ export function activityTarget(row: ActivityLog): ActivityTarget | null {
     case "contact_document":
     case "receiver_intermediary":
       return row.details?.parent_id ? { table: "contacts", id: row.details.parent_id } : null;
-    // A note's parent is either a project or a contact (or neither),
-    // chosen dynamically per row instead of being fixed by entity_type.
+    case "opportunity_document":
+      return row.details?.parent_id ? { table: "opportunities", id: row.details.parent_id } : null;
+    // A note's parent is a project, a contact, or an opportunity (or
+    // none), chosen dynamically per row instead of being fixed by
+    // entity_type.
     case "note":
       if (!row.details?.parent_id || !row.details?.parent_type) return null;
-      return row.details.parent_type === "project"
-        ? { table: "projects", id: row.details.parent_id }
-        : { table: "contacts", id: row.details.parent_id };
+      if (row.details.parent_type === "project") return { table: "projects", id: row.details.parent_id };
+      if (row.details.parent_type === "opportunity") return { table: "opportunities", id: row.details.parent_id };
+      return { table: "contacts", id: row.details.parent_id };
     case "person":
       return { table: "people", id: row.entity_id };
     default:
@@ -315,6 +356,7 @@ const TARGET_HREF_PREFIX: Record<ActivityTarget["table"], string> = {
   projects: "/projects",
   contacts: "/receivers",
   people: "/people",
+  opportunities: "/opportunities",
 };
 
 /**

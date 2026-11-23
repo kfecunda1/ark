@@ -10,9 +10,10 @@ import { isCurrentUserAdmin } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { personLabel } from "@/lib/people";
 import { displayProduct, getProjectProductsByProjectIds } from "@/lib/project-products";
+import { OpportunityStatusBadge } from "@/components/opportunities/badges";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
-import type { Contact, Person, Project } from "@/lib/types";
+import type { Contact, Opportunity, Person, Project } from "@/lib/types";
 
 interface IntermediaryReceiverRow {
   id: string;
@@ -49,13 +50,17 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
     isAdmin,
     { data: receiverIntermediariesData },
     { data: projectIntermediariesData },
+    { data: opportunitiesData },
   ] = await Promise.all([
     supabase.from("contacts").select("id, full_name, archived_at").eq("contact_person_id", id).order("full_name"),
     supabase.from("projects").select("*").eq("contact_person_id", id).order("created_at", { ascending: false }),
     isCurrentUserAdmin(),
     supabase.from("receiver_intermediaries").select("receiver_id").eq("person_id", id),
     supabase.from("project_intermediaries").select("project_id").eq("person_id", id),
+    supabase.from("opportunities").select("*").eq("intermediary_person_id", id).order("created_at", { ascending: false }),
   ]);
+
+  const opportunitiesFromContact = (opportunitiesData as Opportunity[] | null) ?? [];
 
   const linkedReceivers = (receiversData as Pick<Contact, "id" | "full_name" | "archived_at">[] | null) ?? [];
   const linkedProjects = (projectsData as Project[] | null) ?? [];
@@ -210,6 +215,26 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
               >
                 <span className="min-w-0 flex-1 truncate text-sm text-white/80">{project.name}</span>
                 <span className="shrink-0 text-xs text-white/35">{project.final_product ?? t.common.productNotDecided}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.opportunities.fromThisContact}</h2>
+        {opportunitiesFromContact.length === 0 ? (
+          <p className="text-sm text-white/35">{t.opportunities.noneFromThisContact}</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {opportunitiesFromContact.map((opportunity) => (
+              <Link
+                key={opportunity.id}
+                href={`/opportunities/${opportunity.id}`}
+                className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm text-white/80">{opportunity.title}</span>
+                <OpportunityStatusBadge status={opportunity.status} lang={lang} />
               </Link>
             ))}
           </div>

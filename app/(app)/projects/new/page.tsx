@@ -11,11 +11,11 @@ import { getDictionary } from "@/lib/i18n";
 import type { Person } from "@/lib/types";
 
 interface NewProjectPageProps {
-  searchParams: Promise<{ recovery?: string }>;
+  searchParams: Promise<{ recovery?: string; fromOpportunity?: string }>;
 }
 
 export default async function NewProjectPage({ searchParams }: NewProjectPageProps) {
-  const { recovery } = await searchParams;
+  const { recovery, fromOpportunity } = await searchParams;
   const lang = await getCurrentUserLanguage();
   const t = getDictionary(lang);
   const supabase = await createClient();
@@ -28,6 +28,50 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
       getActiveDocumentTypes(),
       getAppSettings(),
     ]);
+
+  // Pre-fill from an Opportunity's "Convert to project" action
+  // (components/opportunities/opportunity-actions.tsx links here with
+  // ?fromOpportunity=<id>) — title becomes the Name field, its product
+  // guesses seed the product picker, and its intermediary (if any)
+  // seeds the chain. Nothing is written yet; the actual move of
+  // documents/notes and marking the opportunity converted only happens
+  // once this form is actually submitted (components/projects/
+  // project-form.tsx's create flow calls convertOpportunityToProject
+  // right after the project itself is saved).
+  let opportunityDefaultName: string | undefined;
+  let opportunityDefaultProducts: string[] | undefined;
+  let opportunityIntermediary: { key: string; personId: string; label: string } | null = null;
+  if (fromOpportunity) {
+    const { data: opportunityRow } = await supabase
+      .from("opportunities")
+      .select("title, intermediary_person_id")
+      .eq("id", fromOpportunity)
+      .maybeSingle();
+    if (opportunityRow) {
+      opportunityDefaultName = opportunityRow.title as string;
+      const { data: opportunityProductRows } = await supabase
+        .from("opportunity_products")
+        .select("product")
+        .eq("opportunity_id", fromOpportunity)
+        .order("sort_order");
+      opportunityDefaultProducts = ((opportunityProductRows as { product: string }[] | null) ?? []).map((r) => r.product);
+      const intermediaryPersonId = opportunityRow.intermediary_person_id as string | null;
+      if (intermediaryPersonId) {
+        const { data: personRow } = await supabase
+          .from("people")
+          .select("id, first_name, last_name")
+          .eq("id", intermediaryPersonId)
+          .maybeSingle();
+        if (personRow) {
+          opportunityIntermediary = {
+            key: personRow.id as string,
+            personId: personRow.id as string,
+            label: personLabel(personRow as Pick<Person, "first_name" | "last_name">),
+          };
+        }
+      }
+    }
+  }
 
   const receivers = (
     (receiversData as { id: string; full_name: string; nickname: string | null }[] | null) ?? []
@@ -62,6 +106,10 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
         documentTypes={documentTypes}
         defaultCurrency={appSettings.default_currency}
         defaultRecovery={defaultRecovery}
+        defaultName={opportunityDefaultName}
+        defaultProductOptions={opportunityDefaultProducts}
+        projectIntermediaries={opportunityIntermediary ? [opportunityIntermediary] : []}
+        fromOpportunityId={fromOpportunity}
         showRecovery={appSettings.show_recovery}
         lang={lang}
       />

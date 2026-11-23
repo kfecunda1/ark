@@ -63,6 +63,7 @@ export interface BriefingSnapshot {
   notMatchedDocsReceivedCount: number;
   inboxToFileCount: number;
   projectsMissingDocumentsCount: number;
+  openOpportunitiesCount: number;
   // Admin-only figures — never an amount or a percentage, just counts/
   // days, same as every other payout-adjacent surface in this app.
   payoutsWithoutCommissionCount: number;
@@ -79,12 +80,18 @@ const STUCK_PROJECTS_LIMIT = 5;
 // matched, Inbox) scoped down to just the counts/top-N this message
 // needs.
 export async function getBriefingSnapshot(supabase: SupabaseClient, lang: Lang = "en"): Promise<BriefingSnapshot> {
-  const [{ data: statusesData }, { data: appSettingsData }, { data: projectsData }, { count: inboxToFileCount }] =
-    await Promise.all([
+  const [
+    { data: statusesData },
+    { data: appSettingsData },
+    { data: projectsData },
+    { count: inboxToFileCount },
+    { count: openOpportunitiesCount },
+  ] = await Promise.all([
       supabase.from("statuses").select("name, kind"),
       supabase.from("app_settings").select("show_recovery, stuck_after_days").maybeSingle(),
       supabase.from("projects").select("*").is("archived_at", null),
       supabase.from("inbox_items").select("*", { count: "exact", head: true }).eq("status", "new"),
+      supabase.from("opportunities").select("*", { count: "exact", head: true }).eq("status", "open"),
     ]);
 
   const statuses = (statusesData as StatusLike[] | null) ?? [];
@@ -278,6 +285,7 @@ export async function getBriefingSnapshot(supabase: SupabaseClient, lang: Lang =
     notMatchedDocsReceivedCount,
     inboxToFileCount: inboxToFileCount ?? 0,
     projectsMissingDocumentsCount,
+    openOpportunitiesCount: openOpportunitiesCount ?? 0,
     payoutsWithoutCommissionCount,
     daysSinceBackup,
   };
@@ -350,6 +358,10 @@ export function buildBriefingText(snapshot: BriefingSnapshot, isAdmin: boolean, 
 
   if (snapshot.projectsMissingDocumentsCount > 0) {
     sections.push(t.briefing.missingDocuments(snapshot.projectsMissingDocumentsCount));
+  }
+
+  if (snapshot.openOpportunitiesCount > 0) {
+    sections.push(t.briefing.openOpportunities(snapshot.openOpportunitiesCount));
   }
 
   if (isAdmin) {

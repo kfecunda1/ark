@@ -7,19 +7,19 @@ import { getDictionary, type Lang } from "@/lib/i18n";
 // UI-naming-vs-database-naming note. The database's `contacts` table
 // backs "contact" results; the database's `people` table backs
 // "person" results.
-export type SearchResultType = "project" | "contact" | "document" | "note" | "person";
+export type SearchResultType = "project" | "contact" | "opportunity" | "document" | "note" | "person";
 
 export interface SearchResult {
   type: SearchResultType;
   id: string;
   title: string;
   subtitle: string;
-  // document results only: which project to navigate to, since a
-  // document has no page of its own. note results reuse both fields:
-  // a note has no page of its own either, so it navigates to whichever
-  // parent it's linked to (or nowhere, if unlinked).
+  // document results only: which project/opportunity to navigate to,
+  // since a document has no page of its own. note results reuse both
+  // fields: a note has no page of its own either, so it navigates to
+  // whichever parent it's linked to (or nowhere, if unlinked).
   parentId?: string;
-  parentType?: "project" | "contact";
+  parentType?: "project" | "contact" | "opportunity";
   // project results only — shown as a Recovery badge; the detail page
   // it links to (searchResultHref below) is the same /projects/[id]
   // either way, Projects and Recovery Projects being the same table.
@@ -69,6 +69,17 @@ async function fetchContactsByIds(supabase: SupabaseBrowserClient, ids: string[]
   return (data as ContactFields[] | null) ?? [];
 }
 
+interface OpportunityFields {
+  id: string;
+  title: string;
+}
+
+async function fetchOpportunitiesByIds(supabase: SupabaseBrowserClient, ids: string[]): Promise<OpportunityFields[]> {
+  if (ids.length === 0) return [];
+  const { data } = await supabase.from("opportunities").select("id, title").in("id", ids);
+  return (data as OpportunityFields[] | null) ?? [];
+}
+
 export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Promise<SearchResult[]> {
   const query = rawQuery.trim();
   if (query.length < 2) return [];
@@ -78,21 +89,27 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
   const likePattern = `%${escapeLike(query)}%`;
   const orSafePattern = `%${escapeLike(sanitizeForOrFilter(query))}%`;
 
-  const [contactsRes, projectDocsRes, notesRes, peopleRes] = await Promise.all([
+  const [contactsRes, opportunitiesRes, projectDocsRes, opportunityDocsRes, notesRes, peopleRes] = await Promise.all([
     supabase
       .from("contacts")
       .select("id, full_name, nickname")
       .is("archived_at", null)
       .or(`full_name.ilike.${orSafePattern},nickname.ilike.${orSafePattern}`)
       .limit(RESULT_LIMIT),
+    supabase.from("opportunities").select("id, title, status").ilike("title", likePattern).limit(RESULT_LIMIT),
     supabase
       .from("project_documents")
       .select("id, file_name, project_id, document_type, tranche_id")
       .ilike("file_name", likePattern)
       .limit(RESULT_LIMIT),
     supabase
+      .from("opportunity_documents")
+      .select("id, file_name, opportunity_id, document_type")
+      .ilike("file_name", likePattern)
+      .limit(RESULT_LIMIT),
+    supabase
       .from("notes")
-      .select("id, title, content, project_id, contact_id")
+      .select("id, title, content, project_id, contact_id, opportunity_id")
       .or(`title.ilike.${orSafePattern},content.ilike.${orSafePattern}`)
       .limit(RESULT_LIMIT),
     supabase
@@ -111,13 +128,23 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
   ]);
 
   const contactMatches = (contactsRes.data as { id: string; full_name: string; nickname: string | null }[] | null) ?? [];
+  const opportunityMatches = (opportunitiesRes.data as { id: string; title: string; status: string }[] | null) ?? [];
   const projectDocMatches =
     (projectDocsRes.data as
       | { id: string; file_name: string; project_id: string; document_type: string; tranche_id: string | null }[]
       | null) ?? [];
+  const opportunityDocMatches =
+    (opportunityDocsRes.data as { id: string; file_name: string; opportunity_id: string; document_type: string }[] | null) ?? [];
   const noteMatches =
     (notesRes.data as
-      | { id: string; title: string | null; content: string; project_id: string | null; contact_id: string | null }[]
+      | {
+          id: string;
+          title: string | null;
+          content: string;
+          project_id: string | null;
+          contact_id: string | null;
+          opportunity_id: string | null;
+        }[]
       | null) ?? [];
   const personMatches =
     (peopleRes.data as
@@ -160,17 +187,29 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
 
   const noteProjectIds = [...new Set(noteMatches.map((n) => n.project_id).filter((id): id is string => Boolean(id)))];
   const noteContactIds = [...new Set(noteMatches.map((n) => n.contact_id).filter((id): id is string => Boolean(id)))];
+  const noteOpportunityIds = [
+    ...new Set(noteMatches.map((n) => n.opportunity_id).filter((id): id is string => Boolean(id))),
+  ];
 
   // Parent lookup for the Documents and Notes groups: a matched row's
-  // project/contact may not itself match the text search above (only
-  // its own text did), so its display name needs its own fetch. The
-  // same fetch-by-id helpers also pick up this person's intermediary
-  // projects/receivers, which never matched the text search on their
-  // own name either.
+  // project/contact/opportunity may not itself match the text search
+  // above (only its own text did), so its display name needs its own
+  // fetch. The same fetch-by-id helpers also pick up this person's
+  // intermediary projects/receivers, which never matched the text
+  // search on their own name either.
   const docTrancheIds = [...new Set(projectDocMatches.map((d) => d.tranche_id).filter((id): id is string => Boolean(id)))];
 
-  const [{ data: projectRows }, docParentProjects, noteParentProjects, noteParentContacts, intermediaryProjects, intermediaryReceivers, docTranchesRes] =
-    await Promise.all([
+  const [
+    { data: projectRows },
+    docParentProjects,
+    noteParentProjects,
+    noteParentContacts,
+    noteParentOpportunities,
+    docParentOpportunities,
+    intermediaryProjects,
+    intermediaryReceivers,
+    docTranchesRes,
+  ] = await Promise.all([
       supabase
         .from("projects")
         .select("id, name, nickname, final_product, is_recovery")
@@ -179,6 +218,8 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
       fetchProjectsByIds(supabase, [...new Set(projectDocMatches.map((d) => d.project_id))]),
       fetchProjectsByIds(supabase, noteProjectIds),
       fetchContactsByIds(supabase, noteContactIds),
+      fetchOpportunitiesByIds(supabase, noteOpportunityIds),
+      fetchOpportunitiesByIds(supabase, [...new Set(opportunityDocMatches.map((d) => d.opportunity_id))]),
       fetchProjectsByIds(supabase, intermediaryProjectIds),
       fetchContactsByIds(supabase, intermediaryReceiverIds),
       docTrancheIds.length > 0
@@ -224,10 +265,22 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
     subtitle: t.search.contactLabel,
   }));
 
+  const opportunityResults: SearchResult[] = opportunityMatches.map((opportunity) => ({
+    type: "opportunity",
+    id: opportunity.id,
+    title: opportunity.title,
+    subtitle: t.opportunities.statusLabels[opportunity.status as "open" | "converted" | "closed"] ?? t.search.opportunityLabel,
+  }));
+
   const projectById = new Map(
     [...projectMatches, ...docParentProjects, ...noteParentProjects].map((p): [string, ProjectFields] => [p.id, p])
   );
   const contactById = new Map(noteParentContacts.map((c): [string, ContactFields] => [c.id, c]));
+  const opportunityById = new Map(
+    [...opportunityMatches, ...noteParentOpportunities, ...docParentOpportunities].map(
+      (o): [string, OpportunityFields] => [o.id, o]
+    )
+  );
 
   const documentResults: SearchResult[] = projectDocMatches.map((doc) => {
     const project = projectById.get(doc.project_id);
@@ -244,6 +297,21 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
       ),
       parentId: doc.project_id,
       parentType: "project",
+    };
+  });
+
+  const opportunityDocumentResults: SearchResult[] = opportunityDocMatches.map((doc) => {
+    const opportunity = opportunityById.get(doc.opportunity_id);
+    return {
+      type: "document",
+      id: doc.id,
+      title: doc.file_name,
+      subtitle: t.search.opportunityDocumentSubtitle(
+        doc.document_type,
+        opportunity ? opportunity.title : t.opportunities.opportunityFallback
+      ),
+      parentId: doc.opportunity_id,
+      parentType: "opportunity",
     };
   });
 
@@ -271,10 +339,29 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
         parentType: "contact",
       };
     }
+    if (note.opportunity_id) {
+      const opportunity = opportunityById.get(note.opportunity_id);
+      return {
+        type: "note",
+        id: note.id,
+        title,
+        subtitle: t.search.noteOnOpportunity(opportunity ? opportunity.title : t.opportunities.opportunityFallback),
+        parentId: note.opportunity_id,
+        parentType: "opportunity",
+      };
+    }
     return { type: "note", id: note.id, title, subtitle: t.search.noteLabel };
   });
 
-  return [...projectResults, ...contactResults, ...documentResults, ...noteResults, ...personResults];
+  return [
+    ...projectResults,
+    ...contactResults,
+    ...opportunityResults,
+    ...documentResults,
+    ...opportunityDocumentResults,
+    ...noteResults,
+    ...personResults,
+  ];
 }
 
 export function searchResultHref(result: SearchResult): string {
@@ -283,11 +370,14 @@ export function searchResultHref(result: SearchResult): string {
       return `/projects/${result.id}`;
     case "contact":
       return `/receivers/${result.id}`;
+    case "opportunity":
+      return `/opportunities/${result.id}`;
     case "document":
-      return `/projects/${result.parentId}`;
+      return result.parentType === "opportunity" ? `/opportunities/${result.parentId}` : `/projects/${result.parentId}`;
     case "note":
       if (result.parentType === "project") return `/projects/${result.parentId}`;
       if (result.parentType === "contact") return `/receivers/${result.parentId}`;
+      if (result.parentType === "opportunity") return `/opportunities/${result.parentId}`;
       return `/notes/${result.id}/edit`;
     case "person":
       return `/people/${result.id}`;

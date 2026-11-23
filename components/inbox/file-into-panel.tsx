@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { EntityPicker, type EntityOption } from "@/components/entity-picker";
 import { DuplicateWarningBanner } from "@/components/duplicate-warning-banner";
 import { fileInboxItemAsDocument, fileInboxItemAsNote, type InboxDuplicateMatch } from "@/lib/actions/inbox";
+import { quickCreateOpportunity } from "@/lib/actions/opportunities";
+import { quickCreatePerson } from "@/lib/actions/people";
 import { createClient } from "@/lib/supabase/client";
 import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { DocumentTypeRecord, ProjectTranche } from "@/lib/types";
 
 export interface FileIntoDestination {
-  type: "project" | "contact";
+  type: "project" | "contact" | "opportunity";
   id: string;
   label: string;
 }
@@ -19,6 +21,10 @@ interface FileIntoPanelProps {
   hasFile: boolean;
   projectOptions: EntityOption[];
   contactOptions: EntityOption[];
+  opportunityOptions: EntityOption[];
+  // The intermediary picker inside "+ New opportunity" below — the
+  // same People list every other intermediary picker in the app uses.
+  peopleOptions: EntityOption[];
   documentTypes: DocumentTypeRecord[];
   // Pre-fills the destination/document type (a clicked "Suggested: X —
   // File here" chip, components/inbox/inbox-tabs.tsx) — read only once,
@@ -42,6 +48,8 @@ export function FileIntoPanel({
   hasFile,
   projectOptions,
   contactOptions,
+  opportunityOptions,
+  peopleOptions,
   documentTypes,
   initialDestination,
   initialDocumentType,
@@ -50,19 +58,56 @@ export function FileIntoPanel({
   lang = "en",
 }: FileIntoPanelProps) {
   const t = getDictionary(lang);
-  const [destinationType, setDestinationType] = useState<"project" | "contact">(initialDestination?.type ?? "project");
+  const [destinationType, setDestinationType] = useState<"project" | "contact" | "opportunity">(
+    initialDestination?.type ?? "project"
+  );
   const [selectedProject, setSelectedProject] = useState<EntityOption | null>(
     initialDestination?.type === "project" ? { id: initialDestination.id, label: initialDestination.label } : null
   );
   const [selectedContact, setSelectedContact] = useState<EntityOption | null>(
     initialDestination?.type === "contact" ? { id: initialDestination.id, label: initialDestination.label } : null
   );
+  const [opportunityList, setOpportunityList] = useState(opportunityOptions);
+  const [selectedOpportunity, setSelectedOpportunity] = useState<EntityOption | null>(
+    initialDestination?.type === "opportunity" ? { id: initialDestination.id, label: initialDestination.label } : null
+  );
+  const [creatingOpportunity, setCreatingOpportunity] = useState(false);
+  const [newOpportunityTitle, setNewOpportunityTitle] = useState("");
+  const [newOpportunityIntermediary, setNewOpportunityIntermediary] = useState<EntityOption | null>(null);
+  const [isCreatingOpportunity, setIsCreatingOpportunity] = useState(false);
   const [tranches, setTranches] = useState<ProjectTranche[]>([]);
   const [trancheValue, setTrancheValue] = useState(TRANCHE_GENERAL);
   const [documentType, setDocumentType] = useState(initialDocumentType || documentTypes[0]?.name || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingMatches, setPendingMatches] = useState<InboxDuplicateMatch[] | null>(null);
+
+  async function handleCreateOpportunity() {
+    const title = newOpportunityTitle.trim();
+    if (!title) {
+      setError(t.opportunities.titleRequiredToCreate);
+      return;
+    }
+    setError(null);
+    setIsCreatingOpportunity(true);
+    try {
+      const result = await quickCreateOpportunity({ title, intermediaryPersonId: newOpportunityIntermediary?.id ?? null });
+      if (result.error || !result.opportunity) {
+        setError(resolveError(result.error, lang) ?? t.opportunityForm.failedToCreate);
+        return;
+      }
+      const created = { id: result.opportunity.id, label: result.opportunity.title };
+      setOpportunityList((prev) => [...prev, created]);
+      setSelectedOpportunity(created);
+      setCreatingOpportunity(false);
+      setNewOpportunityTitle("");
+      setNewOpportunityIntermediary(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
+    } finally {
+      setIsCreatingOpportunity(false);
+    }
+  }
 
   useEffect(() => {
     if (destinationType !== "project" || !selectedProject) return;
@@ -81,28 +126,40 @@ export function FileIntoPanel({
     setTrancheValue(TRANCHE_GENERAL);
   }
 
-  function selectDestinationType(type: "project" | "contact") {
+  function selectDestinationType(type: "project" | "contact" | "opportunity") {
     setDestinationType(type);
     setSelectedProject(null);
     setSelectedContact(null);
+    setSelectedOpportunity(null);
+    setCreatingOpportunity(false);
     setTranches([]);
     setTrancheValue(TRANCHE_GENERAL);
   }
 
-  function currentTarget(): { type: "project" | "contact"; id: string; trancheId: string | null } | null {
+  function currentTarget(): { type: "project" | "contact" | "opportunity"; id: string; trancheId: string | null } | null {
     if (destinationType === "project") {
       if (!selectedProject) return null;
       const tranche = tranches.find((t) => String(t.tranche_number) === trancheValue);
       return { type: "project", id: selectedProject.id, trancheId: tranche?.id ?? null };
     }
-    if (!selectedContact) return null;
-    return { type: "contact", id: selectedContact.id, trancheId: null };
+    if (destinationType === "contact") {
+      if (!selectedContact) return null;
+      return { type: "contact", id: selectedContact.id, trancheId: null };
+    }
+    if (!selectedOpportunity) return null;
+    return { type: "opportunity", id: selectedOpportunity.id, trancheId: null };
   }
 
   async function handleFile(confirmDuplicate: boolean) {
     const target = currentTarget();
     if (!target) {
-      setError(destinationType === "project" ? t.inboxFile.pickProjectFirst : t.inboxFile.pickReceiverFirst);
+      setError(
+        destinationType === "project"
+          ? t.inboxFile.pickProjectFirst
+          : destinationType === "contact"
+            ? t.inboxFile.pickReceiverFirst
+            : t.opportunities.pickOpportunityFirst
+      );
       return;
     }
 
@@ -112,9 +169,7 @@ export function FileIntoPanel({
       if (hasFile) {
         const result = await fileInboxItemAsDocument(
           itemId,
-          target.type === "project"
-            ? { type: "project", id: target.id, trancheId: target.trancheId }
-            : { type: "contact", id: target.id },
+          target.type === "project" ? { type: "project", id: target.id, trancheId: target.trancheId } : { type: target.type, id: target.id },
           documentType,
           confirmDuplicate
         );
@@ -139,7 +194,11 @@ export function FileIntoPanel({
       }
       setPendingMatches(null);
       const destinationLabel =
-        (target.type === "project" ? selectedProject?.label : selectedContact?.label) ?? "destination";
+        (target.type === "project"
+          ? selectedProject?.label
+          : target.type === "contact"
+            ? selectedContact?.label
+            : selectedOpportunity?.label) ?? "destination";
       onFiled(destinationLabel);
     } catch (err) {
       setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
@@ -169,6 +228,15 @@ export function FileIntoPanel({
         >
           {t.inboxFile.tabReceiver}
         </button>
+        <button
+          type="button"
+          onClick={() => selectDestinationType("opportunity")}
+          className={`rounded px-2 py-1 text-xs font-medium transition-colors duration-150 ease-out ${
+            destinationType === "opportunity" ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
+          }`}
+        >
+          {t.inboxFile.tabOpportunity}
+        </button>
       </div>
 
       {destinationType === "project" ? (
@@ -190,7 +258,7 @@ export function FileIntoPanel({
           lang={lang}
           onSelect={selectProject}
         />
-      ) : (
+      ) : destinationType === "contact" ? (
         <EntityPicker
           key="contact"
           name="inbox_target_contact"
@@ -202,6 +270,77 @@ export function FileIntoPanel({
           lang={lang}
           onSelect={setSelectedContact}
         />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {!creatingOpportunity && (
+            <EntityPicker
+              key="opportunity"
+              name="inbox_target_opportunity"
+              label={t.opportunities.opportunityLabel}
+              options={opportunityList}
+              defaultId={initialDestination?.type === "opportunity" ? initialDestination.id : undefined}
+              entityNoun={lang === "es" ? "oportunidad" : "opportunity"}
+              entityNounPlural={lang === "es" ? "oportunidades" : "opportunities"}
+              lang={lang}
+              onSelect={setSelectedOpportunity}
+            />
+          )}
+          {!creatingOpportunity ? (
+            <button
+              type="button"
+              onClick={() => setCreatingOpportunity(true)}
+              className="w-fit text-xs font-medium text-accent-soft hover:underline"
+            >
+              {t.opportunities.newOpportunityAction}
+            </button>
+          ) : (
+            <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
+              <label className="mb-1.5 block text-xs font-medium text-white/55">{t.opportunityForm.titleLabel}</label>
+              <input
+                autoFocus
+                value={newOpportunityTitle}
+                onChange={(e) => setNewOpportunityTitle(e.target.value)}
+                className="mb-2 w-full rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40"
+              />
+              <EntityPicker
+                name="new_opportunity_intermediary"
+                label={t.opportunityForm.intermediaryLabel}
+                options={peopleOptions}
+                entityNoun={lang === "es" ? "contacto" : "contact"}
+                entityNounPlural={lang === "es" ? "contactos" : "contacts"}
+                lang={lang}
+                onSelect={setNewOpportunityIntermediary}
+                onQuickCreate={async (name) => {
+                  const result = await quickCreatePerson({ name });
+                  return {
+                    option: result.person
+                      ? { id: result.person.id, label: [result.person.first_name, result.person.last_name].filter(Boolean).join(" ") }
+                      : null,
+                    error: resolveError(result.error, lang),
+                  };
+                }}
+              />
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleCreateOpportunity}
+                  disabled={isCreatingOpportunity}
+                  className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isCreatingOpportunity ? t.common.creating : t.opportunities.createAndSelect}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreatingOpportunity(false)}
+                  disabled={isCreatingOpportunity}
+                  className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
+                >
+                  {t.common.cancel}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {hasFile && (

@@ -38,7 +38,13 @@ import type { Contact, Note, Person, Project, ProjectDocument, ProjectProduct, P
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ failedDocs?: string; findReceivers?: string; uploadType?: string; composer?: string }>;
+  searchParams: Promise<{
+    failedDocs?: string;
+    findReceivers?: string;
+    uploadType?: string;
+    composer?: string;
+    opportunityMoveError?: string;
+  }>;
 }
 
 function isComposerKind(value: string | undefined): value is ComposerKind {
@@ -47,7 +53,7 @@ function isComposerKind(value: string | undefined): value is ComposerKind {
 
 export default async function ProjectDetailPage({ params, searchParams }: ProjectDetailPageProps) {
   const { id } = await params;
-  const { failedDocs, findReceivers, uploadType, composer } = await searchParams;
+  const { failedDocs, findReceivers, uploadType, composer, opportunityMoveError } = await searchParams;
   const initialComposerKind = isComposerKind(composer) ? composer : null;
   const failedDocNames = failedDocs ? failedDocs.split(",").filter(Boolean) : [];
   const lang = await getCurrentUserLanguage();
@@ -336,6 +342,12 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
           )}
         </div>
       </div>
+
+      {opportunityMoveError && (
+        <GlassCard interactive={false} className="mb-6 border-red-500/20 bg-red-500/10 p-4">
+          <p className="text-sm font-medium text-red-300">{t.opportunities.moveFailed(opportunityMoveError)}</p>
+        </GlassCard>
+      )}
 
       {failedDocNames.length > 0 && (
         <GlassCard interactive={false} className="mb-6 border-amber-500/25 bg-amber-500/[0.06] p-4">

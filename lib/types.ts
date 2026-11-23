@@ -139,7 +139,8 @@ export interface Profile {
 // supabase/migrations/022_telegram_inbox.sql.
 export type InboxItemKind = "text" | "document" | "photo" | "video";
 export type InboxItemStatus = "new" | "filed" | "dismissed";
-export type InboxFiledToType = "project" | "contact";
+// supabase/migrations/034_opportunities.sql added "opportunity".
+export type InboxFiledToType = "project" | "contact" | "opportunity";
 
 // "Too large for Telegram" has no column of its own — see lib/inbox.ts's
 // isTooLargeForTelegram for how it's derived (from file_size, not
@@ -395,6 +396,55 @@ export interface ContactDocument {
   created_at: string;
 }
 
+// supabase/migrations/034_opportunities.sql. A holding place for
+// documents and notes that arrive before a project or receiver exists
+// yet — converted_to_type/converted_to_id are set together, only once
+// status flips to 'converted' (enforced by a DB check both ways).
+export type OpportunityStatus = "open" | "converted" | "closed";
+export type OpportunityConvertedToType = "project" | "receiver";
+
+export interface Opportunity {
+  id: string;
+  title: string;
+  intermediary_person_id: string | null;
+  notes_summary: string | null;
+  status: OpportunityStatus;
+  converted_to_type: OpportunityConvertedToType | null;
+  converted_to_id: string | null;
+  closed_reason: string | null;
+  last_activity_at: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// An opportunity's 0-3 product options — same shape as ProjectProduct,
+// minus any "final product" concept (an opportunity never settles on
+// one; that only happens once it's converted into a real project).
+export interface OpportunityProduct {
+  id: string;
+  opportunity_id: string;
+  product: string;
+  sort_order: number;
+  created_at: string;
+}
+
+// Same text-FK-to-document_types(name) shape as ProjectDocumentType.
+export type OpportunityDocumentType = string;
+
+// Same shape as ProjectDocument, minus tranche_id — opportunities have
+// no tranches, so there's nothing for a document to be "moved" between.
+export interface OpportunityDocument {
+  id: string;
+  opportunity_id: string;
+  document_type: OpportunityDocumentType;
+  file_path: string | null;
+  file_name: string;
+  file_hash: string | null;
+  url: string | null;
+  created_at: string;
+}
+
 // The project timeline (components/projects/project-timeline.tsx),
 // replacing the old per-project Notes section. "note" was a legal kind
 // here through migration 013; migration 014 moved notes onto the notes
@@ -416,7 +466,8 @@ export interface ProjectStep {
 }
 
 // supabase/migrations/014_notes_projects_reminders.sql re-added
-// project_id - a note links to a project, a contact, or nothing.
+// project_id - a note links to a project, a contact, or (034_
+// opportunities.sql) an opportunity — never more than one.
 export interface Note {
   id: string;
   created_at: string;
@@ -429,6 +480,7 @@ export interface Note {
   reminder_done: boolean;
   project_id: string | null;
   contact_id: string | null;
+  opportunity_id: string | null;
 }
 
 // The app_settings table is a single row (see supabase/migrations/
@@ -471,7 +523,9 @@ export type ActivityEntityType =
   | "receiver_intermediary"
   | "project_intermediary"
   | "status"
-  | "project_tranche";
+  | "project_tranche"
+  | "opportunity"
+  | "opportunity_document";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
@@ -490,7 +544,7 @@ export interface ActivityDetails {
   // projects and contacts (supabase/migrations/033_nicknames.sql) — a
   // pair on update, same shape as full_name above.
   nickname?: [string | null, string | null];
-  parent_type?: "project" | "contact";
+  parent_type?: "project" | "contact" | "opportunity";
   parent_id?: string;
   document_type?: ProjectDocumentType;
   // project_document only — scalar on created/deleted, a pair on a
@@ -535,6 +589,14 @@ export interface ActivityDetails {
   tranche_number?: number;
   confirmed_on?: [string | null, string | null];
   paid_out_on?: [string | null, string | null];
+  // opportunity (supabase/migrations/034_opportunities.sql).
+  // intermediary_person_id is a scalar on created only (an update falls
+  // into the generic "fields changed" list, same as projects'
+  // contact_person_id); converted_to_type is a scalar set exactly once,
+  // when status flips to 'converted' — it's never reverted, so there's
+  // no before/after pair to show.
+  intermediary_person_id?: string | null;
+  converted_to_type?: OpportunityConvertedToType;
 }
 
 export interface ActivityLog {

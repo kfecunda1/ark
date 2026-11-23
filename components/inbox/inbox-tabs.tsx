@@ -31,8 +31,11 @@ interface InboxTabsProps {
   userNameById: Record<string, string>;
   projectOptions: EntityOption[];
   contactOptions: EntityOption[];
+  opportunityOptions: EntityOption[];
+  peopleOptions: EntityOption[];
   projectNameById: Record<string, string>;
   contactNameById: Record<string, string>;
+  opportunityNameById: Record<string, string>;
   signedUrlByPath: Record<string, string>;
   documentTypes: DocumentTypeRecord[];
   filedOpenUrlByItemId: Record<string, string>;
@@ -57,6 +60,7 @@ function destinationLabel(
   item: InboxItem,
   projectNameById: Record<string, string>,
   contactNameById: Record<string, string>,
+  opportunityNameById: Record<string, string>,
   trancheNumber: number | undefined,
   t: ReturnType<typeof getDictionary>
 ): { label: string; href: string } | null {
@@ -67,6 +71,10 @@ function destinationLabel(
       label: trancheNumber != null ? t.inbox.trancheLabel(name, trancheNumber) : name,
       href: `/projects/${item.filed_to_id}`,
     };
+  }
+  if (item.filed_to_type === "opportunity") {
+    const name = opportunityNameById[item.filed_to_id] ?? t.opportunities.opportunityFallback;
+    return { label: name, href: `/opportunities/${item.filed_to_id}` };
   }
   const name = contactNameById[item.filed_to_id] ?? t.inbox.receiverFallback;
   return { label: name, href: `/receivers/${item.filed_to_id}` };
@@ -141,8 +149,11 @@ export function InboxTabs({
   userNameById,
   projectOptions,
   contactOptions,
+  opportunityOptions,
+  peopleOptions,
   projectNameById,
   contactNameById,
+  opportunityNameById,
   signedUrlByPath,
   documentTypes,
   filedOpenUrlByItemId,
@@ -256,7 +267,7 @@ export function InboxTabs({
     searchLower === ""
       ? filedItems
       : filedItems.filter((item) => {
-          const dest = destinationLabel(item, projectNameById, contactNameById, filedTrancheNumberByItemId[item.id], t);
+          const dest = destinationLabel(item, projectNameById, contactNameById, opportunityNameById, filedTrancheNumberByItemId[item.id], t);
           return (
             itemLabel(item, t).toLowerCase().includes(searchLower) ||
             (dest?.label.toLowerCase().includes(searchLower) ?? false)
@@ -466,6 +477,7 @@ export function InboxTabs({
                 items={selectedItems}
                 projectOptions={projectOptions}
                 contactOptions={contactOptions}
+                opportunityOptions={opportunityOptions}
                 documentTypes={documentTypes}
                 onRemoveItem={removeFromBulkSelection}
                 onDone={() => {
@@ -608,6 +620,8 @@ export function InboxTabs({
                         hasFile={Boolean(item.storage_path)}
                         projectOptions={projectOptions}
                         contactOptions={contactOptions}
+                        opportunityOptions={opportunityOptions}
+                        peopleOptions={peopleOptions}
                         documentTypes={documentTypes}
                         initialDestination={prefill}
                         initialDocumentType={suggestedDocTypeByItemId[item.id] ?? null}
@@ -643,7 +657,7 @@ export function InboxTabs({
           ) : (
             <div className="flex flex-col gap-2">
               {filteredFiledItems.map((item) => {
-                const dest = destinationLabel(item, projectNameById, contactNameById, filedTrancheNumberByItemId[item.id], t);
+                const dest = destinationLabel(item, projectNameById, contactNameById, opportunityNameById, filedTrancheNumberByItemId[item.id], t);
                 const openUrl = filedOpenUrlByItemId[item.id];
                 const filedByName = item.filed_by ? userNameById[item.filed_by] ?? t.inbox.unknownUser : t.inbox.unknownUser;
                 return (

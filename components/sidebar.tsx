@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Contact, FolderKanban, History, Inbox, LayoutDashboard, RotateCcw, StickyNote, Settings, User, Wallet, X } from "lucide-react";
+import { Briefcase, Contact, FolderKanban, History, Inbox, LayoutDashboard, RotateCcw, StickyNote, Settings, User, Wallet, X } from "lucide-react";
 import { useProjectSection } from "@/components/project-section-context";
 import { getDictionary, type Lang } from "@/lib/i18n";
 
@@ -24,6 +24,7 @@ export function Sidebar({ open, onClose, inboxNewCount, showRecovery, isAdmin, l
     { href: "/dashboard", label: t.nav.dashboard, icon: LayoutDashboard },
     { href: "/inbox", label: t.nav.inbox, icon: Inbox },
     { href: "/projects", label: t.nav.projects, icon: FolderKanban },
+    { href: "/opportunities", label: t.nav.opportunities, icon: Briefcase },
     { href: "/recovery", label: t.nav.recoveryProjects, icon: RotateCcw },
     { href: "/receivers", label: t.nav.receivers, icon: Contact },
     { href: "/people", label: t.nav.contacts, icon: User },

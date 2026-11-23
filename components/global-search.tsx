@@ -7,7 +7,7 @@ import { runGlobalSearch, searchResultHref, type SearchResult, type SearchResult
 import { RecoveryBadge } from "@/components/projects/badges";
 import { getDictionary, type Lang } from "@/lib/i18n";
 
-const GROUP_ORDER: SearchResultType[] = ["project", "contact", "document", "note", "person"];
+const GROUP_ORDER: SearchResultType[] = ["project", "contact", "opportunity", "document", "note", "person"];
 
 export function GlobalSearch({ showRecovery, lang }: { showRecovery: boolean; lang: Lang }) {
   const router = useRouter();

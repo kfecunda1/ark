@@ -14,6 +14,7 @@ interface BulkFilePanelProps {
   items: InboxItem[];
   projectOptions: EntityOption[];
   contactOptions: EntityOption[];
+  opportunityOptions: EntityOption[];
   documentTypes: DocumentTypeRecord[];
   // Lets the "small list" drop an item from this run without closing
   // the whole panel — kept in sync with the parent's checkbox
@@ -43,6 +44,7 @@ export function BulkFilePanel({
   items,
   projectOptions,
   contactOptions,
+  opportunityOptions,
   documentTypes,
   onRemoveItem,
   onDone,
@@ -51,9 +53,10 @@ export function BulkFilePanel({
 }: BulkFilePanelProps) {
   const router = useRouter();
   const t = getDictionary(lang);
-  const [destinationType, setDestinationType] = useState<"project" | "contact">("project");
+  const [destinationType, setDestinationType] = useState<"project" | "contact" | "opportunity">("project");
   const [selectedProject, setSelectedProject] = useState<EntityOption | null>(null);
   const [selectedContact, setSelectedContact] = useState<EntityOption | null>(null);
+  const [selectedOpportunity, setSelectedOpportunity] = useState<EntityOption | null>(null);
   const [tranches, setTranches] = useState<ProjectTranche[]>([]);
   const [trancheValue, setTrancheValue] = useState(TRANCHE_GENERAL);
   const [documentType, setDocumentType] = useState(documentTypes[0]?.name ?? "");
@@ -74,10 +77,11 @@ export function BulkFilePanel({
       .then(({ data }) => setTranches((data as ProjectTranche[] | null) ?? []));
   }, [destinationType, selectedProject]);
 
-  function selectDestinationType(type: "project" | "contact") {
+  function selectDestinationType(type: "project" | "contact" | "opportunity") {
     setDestinationType(type);
     setSelectedProject(null);
     setSelectedContact(null);
+    setSelectedOpportunity(null);
     setTranches([]);
     setTrancheValue(TRANCHE_GENERAL);
   }
@@ -100,12 +104,22 @@ export function BulkFilePanel({
               trancheId: tranches.find((t) => String(t.tranche_number) === trancheValue)?.id ?? null,
             }
           : null
-        : selectedContact
-          ? { type: "contact" as const, id: selectedContact.id }
-          : null;
+        : destinationType === "contact"
+          ? selectedContact
+            ? { type: "contact" as const, id: selectedContact.id }
+            : null
+          : selectedOpportunity
+            ? { type: "opportunity" as const, id: selectedOpportunity.id }
+            : null;
 
     if (!target) {
-      setError(destinationType === "project" ? t.inboxFile.pickProjectFirst : t.inboxFile.pickReceiverFirst);
+      setError(
+        destinationType === "project"
+          ? t.inboxFile.pickProjectFirst
+          : destinationType === "contact"
+            ? t.inboxFile.pickReceiverFirst
+            : t.opportunities.pickOpportunityFirst
+      );
       return;
     }
 
@@ -125,7 +139,7 @@ export function BulkFilePanel({
           // below, surfacing as this item's own failure.
           const result = await fileInboxItemAsDocument(
             item.id,
-            target.type === "project" ? { type: "project", id: target.id, trancheId: target.trancheId } : { type: "contact", id: target.id },
+            target.type === "project" ? { type: "project", id: target.id, trancheId: target.trancheId } : { type: target.type, id: target.id },
             docType,
             true
           );
@@ -162,7 +176,8 @@ export function BulkFilePanel({
     router.refresh();
   }
 
-  const destinationLabel = destinationType === "project" ? selectedProject?.label : selectedContact?.label;
+  const destinationLabel =
+    destinationType === "project" ? selectedProject?.label : destinationType === "contact" ? selectedContact?.label : selectedOpportunity?.label;
   const successCount = results?.filter((r) => r.status === "success").length ?? 0;
   const failureCount = results?.filter((r) => r.status === "error").length ?? 0;
 
@@ -193,6 +208,16 @@ export function BulkFilePanel({
             >
               {t.inboxFile.tabReceiver}
             </button>
+            <button
+              type="button"
+              onClick={() => selectDestinationType("opportunity")}
+              disabled={isSubmitting}
+              className={`rounded px-2 py-1 text-xs font-medium transition-colors duration-150 ease-out ${
+                destinationType === "opportunity" ? "bg-white/[0.1] text-white" : "text-white/50 hover:text-white/80"
+              }`}
+            >
+              {t.inboxFile.tabOpportunity}
+            </button>
           </div>
 
           {destinationType === "project" ? (
@@ -205,6 +230,17 @@ export function BulkFilePanel({
               entityNounPlural={lang === "es" ? "proyectos" : "projects"}
               lang={lang}
               onSelect={selectProject}
+            />
+          ) : destinationType === "opportunity" ? (
+            <EntityPicker
+              key="bulk-opportunity"
+              name="bulk_target_opportunity"
+              label={t.opportunities.opportunityLabel}
+              options={opportunityOptions}
+              entityNoun={lang === "es" ? "oportunidad" : "opportunity"}
+              entityNounPlural={lang === "es" ? "oportunidades" : "opportunities"}
+              lang={lang}
+              onSelect={setSelectedOpportunity}
             />
           ) : (
             <EntityPicker
