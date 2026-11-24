@@ -128,6 +128,103 @@ async function insertActionItems(
   return { error: null };
 }
 
+// "If the meeting's link changes (e.g. from none to a project), move
+// its open action items accordingly (reminders become next steps on
+// that project, or the reverse), keeping done states." — called from
+// updateMeeting with the project id the meeting carried before and
+// after the save. Same project on both sides: nothing to do. A project
+// on both sides (just a different one): the rows already live in
+// project_steps, so only their project_id needs to move. Only one side
+// has a project: the rows need to change table entirely, which means
+// insert-then-delete (there's no ALTER-the-row-into-another-table
+// operation) — "keeping done states" maps done/done_at <-> reminder_done
+// as closely as the two shapes allow; a note has no done_at analog, so
+// a reminder that was already done becomes a step done "now" instead
+// of at its original done time.
+async function reassignActionItemsForLinkChange(
+  supabase: SupabaseServerClient,
+  meetingId: string,
+  oldProjectId: string | null,
+  newProjectId: string | null,
+  userId: string | null
+): Promise<{ error: string | null }> {
+  if (oldProjectId === newProjectId) return { error: null };
+
+  if (oldProjectId && newProjectId) {
+    const { error } = await supabase
+      .from("project_steps")
+      .update({ project_id: newProjectId })
+      .eq("source_note_id", meetingId);
+    return { error: error?.message ?? null };
+  }
+
+  if (oldProjectId && !newProjectId) {
+    const { data, error: readError } = await supabase
+      .from("project_steps")
+      .select("id, body, due_date, done")
+      .eq("source_note_id", meetingId);
+    if (readError) return { error: readError.message };
+    const rows = (data as { id: string; body: string; due_date: string | null; done: boolean }[] | null) ?? [];
+    if (rows.length === 0) return { error: null };
+
+    const { error: insertError } = await supabase.from("notes").insert(
+      rows.map((row) => ({
+        content: row.body,
+        is_reminder: Boolean(row.due_date),
+        due_date: row.due_date,
+        reminder_done: row.done,
+        created_by: userId,
+        source_note_id: meetingId,
+      }))
+    );
+    if (insertError) return { error: insertError.message };
+
+    const { error: deleteError } = await supabase
+      .from("project_steps")
+      .delete()
+      .in("id", rows.map((row) => row.id));
+    return { error: deleteError?.message ?? null };
+  }
+
+  // !oldProjectId && newProjectId
+  const { data, error: readError } = await supabase
+    .from("notes")
+    .select("id, content, due_date, reminder_done")
+    .eq("source_note_id", meetingId);
+  if (readError) return { error: readError.message };
+  const rows = (data as { id: string; content: string; due_date: string | null; reminder_done: boolean }[] | null) ?? [];
+  if (rows.length === 0) return { error: null };
+
+  const { error: insertError } = await supabase.from("project_steps").insert(
+    rows.map((row) => ({
+      project_id: newProjectId,
+      kind: "next_step" as const,
+      body: row.content,
+      due_date: row.due_date,
+      done: row.reminder_done,
+      done_at: row.reminder_done ? new Date().toISOString() : null,
+      author_id: userId,
+      source_note_id: meetingId,
+    }))
+  );
+  if (insertError) return { error: insertError.message };
+
+  const { error: deleteError } = await supabase
+    .from("notes")
+    .delete()
+    .in("id", rows.map((row) => row.id));
+  return { error: deleteError?.message ?? null };
+}
+
+// The meeting's own detail page AND its edit page now both render
+// live action items/attachments sections (this follow-up round) — any
+// write that changes either needs both revalidated, not just the
+// detail page.
+function revalidateMeetingDetailPaths(meetingId: string) {
+  revalidatePath(`/notes/${meetingId}`);
+  revalidatePath(`/notes/${meetingId}/edit`);
+}
+
 function revalidateForMeeting(links: MeetingLinks) {
   revalidatePath("/notes");
   if (links.project_id) {
@@ -198,11 +295,13 @@ export async function createMeetingWithId(formData: FormData): Promise<{ id: str
   }
 }
 
-// Edit mode only touches the meeting's own fields and its participant
-// list — action items and attachments are managed from the meeting's
-// own detail page afterward, not re-generated here (same "create-time
-// staging only" shape as lib/actions/opportunities.ts's updateOpportunity,
-// which likewise never re-touches its Documents section).
+// Edit mode touches the meeting's own fields, its participant list,
+// and — when the link's project changes — reassigns its action items
+// (see reassignActionItemsForLinkChange below). Attachments are still
+// only ever added from the meeting's own detail/edit page afterward,
+// never re-generated here (same "create-time staging only" shape as
+// lib/actions/opportunities.ts's updateOpportunity, which likewise
+// never re-touches its Documents section).
 export async function updateMeeting(
   id: string,
   _prevState: MeetingFormState,
@@ -219,9 +318,37 @@ export async function updateMeeting(
 
   try {
     const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const { data: existingMeeting, error: existingMeetingError } = await supabase
+      .from("notes")
+      .select("project_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (existingMeetingError) {
+      return { error: existingMeetingError.message };
+    }
+    const oldProjectId = (existingMeeting as { project_id: string | null } | null)?.project_id ?? null;
+
     const { error } = await supabase.from("notes").update(payload).eq("id", id);
     if (error) {
       return { error: error.message };
+    }
+
+    const reassignResult = await reassignActionItemsForLinkChange(
+      supabase,
+      id,
+      oldProjectId,
+      payload.project_id,
+      user?.id ?? null
+    );
+    if (reassignResult.error) {
+      return { error: reassignResult.error };
+    }
+    if (oldProjectId && oldProjectId !== payload.project_id) {
+      revalidatePath(`/projects/${oldProjectId}`);
     }
 
     const { data: existingParticipants, error: existingError } = await supabase
@@ -260,7 +387,7 @@ export async function updateMeeting(
   }
 
   revalidateForMeeting(payload);
-  revalidatePath(`/notes/${id}`);
+  revalidateMeetingDetailPaths(id);
   return { error: null };
 }
 
@@ -294,7 +421,7 @@ export async function addNoteDocument(
       return { error: error.message };
     }
 
-    revalidatePath(`/notes/${noteId}`);
+    revalidateMeetingDetailPaths(noteId);
     return { error: null, id: (data as { id: string }).id };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
@@ -320,7 +447,7 @@ export async function addNoteDocumentLink(
       return { error: error.message };
     }
 
-    revalidatePath(`/notes/${noteId}`);
+    revalidateMeetingDetailPaths(noteId);
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
@@ -350,7 +477,7 @@ export async function deleteNoteDocument(documentId: string): Promise<{ error: s
     }
 
     if (existing?.note_id) {
-      revalidatePath(`/notes/${existing.note_id}`);
+      revalidateMeetingDetailPaths(existing.note_id);
     }
     return { error: null };
   } catch (err) {
@@ -381,7 +508,7 @@ export async function renameNoteDocument(documentId: string, newName: string): P
       return { error: error.message };
     }
 
-    revalidatePath(`/notes/${existing.note_id}`);
+    revalidateMeetingDetailPaths(existing.note_id);
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
@@ -479,6 +606,112 @@ export async function getMeetingActionItems(meetingId: string, projectId: string
       done: row.reminder_done,
     })
   );
+}
+
+// Add/edit/delete a single action item after the meeting's already
+// saved — the create-time list (ActionItemsEditor) only covers items
+// known at save time; these cover the rest of the item's life, from
+// either the meeting's detail page or its edit page.
+
+export async function addMeetingActionItem(
+  meetingId: string,
+  projectId: string | null,
+  text: string,
+  dueDate: string | null
+): Promise<{ error: string | null }> {
+  const trimmed = text.trim();
+  if (!trimmed) return { error: "textIsRequired" };
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (projectId) {
+      const { error } = await supabase.from("project_steps").insert({
+        project_id: projectId,
+        kind: "next_step" as const,
+        body: trimmed,
+        due_date: dueDate,
+        author_id: user?.id ?? null,
+        source_note_id: meetingId,
+      });
+      if (error) return { error: error.message };
+    } else {
+      const { error } = await supabase.from("notes").insert({
+        content: trimmed,
+        is_reminder: Boolean(dueDate),
+        due_date: dueDate,
+        created_by: user?.id ?? null,
+        source_note_id: meetingId,
+      });
+      if (error) return { error: error.message };
+    }
+
+    revalidateMeetingDetailPaths(meetingId);
+    if (projectId) {
+      revalidatePath(`/projects/${projectId}`);
+      revalidatePath("/dashboard");
+    }
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+export async function updateMeetingActionItem(
+  meetingId: string,
+  itemId: string,
+  kind: "project_step" | "note",
+  projectId: string | null,
+  text: string,
+  dueDate: string | null
+): Promise<{ error: string | null }> {
+  const trimmed = text.trim();
+  if (!trimmed) return { error: "textIsRequired" };
+
+  try {
+    const supabase = await createClient();
+    if (kind === "project_step") {
+      const { error } = await supabase.from("project_steps").update({ body: trimmed, due_date: dueDate }).eq("id", itemId);
+      if (error) return { error: error.message };
+    } else {
+      const { error } = await supabase
+        .from("notes")
+        .update({ content: trimmed, due_date: dueDate, is_reminder: Boolean(dueDate) })
+        .eq("id", itemId);
+      if (error) return { error: error.message };
+    }
+
+    revalidateMeetingDetailPaths(meetingId);
+    if (projectId) revalidatePath(`/projects/${projectId}`);
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
+}
+
+export async function deleteMeetingActionItem(
+  meetingId: string,
+  itemId: string,
+  kind: "project_step" | "note",
+  projectId: string | null
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from(kind === "project_step" ? "project_steps" : "notes").delete().eq("id", itemId);
+    if (error) return { error: error.message };
+
+    revalidateMeetingDetailPaths(meetingId);
+    if (projectId) {
+      revalidatePath(`/projects/${projectId}`);
+      revalidatePath("/dashboard");
+    }
+    return { error: null };
+  } catch (err) {
+    return { error: unexpectedErrorMessage(err) };
+  }
 }
 
 // ----------------------------------------------------------------------------

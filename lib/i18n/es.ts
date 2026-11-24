@@ -368,7 +368,6 @@ const es: Dictionary = {
       `🔗 Sin coincidencia: ${count} (${docsReceived} con documentos recibidos)`,
     inboxToFile: (n: number) => `📥 Bandeja de entrada: ${n} por archivar`,
     missingDocuments: (n: number) => `📄 ${n} proyectos con documentos faltantes`,
-    openOpportunities: (n: number) => `💼 ${n} oportunidades abiertas`,
     payoutsWithoutCommission: (n: number) => `💰 Pagos: ${n} sin comisión definida`,
     backupNever: "🗄 Respaldo: nunca se ha hecho",
     backupDaysAgo: (n: number) => `🗄 Respaldo: hace ${n} días`,
@@ -1288,6 +1287,11 @@ const es: Dictionary = {
     noAttachments: "No hay archivos adjuntos.",
     markDone: "Marcar como hecho",
     markNotDone: "Marcar como no hecho",
+    editActionItemAria: (text: string) => `Editar "${text}"`,
+    deleteActionItemConfirm: "¿Eliminar esta tarea pendiente?",
+    deleteActionItemDoneWarning: "Ya está marcada como hecha.",
+    duplicateInThisMeeting: (fileName: string) => `Este archivo ya está adjunto aquí como "${fileName}".`,
+    deleteDocumentConfirm: "¿Eliminar este archivo adjunto?",
   },
 };
 

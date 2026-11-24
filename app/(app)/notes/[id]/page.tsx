@@ -158,14 +158,19 @@ export default async function MeetingDetailPage({ params }: MeetingDetailPagePro
       <div className="mb-6">
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.common.documents}</h2>
         <GlassCard interactive={false} className="p-6">
-          <MeetingDocumentsSection documents={documentsWithUrls} documentTypes={documentTypes} lang={lang} />
+          <MeetingDocumentsSection
+            meetingId={note.id}
+            documents={documentsWithUrls}
+            documentTypes={documentTypes}
+            lang={lang}
+          />
         </GlassCard>
       </div>
 
       <div>
         <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.meetingForm.actionItemsLabel}</h2>
         <GlassCard interactive={false} className="p-6">
-          <MeetingActionItemsSection items={actionItems} projectId={note.project_id} lang={lang} />
+          <MeetingActionItemsSection meetingId={note.id} items={actionItems} projectId={note.project_id} lang={lang} />
         </GlassCard>
       </div>
     </div>

@@ -377,7 +377,6 @@ const en = {
       `🔗 Not matched: ${count} (${docsReceived} with documents received)`,
     inboxToFile: (n: number) => `📥 Inbox: ${n} to file`,
     missingDocuments: (n: number) => `📄 ${n} projects missing documents`,
-    openOpportunities: (n: number) => `💼 ${n} open opportunities`,
     payoutsWithoutCommission: (n: number) => `💰 Payouts: ${n} without commission set`,
     backupNever: "🗄 Backup: never backed up",
     backupDaysAgo: (n: number) => `🗄 Backup: last ${n} days ago`,
@@ -1299,6 +1298,11 @@ const en = {
     noAttachments: "No attachments.",
     markDone: "Mark as done",
     markNotDone: "Mark as not done",
+    editActionItemAria: (text: string) => `Edit "${text}"`,
+    deleteActionItemConfirm: "Delete this action item?",
+    deleteActionItemDoneWarning: "It's already marked done.",
+    duplicateInThisMeeting: (fileName: string) => `This exact file is already attached here as "${fileName}".`,
+    deleteDocumentConfirm: "Delete this attachment?",
   },
 };
 
