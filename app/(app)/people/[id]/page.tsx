@@ -10,7 +10,9 @@ import { isCurrentUserAdmin } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { personLabel } from "@/lib/people";
 import { displayProduct, getProjectProductsByProjectIds } from "@/lib/project-products";
+import { formatDateOnly } from "@/lib/projects";
 import { OpportunityStatusBadge } from "@/components/opportunities/badges";
+import { MeetingBadge } from "@/components/notes/badges";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
 import type { Contact, Opportunity, Person, Project } from "@/lib/types";
@@ -51,6 +53,7 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
     { data: receiverIntermediariesData },
     { data: projectIntermediariesData },
     { data: opportunitiesData },
+    { data: meetingParticipationsData },
   ] = await Promise.all([
     supabase.from("contacts").select("id, full_name, archived_at").eq("contact_person_id", id).order("full_name"),
     supabase.from("projects").select("*").eq("contact_person_id", id).order("created_at", { ascending: false }),
@@ -58,9 +61,22 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
     supabase.from("receiver_intermediaries").select("receiver_id").eq("person_id", id),
     supabase.from("project_intermediaries").select("project_id").eq("person_id", id),
     supabase.from("opportunities").select("*").eq("intermediary_person_id", id).order("created_at", { ascending: false }),
+    // supabase/migrations/035_meeting_notes.sql — "Meetings attended" below.
+    supabase.from("note_participants").select("note_id").eq("person_id", id),
   ]);
 
   const opportunitiesFromContact = (opportunitiesData as Opportunity[] | null) ?? [];
+
+  const attendedMeetingIds = [...new Set(((meetingParticipationsData as { note_id: string }[] | null) ?? []).map((r) => r.note_id))];
+  const { data: attendedMeetingsData } =
+    attendedMeetingIds.length > 0
+      ? await supabase
+          .from("notes")
+          .select("id, title, content, meeting_date")
+          .in("id", attendedMeetingIds)
+          .order("meeting_date", { ascending: false })
+      : { data: [] as { id: string; title: string | null; content: string; meeting_date: string | null }[] };
+  const attendedMeetings = (attendedMeetingsData as { id: string; title: string | null; content: string; meeting_date: string | null }[] | null) ?? [];
 
   const linkedReceivers = (receiversData as Pick<Contact, "id" | "full_name" | "archived_at">[] | null) ?? [];
   const linkedProjects = (projectsData as Project[] | null) ?? [];
@@ -88,6 +104,7 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
   // the same receiver/project, which should still only count once.
   const blockedReceiverCount = new Set([...linkedReceivers.map((r) => r.id), ...intermediaryReceiverIds]).size;
   const blockedProjectCount = new Set([...linkedProjects.map((p) => p.id), ...intermediaryProjectIds]).size;
+  const blockedMeetingCount = attendedMeetingIds.length;
 
   const fields: { label: string; value: string }[] = [
     { label: t.common.columnPhone, value: person.phone || "—" },
@@ -122,6 +139,7 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
               redirectTo="/people"
               linkedProjectCount={blockedProjectCount}
               linkedReceiverCount={blockedReceiverCount}
+              linkedMeetingCount={blockedMeetingCount}
               lang={lang}
             />
           )}
@@ -235,6 +253,30 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
               >
                 <span className="min-w-0 flex-1 truncate text-sm text-white/80">{opportunity.title}</span>
                 <OpportunityStatusBadge status={opportunity.status} lang={lang} />
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-3 text-xs font-medium tracking-wide text-white/35 uppercase">{t.notes.meetingsAttended}</h2>
+        {attendedMeetings.length === 0 ? (
+          <p className="text-sm text-white/35">{t.notes.noMeetingsAttended}</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {attendedMeetings.map((meeting) => (
+              <Link
+                key={meeting.id}
+                href={`/notes/${meeting.id}`}
+                className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3 transition-colors duration-150 ease-out hover:bg-white/[0.06]"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm text-white/80">
+                  {meeting.title?.trim() || meeting.content.slice(0, 60)}
+                </span>
+                {meeting.meeting_date && (
+                  <MeetingBadge date={formatDateOnly(meeting.meeting_date, lang)} lang={lang} />
+                )}
               </Link>
             ))}
           </div>

@@ -16,6 +16,10 @@ interface DeletePersonButtonProps {
   // actually deletes anything.
   linkedProjectCount: number;
   linkedReceiverCount: number;
+  // supabase/migrations/035_meeting_notes.sql — meetings this person
+  // attended (note_participants), same blocking treatment as the two
+  // counts above.
+  linkedMeetingCount?: number;
   lang?: Lang;
 }
 
@@ -28,6 +32,7 @@ export function DeletePersonButton({
   redirectTo,
   linkedProjectCount,
   linkedReceiverCount,
+  linkedMeetingCount = 0,
   lang = "en",
 }: DeletePersonButtonProps) {
   const router = useRouter();
@@ -36,7 +41,7 @@ export function DeletePersonButton({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const blocked = linkedProjectCount > 0 || linkedReceiverCount > 0;
+  const blocked = linkedProjectCount > 0 || linkedReceiverCount > 0 || linkedMeetingCount > 0;
 
   function handleDelete() {
     setError(null);
@@ -46,7 +51,11 @@ export function DeletePersonButton({
         if (result.error) {
           setError(
             result.error === "linkedToCannotDelete" && result.linkedCounts
-              ? t.people.linkedToCannotDelete(result.linkedCounts.projectCount, result.linkedCounts.receiverCount)
+              ? t.people.linkedToCannotDelete(
+                  result.linkedCounts.projectCount,
+                  result.linkedCounts.receiverCount,
+                  result.linkedCounts.meetingCount
+                )
               : resolveError(result.error, lang)
           );
           return;
@@ -65,7 +74,9 @@ export function DeletePersonButton({
           <div className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
             <div>
-              <p className="text-sm text-amber-200">{t.people.linkedToCannotDelete(linkedProjectCount, linkedReceiverCount)}</p>
+              <p className="text-sm text-amber-200">
+                {t.people.linkedToCannotDelete(linkedProjectCount, linkedReceiverCount, linkedMeetingCount)}
+              </p>
               <button
                 type="button"
                 onClick={() => setConfirming(false)}

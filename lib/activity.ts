@@ -67,6 +67,8 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   project_tranche: "Tranche",
   opportunity: "Opportunity",
   opportunity_document: "Opportunity document",
+  note_participant: "Meeting participant",
+  note_document: "Note document",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -96,7 +98,9 @@ export function isDocumentEntity(entityType: ActivityEntityType): boolean {
     entityType === "receiver_intermediary" ||
     entityType === "project_intermediary" ||
     entityType === "project_tranche" ||
-    entityType === "opportunity_document"
+    entityType === "opportunity_document" ||
+    entityType === "note_document" ||
+    entityType === "note_participant"
   );
 }
 
@@ -148,6 +152,11 @@ const FIELDS_DESCRIBED_SEPARATELY = new Set([
   // scoped to entity_type === "opportunity" only.
   "converted_to_type",
   "converted_to_id",
+  // notes/project_steps (supabase/migrations/035_meeting_notes.sql) —
+  // an internal backlink, never shown on its own; the meeting note (or
+  // project) it points at is already reachable from the row's own
+  // link, not worth repeating as a raw id.
+  "source_note_id",
 ]);
 
 function asPair<T>(value: T | [T, T] | undefined): [T, T] | null {
@@ -311,7 +320,7 @@ export function activityDetailChips(row: ActivityLog, lang: Lang = "en"): string
 
 /** The row an activity row points at. */
 export interface ActivityTarget {
-  table: "projects" | "contacts" | "people" | "opportunities";
+  table: "projects" | "contacts" | "people" | "opportunities" | "notes";
   id: string;
 }
 
@@ -337,11 +346,17 @@ export function activityTarget(row: ActivityLog): ActivityTarget | null {
       return row.details?.parent_id ? { table: "contacts", id: row.details.parent_id } : null;
     case "opportunity_document":
       return row.details?.parent_id ? { table: "opportunities", id: row.details.parent_id } : null;
-    // A note's parent is a project, a contact, or an opportunity (or
-    // none), chosen dynamically per row instead of being fixed by
-    // entity_type.
+    case "note_participant":
+    case "note_document":
+      return row.details?.parent_id ? { table: "notes", id: row.details.parent_id } : null;
+    // A note's parent is a project, a contact, an opportunity, or none
+    // at all — chosen dynamically per row instead of being fixed by
+    // entity_type. Falling back to the note's own page (a meeting has
+    // one; /notes/[id] redirects to the edit page for a plain note)
+    // rather than null means even an unlinked note's own activity rows
+    // still go somewhere.
     case "note":
-      if (!row.details?.parent_id || !row.details?.parent_type) return null;
+      if (!row.details?.parent_id || !row.details?.parent_type) return { table: "notes", id: row.entity_id };
       if (row.details.parent_type === "project") return { table: "projects", id: row.details.parent_id };
       if (row.details.parent_type === "opportunity") return { table: "opportunities", id: row.details.parent_id };
       return { table: "contacts", id: row.details.parent_id };
@@ -357,6 +372,7 @@ const TARGET_HREF_PREFIX: Record<ActivityTarget["table"], string> = {
   contacts: "/receivers",
   people: "/people",
   opportunities: "/opportunities",
+  notes: "/notes",
 };
 
 /**

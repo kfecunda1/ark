@@ -185,7 +185,7 @@ export interface DeletePersonResult {
   // (components/people/delete-person-button.tsx) needs these counts to
   // build the translated sentence itself (lib/i18n can't carry dynamic
   // numbers inside a plain error key).
-  linkedCounts?: { projectCount: number; receiverCount: number };
+  linkedCounts?: { projectCount: number; receiverCount: number; meetingCount: number };
 }
 
 export async function deletePerson(id: string): Promise<DeletePersonResult> {
@@ -201,11 +201,17 @@ export async function deletePerson(id: string): Promise<DeletePersonResult> {
       { data: contactPersonReceivers },
       { data: intermediaryProjects },
       { data: intermediaryReceivers },
+      { data: meetingParticipations },
     ] = await Promise.all([
       supabase.from("projects").select("id").eq("contact_person_id", id),
       supabase.from("contacts").select("id").eq("contact_person_id", id),
       supabase.from("project_intermediaries").select("project_id").eq("person_id", id),
       supabase.from("receiver_intermediaries").select("receiver_id").eq("person_id", id),
+      // supabase/migrations/035_meeting_notes.sql — note_participants.
+      // person_id is ON DELETE RESTRICT, same "the link IS the point of
+      // the row" reasoning as the two intermediaries tables above, so
+      // this gets the same friendly-error-before-the-database check.
+      supabase.from("note_participants").select("note_id").eq("person_id", id),
     ]);
 
     const projectCount = new Set([
@@ -216,9 +222,12 @@ export async function deletePerson(id: string): Promise<DeletePersonResult> {
       ...((contactPersonReceivers as { id: string }[] | null) ?? []).map((r) => r.id),
       ...((intermediaryReceivers as { receiver_id: string }[] | null) ?? []).map((r) => r.receiver_id),
     ]).size;
+    const meetingCount = new Set(
+      ((meetingParticipations as { note_id: string }[] | null) ?? []).map((m) => m.note_id)
+    ).size;
 
-    if (projectCount > 0 || receiverCount > 0) {
-      return { error: "linkedToCannotDelete", linkedCounts: { projectCount, receiverCount } };
+    if (projectCount > 0 || receiverCount > 0 || meetingCount > 0) {
+      return { error: "linkedToCannotDelete", linkedCounts: { projectCount, receiverCount, meetingCount } };
     }
 
     const { error } = await supabase.from("people").delete().eq("id", id);

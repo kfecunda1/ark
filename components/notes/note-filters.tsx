@@ -38,6 +38,9 @@ export function NoteFilters({ lang = "en" }: { lang?: Lang } = {}) {
         <option value="contact" className="bg-[#0a0e17]">
           {t.searchGroups.contact}
         </option>
+        <option value="opportunity" className="bg-[#0a0e17]">
+          {t.searchGroups.opportunity}
+        </option>
       </select>
 
       <label className="flex items-center gap-2 text-sm text-white/70">
@@ -48,6 +51,16 @@ export function NoteFilters({ lang = "en" }: { lang?: Lang } = {}) {
           className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
         />
         {t.notes.remindersOnly}
+      </label>
+
+      <label className="flex items-center gap-2 text-sm text-white/70">
+        <input
+          type="checkbox"
+          checked={searchParams.get("meetings") === "true"}
+          onChange={(e) => setParam("meetings", e.target.checked ? "true" : "")}
+          className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-accent accent-accent"
+        />
+        {t.notes.meetingsOnly}
       </label>
     </div>
   );

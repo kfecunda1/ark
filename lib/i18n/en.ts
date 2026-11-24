@@ -119,6 +119,11 @@ const en = {
     noteOnReceiver: (name: string) => `Note on receiver: ${name}`,
     noteOnOpportunity: (name: string) => `Note on opportunity: ${name}`,
     noteLabel: "Note",
+    meetingOnProject: (date: string, name: string) => `Meeting · ${date} · Project: ${name}`,
+    meetingOnReceiver: (date: string, name: string) => `Meeting · ${date} · Receiver: ${name}`,
+    meetingOnOpportunity: (date: string, name: string) => `Meeting · ${date} · Opportunity: ${name}`,
+    meetingLabel: (date: string) => `Meeting · ${date}`,
+    meetingNoDate: "Meeting",
     unknownReceiver: "Unknown receiver",
   },
   auth: {
@@ -238,6 +243,8 @@ const en = {
       project_tranche: "Tranche",
       opportunity: "Opportunity",
       opportunity_document: "Opportunity document",
+      note_participant: "Meeting participant",
+      note_document: "Note document",
     },
     actions: {
       created: "Created",
@@ -291,6 +298,7 @@ const en = {
       kind: "type",
       body: "text",
       due_date: "due date",
+      meeting_date: "meeting date",
       confirmed_on: "confirmed on",
       paid_out_on: "paid out on",
       done: "done",
@@ -529,6 +537,7 @@ const en = {
     title: "Notes",
     subtitle: "Free-form notes and reminders, optionally linked to a project or receiver.",
     newNote: "New Note",
+    newMeeting: "New Meeting",
     failedToLoad: (message: string) => `Failed to load notes: ${message}`,
     noMatchingNotes: "No matching notes",
     noNotesYet: "No notes yet",
@@ -536,12 +545,16 @@ const en = {
     emptyHint: "Notes and reminders you create will show up here.",
     allTypes: "All types",
     remindersOnly: "Reminders only",
+    meetingsOnly: "Meetings only",
     editNoteTitle: "Edit Note",
     editNoteSubtitle: "Update this note.",
     newNoteTitle: "New Note",
     newNoteSubtitle: "Jot something down, optionally as a reminder.",
     deleteNoteAriaLabel: "Delete note",
     dueOn: (date: string) => `Due ${date}`,
+    meetingLabel: "Meeting",
+    meetingsAttended: "Meetings attended",
+    noMeetingsAttended: "No meetings attended.",
   },
   noteForm: {
     titleLabel: "Title",
@@ -552,8 +565,10 @@ const en = {
     noLink: "No link",
     project: "Project",
     receiver: "Receiver",
+    opportunity: "Opportunity",
     searchProjects: "Search projects…",
     searchReceivers: "Search receivers…",
+    searchOpportunities: "Search opportunities…",
     clearSelection: "Clear selection",
     noMatches: "No matches.",
     saveChanges: "Save changes",
@@ -788,6 +803,7 @@ const en = {
     suggestedFileHere: (label: string) => `Suggested: ${label} — File here`,
     close: "Close",
     fileIntoAction: "File into…",
+    fileAsMeetingSummary: "File as meeting summary",
     dismiss: "Dismiss",
     saveNameAria: "Save name",
     cancelRenameAria: "Cancel rename",
@@ -875,10 +891,11 @@ const en = {
     deleteConfirmBody: "This permanently deletes this contact. This cannot be undone.",
     confirmDelete: "Confirm delete",
     deleting: "Deleting…",
-    linkedToCannotDelete: (projectCount: number, receiverCount: number) => {
+    linkedToCannotDelete: (projectCount: number, receiverCount: number, meetingCount: number = 0) => {
       const parts: string[] = [];
       if (projectCount) parts.push(`${projectCount} project${projectCount === 1 ? "" : "s"}`);
       if (receiverCount) parts.push(`${receiverCount} receiver${receiverCount === 1 ? "" : "s"}`);
+      if (meetingCount) parts.push(`${meetingCount} meeting${meetingCount === 1 ? "" : "s"}`);
       return `Linked to ${parts.join(" and ")}. Archive instead, or unlink first.`;
     },
   },
@@ -1136,6 +1153,8 @@ const en = {
       `PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX — up to ${max} MB. Files are uploaded after the project is created — pick as many as you need before saving.`,
     fileTypesHintOpportunity: (max: number) =>
       `PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX — up to ${max} MB. Files are uploaded after the opportunity is created — pick as many as you need before saving.`,
+    fileTypesHintNote: (max: number) =>
+      `PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX — up to ${max} MB. Files are uploaded after the meeting is saved — pick as many as you need before saving.`,
   },
   viewToggle: {
     list: "List",
@@ -1249,6 +1268,39 @@ const en = {
   opportunityDocuments: {
     noDocumentsYet: "No documents yet.",
     duplicateInThisOpportunity: (fileName: string) => `This exact file is already attached here as "${fileName}".`,
+  },
+  meetingForm: {
+    newMeetingTitle: "New Meeting",
+    newMeetingSubtitle: "Record a meeting summary, with participants and action items.",
+    editMeetingTitle: "Edit Meeting",
+    titleLabel: "Title",
+    meetingDateLabel: "Meeting date",
+    participantsLabel: "Participants",
+    addParticipantPlaceholder: "Search contacts…",
+    createAndAddParticipant: "Create & add",
+    removeParticipant: (name: string) => `Remove ${name}`,
+    summaryLabel: "Summary",
+    summaryPlaceholder: "What was discussed…",
+    attachmentsLabel: "Attachments",
+    actionItemsLabel: "Action items",
+    actionItemsHint: "Optional. Each one becomes a next step (if this meeting is linked to a project) or a reminder, with its own due date.",
+    actionItemPlaceholder: "Add an action item…",
+    actionItemDueDateAria: "Due date",
+    addActionItem: "Add",
+    removeActionItem: (text: string) => `Remove "${text}"`,
+    saveChanges: "Save changes",
+    createMeeting: "Create meeting",
+    failedToCreate: "Failed to create meeting.",
+    uploadingDocuments: "Uploading attachments…",
+    uploadingProgress: (index: number, total: number, percent: number) => `Uploading ${index} of ${total} (${percent}%)…`,
+    inboxAttachmentFallbackName: "attachment from Inbox",
+  },
+  meetingDetail: {
+    backToNotes: "← Back to Notes",
+    noActionItems: "No action items.",
+    noAttachments: "No attachments.",
+    markDone: "Mark as done",
+    markNotDone: "Mark as not done",
   },
 };
 

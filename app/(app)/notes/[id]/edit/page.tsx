@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
 import { NoteForm } from "@/components/notes/note-form";
+import { MeetingForm } from "@/components/notes/meeting-form";
 import { createClient } from "@/lib/supabase/server";
 import { contactLabel } from "@/lib/contacts";
 import { hasDisplayNickname, projectDisplayName, receiverDisplayName } from "@/lib/display-name";
+import { personLabel } from "@/lib/people";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
-import type { Contact, Note, Project } from "@/lib/types";
+import type { Contact, Note, Person, Project } from "@/lib/types";
 
 interface EditNotePageProps {
   params: Promise<{ id: string }>;
@@ -24,9 +26,10 @@ export default async function EditNotePage({ params }: EditNotePageProps) {
     notFound();
   }
 
-  const [{ data: contactsData }, { data: projectsData }] = await Promise.all([
+  const [{ data: contactsData }, { data: projectsData }, { data: opportunitiesData }] = await Promise.all([
     supabase.from("contacts").select("id, full_name, nickname, archived_at"),
     supabase.from("projects").select("id, name, nickname"),
+    supabase.from("opportunities").select("id, title"),
   ]);
   const contacts = (contactsData as Contact[] | null) ?? [];
   // Archived receivers are excluded, except the one this note is
@@ -47,6 +50,45 @@ export default async function EditNotePage({ params }: EditNotePageProps) {
     label: projectDisplayName(project),
     sublabel: hasDisplayNickname(project.nickname) ? project.name : undefined,
   }));
+  const opportunities = (opportunitiesData as { id: string; title: string }[] | null) ?? [];
+  const opportunityOptions = opportunities.map((o) => ({ id: o.id, label: o.title }));
+
+  if (note.kind === "meeting") {
+    const [{ data: peopleData }, { data: participantsData }] = await Promise.all([
+      supabase.from("people").select("id, first_name, last_name").is("archived_at", null).order("first_name"),
+      supabase.from("note_participants").select("person_id").eq("note_id", id),
+    ]);
+    const people = ((peopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? []).map((p) => ({
+      id: p.id,
+      label: personLabel(p),
+    }));
+    const participantIds = ((participantsData as { person_id: string }[] | null) ?? []).map((r) => r.person_id);
+    const { data: participantPeopleData } =
+      participantIds.length > 0
+        ? await supabase.from("people").select("id, first_name, last_name").in("id", participantIds)
+        : { data: [] as Pick<Person, "id" | "first_name" | "last_name">[] };
+    const participants = ((participantPeopleData as Pick<Person, "id" | "first_name" | "last_name">[] | null) ?? []).map(
+      (p) => ({ key: p.id, personId: p.id, label: personLabel(p) })
+    );
+
+    return (
+      <div className="mx-auto max-w-2xl">
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold tracking-tight text-white">{t.meetingForm.editMeetingTitle}</h1>
+        </div>
+        <MeetingForm
+          mode="edit"
+          note={note}
+          participants={participants}
+          people={people}
+          projects={projectOptions}
+          contacts={contactOptions}
+          opportunities={opportunityOptions}
+          lang={lang}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-lg">
@@ -54,7 +96,14 @@ export default async function EditNotePage({ params }: EditNotePageProps) {
         <h1 className="text-2xl font-semibold tracking-tight text-white">{t.notes.editNoteTitle}</h1>
         <p className="mt-1 text-sm text-white/45">{t.notes.editNoteSubtitle}</p>
       </div>
-      <NoteForm mode="edit" note={note} projects={projectOptions} contacts={contactOptions} lang={lang} />
+      <NoteForm
+        mode="edit"
+        note={note}
+        projects={projectOptions}
+        contacts={contactOptions}
+        opportunities={opportunityOptions}
+        lang={lang}
+      />
     </div>
   );
 }

@@ -139,8 +139,11 @@ export interface Profile {
 // supabase/migrations/022_telegram_inbox.sql.
 export type InboxItemKind = "text" | "document" | "photo" | "video";
 export type InboxItemStatus = "new" | "filed" | "dismissed";
-// supabase/migrations/034_opportunities.sql added "opportunity".
-export type InboxFiledToType = "project" | "contact" | "opportunity";
+// supabase/migrations/034_opportunities.sql added "opportunity";
+// 035_meeting_notes.sql added "note" (filing an item as a meeting
+// summary — components/inbox/inbox-tabs.tsx's "File as meeting
+// summary" action).
+export type InboxFiledToType = "project" | "contact" | "opportunity" | "note";
 
 // "Too large for Telegram" has no column of its own — see lib/inbox.ts's
 // isTooLargeForTelegram for how it's derived (from file_size, not
@@ -463,7 +466,18 @@ export interface ProjectStep {
   done_at: string | null;
   author_id: string | null;
   created_at: string;
+  // supabase/migrations/035_meeting_notes.sql — set when this next_step
+  // is a meeting's action item (the meeting is project-linked, so its
+  // action items become project_steps rather than a second notes row —
+  // see Note.kind below). ON DELETE SET NULL: deleting the meeting note
+  // never deletes or orphans the action item, just drops the backlink.
+  source_note_id: string | null;
 }
+
+// supabase/migrations/035_meeting_notes.sql — a meeting is a note with
+// kind = 'meeting' (meeting_date required exactly then), not a
+// separate table.
+export type NoteKind = "note" | "meeting";
 
 // supabase/migrations/014_notes_projects_reminders.sql re-added
 // project_id - a note links to a project, a contact, or (034_
@@ -481,6 +495,41 @@ export interface Note {
   project_id: string | null;
   contact_id: string | null;
   opportunity_id: string | null;
+  // supabase/migrations/035_meeting_notes.sql.
+  kind: NoteKind;
+  meeting_date: string | null;
+  // Set only on a plain ('note'-kind) row created as a non-project-
+  // linked meeting's action item — points back at that meeting. ON
+  // DELETE SET NULL, same reasoning as ProjectStep.source_note_id
+  // above. Always null for a meeting note itself.
+  source_note_id: string | null;
+}
+
+// supabase/migrations/035_meeting_notes.sql — which `people` attended a
+// given meeting (notes.kind = 'meeting'). Unordered, unlike
+// ProjectIntermediary.
+export interface NoteParticipant {
+  id: string;
+  note_id: string;
+  person_id: string;
+  created_at: string;
+}
+
+// Same text-FK-to-document_types(name) shape as ProjectDocumentType/
+// OpportunityDocumentType.
+export type NoteDocumentType = string;
+
+// A meeting's attachments — same shape as ProjectDocument/
+// OpportunityDocument, minus tranche_id (meetings have no tranches).
+export interface NoteDocument {
+  id: string;
+  note_id: string;
+  document_type: NoteDocumentType;
+  file_path: string | null;
+  file_name: string;
+  file_hash: string | null;
+  url: string | null;
+  created_at: string;
 }
 
 // The app_settings table is a single row (see supabase/migrations/
@@ -525,7 +574,9 @@ export type ActivityEntityType =
   | "status"
   | "project_tranche"
   | "opportunity"
-  | "opportunity_document";
+  | "opportunity_document"
+  | "note_participant"
+  | "note_document";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
@@ -544,7 +595,7 @@ export interface ActivityDetails {
   // projects and contacts (supabase/migrations/033_nicknames.sql) — a
   // pair on update, same shape as full_name above.
   nickname?: [string | null, string | null];
-  parent_type?: "project" | "contact" | "opportunity";
+  parent_type?: "project" | "contact" | "opportunity" | "note";
   parent_id?: string;
   document_type?: ProjectDocumentType;
   // project_document only — scalar on created/deleted, a pair on a

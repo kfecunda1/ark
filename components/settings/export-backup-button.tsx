@@ -6,7 +6,17 @@ import { createClient } from "@/lib/supabase/client";
 import { dateKeyInTimeZone } from "@/lib/format";
 import { toCsv } from "@/lib/csv";
 import { getDictionary, type Lang } from "@/lib/i18n";
-import type { Contact, ContactDocument, Opportunity, OpportunityDocument, Project, ProjectDocument, ProjectTranche } from "@/lib/types";
+import type {
+  Contact,
+  ContactDocument,
+  Note,
+  NoteDocument,
+  Opportunity,
+  OpportunityDocument,
+  Project,
+  ProjectDocument,
+  ProjectTranche,
+} from "@/lib/types";
 
 // One CSV per table — every table in the schema except profiles (an
 // auth-linked table, not part of the business data) and the two
@@ -21,6 +31,7 @@ const TABLES = [
   "receiver_intermediaries",
   "people",
   "notes",
+  "note_participants",
   "project_documents",
   "contact_documents",
   "activity_log",
@@ -30,10 +41,11 @@ const TABLES = [
   "opportunities",
   "opportunity_products",
   "opportunity_documents",
+  "note_documents",
 ] as const;
 
 interface FileJob {
-  bucket: "project-documents" | "contact-documents" | "opportunity-documents";
+  bucket: "project-documents" | "contact-documents" | "opportunity-documents" | "note-documents";
   path: string;
   zipPath: string;
 }
@@ -87,11 +99,14 @@ export function ExportBackupButton({ lang = "en" }: { lang?: Lang } = {}) {
       const projectDocs = (rowsByTable.project_documents ?? []) as unknown as ProjectDocument[];
       const contactDocs = (rowsByTable.contact_documents ?? []) as unknown as ContactDocument[];
       const opportunityDocs = (rowsByTable.opportunity_documents ?? []) as unknown as OpportunityDocument[];
+      const notes = (rowsByTable.notes ?? []) as unknown as Note[];
+      const noteDocs = (rowsByTable.note_documents ?? []) as unknown as NoteDocument[];
       const projectTranches = (rowsByTable.project_tranches ?? []) as unknown as ProjectTranche[];
 
       const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
       const contactNameById = new Map(contacts.map((c) => [c.id, c.full_name]));
       const opportunityTitleById = new Map(opportunities.map((o) => [o.id, o.title]));
+      const noteTitleById = new Map(notes.map((n) => [n.id, n.title?.trim() || n.content.slice(0, 60)]));
       const trancheNumberById = new Map(projectTranches.map((t) => [t.id, t.tranche_number]));
 
       function trancheSubfolder(trancheId: string | null): string {
@@ -137,10 +152,17 @@ export function ExportBackupButton({ lang = "en" }: { lang?: Lang } = {}) {
             path: doc.file_path as string,
             zipPath: `opportunity-documents/${folderName(opportunityTitleById.get(doc.opportunity_id) ?? "Unknown opportunity", doc.opportunity_id)}/${doc.file_name}`,
           })),
+        ...noteDocs
+          .filter((doc) => doc.file_path)
+          .map((doc): FileJob => ({
+            bucket: "note-documents",
+            path: doc.file_path as string,
+            zipPath: `note-documents/${folderName(noteTitleById.get(doc.note_id) ?? "Unknown note", doc.note_id)}/${doc.file_name}`,
+          })),
       ];
 
       const signedUrlByBucketAndPath = new Map<string, string>();
-      for (const bucket of ["project-documents", "contact-documents", "opportunity-documents"] as const) {
+      for (const bucket of ["project-documents", "contact-documents", "opportunity-documents", "note-documents"] as const) {
         const paths = jobs.filter((j) => j.bucket === bucket).map((j) => j.path);
         if (paths.length === 0) continue;
 

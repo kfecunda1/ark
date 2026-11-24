@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarClock, CheckCircle2, Pencil, StickyNote, Trash2 } from "lucide-react";
 import {
@@ -11,7 +12,9 @@ import {
 } from "@/lib/actions/project-steps";
 import { addProjectNote, deleteProjectNote, setNoteReminderDone, updateProjectNote } from "@/lib/actions/notes";
 import { DueDateBadge } from "@/components/projects/due-date-badge";
+import { MeetingBadge } from "@/components/notes/badges";
 import { formatDateTime } from "@/lib/format";
+import { formatDateOnly } from "@/lib/projects";
 import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { Note, ProjectStep, ProjectStepKind } from "@/lib/types";
 
@@ -73,6 +76,14 @@ function TimelineRow({ entry, projectId, authorName, onRefresh, lang }: Timeline
   const isNote = entry.kind === "note";
   const step = entry.kind === "step" ? entry.data : null;
   const note = entry.kind === "note" ? entry.data : null;
+  // A meeting note (supabase/migrations/035_meeting_notes.sql) has its
+  // own richer detail page (/notes/[id]) — editing/deleting the whole
+  // thing happens there (deleting still works right from here, since
+  // that's a plain, generic action no matter the note's kind), not
+  // through this row's own generic inline editor, which only knows
+  // about content/due_date and would otherwise silently drop title/
+  // meeting_date/participants.
+  const isMeeting = note?.kind === "meeting";
 
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -218,14 +229,24 @@ function TimelineRow({ entry, projectId, authorName, onRefresh, lang }: Timeline
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
-            {KIND_LABEL[composerKind]}
-          </span>
+          {isMeeting ? (
+            <MeetingBadge date={note!.meeting_date ? formatDateOnly(note!.meeting_date, lang) : undefined} lang={lang} />
+          ) : (
+            <span className="text-[11px] font-medium tracking-wide text-white/35 uppercase">
+              {KIND_LABEL[composerKind]}
+            </span>
+          )}
           {dueDateValue && !checked && <DueDateBadge dueDate={dueDateValue} />}
         </div>
-        <p className={`mt-1 text-sm whitespace-pre-wrap ${checked ? "text-white/40 line-through" : "text-white/85"}`}>
-          {body}
-        </p>
+        {isMeeting ? (
+          <Link href={`/notes/${note!.id}`} className="mt-1 block text-sm font-medium text-white/85 hover:text-white hover:underline">
+            {note!.title}
+          </Link>
+        ) : (
+          <p className={`mt-1 text-sm whitespace-pre-wrap ${checked ? "text-white/40 line-through" : "text-white/85"}`}>
+            {body}
+          </p>
+        )}
         <p className="mt-1 text-xs text-white/35">
           {authorName} · {formatDateTime(createdAt, lang)}
           {step && step.done && doneAt && <> · {t.projectTimeline.doneAt(formatDateTime(doneAt, lang))}</>}
@@ -256,14 +277,24 @@ function TimelineRow({ entry, projectId, authorName, onRefresh, lang }: Timeline
           </>
         ) : (
           <>
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              aria-label={t.projectTimeline.editEntry}
-              className="rounded-md p-1.5 text-white/30 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white/70"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
+            {isMeeting ? (
+              <Link
+                href={`/notes/${note!.id}/edit`}
+                aria-label={t.projectTimeline.editEntry}
+                className="rounded-md p-1.5 text-white/30 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white/70"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                aria-label={t.projectTimeline.editEntry}
+                className="rounded-md p-1.5 text-white/30 transition-colors duration-150 ease-out hover:bg-white/[0.06] hover:text-white/70"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setConfirmingDelete(true)}

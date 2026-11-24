@@ -13,11 +13,12 @@ export interface LinkOption {
   sublabel?: string;
 }
 
-type LinkType = "none" | "project" | "contact";
+type LinkType = "none" | "project" | "contact" | "opportunity";
 
 interface NoteLinkPickerProps {
   projects: LinkOption[];
   contacts: LinkOption[];
+  opportunities: LinkOption[];
   defaultLinkType?: LinkType;
   defaultLinkId?: string | null;
   lang?: Lang;
@@ -33,6 +34,7 @@ const selectClass =
 export function NoteLinkPicker({
   projects,
   contacts,
+  opportunities,
   defaultLinkType = "none",
   defaultLinkId = null,
   lang = "en",
@@ -40,8 +42,15 @@ export function NoteLinkPicker({
   const t = getDictionary(lang);
   const [linkType, setLinkType] = useState<LinkType>(defaultLinkType);
   const options = useMemo(
-    () => (linkType === "project" ? projects : linkType === "contact" ? contacts : []),
-    [linkType, projects, contacts]
+    () =>
+      linkType === "project"
+        ? projects
+        : linkType === "contact"
+          ? contacts
+          : linkType === "opportunity"
+            ? opportunities
+            : [],
+    [linkType, projects, contacts, opportunities]
   );
 
   const [selected, setSelected] = useState<LinkOption | null>(
@@ -85,6 +94,9 @@ export function NoteLinkPicker({
           <option value="contact" className="bg-[#0a0e17]">
             {t.noteForm.receiver}
           </option>
+          <option value="opportunity" className="bg-[#0a0e17]">
+            {t.noteForm.opportunity}
+          </option>
         </select>
 
         {linkType !== "none" && (
@@ -100,7 +112,13 @@ export function NoteLinkPicker({
               }}
               onFocus={() => setOpen(true)}
               onBlur={() => setTimeout(() => setOpen(false), 120)}
-              placeholder={linkType === "project" ? t.noteForm.searchProjects : t.noteForm.searchReceivers}
+              placeholder={
+                linkType === "project"
+                  ? t.noteForm.searchProjects
+                  : linkType === "opportunity"
+                    ? t.noteForm.searchOpportunities
+                    : t.noteForm.searchReceivers
+              }
               className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-2.5 pr-9 pl-9 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]"
             />
             {selected && (

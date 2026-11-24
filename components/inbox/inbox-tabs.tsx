@@ -598,6 +598,12 @@ export function InboxTabs({
                     >
                       {filingId === item.id ? t.inbox.close : t.inbox.fileIntoAction}
                     </button>
+                    <Link
+                      href={`/notes/new-meeting?fromInboxItem=${item.id}`}
+                      className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-white/[0.08]"
+                    >
+                      {t.inbox.fileAsMeetingSummary}
+                    </Link>
                     <button
                       type="button"
                       onClick={() => handleDismiss(item.id, true)}

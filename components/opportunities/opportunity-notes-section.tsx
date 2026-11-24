@@ -4,10 +4,11 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { ReminderBadge } from "@/components/notes/badges";
+import { ReminderBadge, MeetingBadge } from "@/components/notes/badges";
 import { DeleteNoteButton } from "@/components/notes/delete-note-button";
 import { addOpportunityNote } from "@/lib/actions/opportunities";
 import { formatDateTime } from "@/lib/format";
+import { formatDateOnly } from "@/lib/projects";
 import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
 import type { Note } from "@/lib/types";
 
@@ -70,22 +71,29 @@ export function OpportunityNotesSection({ opportunityId, notes, lang = "en" }: O
       {notes.length === 0 ? (
         <p className="text-sm text-white/35">{t.opportunities.noNotesYet}</p>
       ) : (
-        notes.map((note) => (
-          <div
-            key={note.id}
-            className="flex items-start justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5"
-          >
-            <Link href={`/notes/${note.id}/edit`} className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                {note.title && <p className="truncate text-sm font-medium text-white/85">{note.title}</p>}
-                {note.is_reminder && note.due_date && <ReminderBadge dueDate={note.due_date} lang={lang} />}
-              </div>
-              <p className="mt-1 line-clamp-2 text-sm text-white/60">{note.content}</p>
-              <p className="mt-1 text-xs text-white/35">{formatDateTime(note.created_at, lang)}</p>
-            </Link>
-            <DeleteNoteButton noteId={note.id} lang={lang} />
-          </div>
-        ))
+        notes.map((note) => {
+          const isMeeting = note.kind === "meeting";
+          return (
+            <div
+              key={note.id}
+              className="flex items-start justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5"
+            >
+              <Link href={isMeeting ? `/notes/${note.id}` : `/notes/${note.id}/edit`} className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  {note.title && <p className="truncate text-sm font-medium text-white/85">{note.title}</p>}
+                  {isMeeting ? (
+                    <MeetingBadge date={note.meeting_date ? formatDateOnly(note.meeting_date, lang) : undefined} lang={lang} />
+                  ) : (
+                    note.is_reminder && note.due_date && <ReminderBadge dueDate={note.due_date} lang={lang} />
+                  )}
+                </div>
+                <p className="mt-1 line-clamp-2 text-sm text-white/60">{note.content}</p>
+                <p className="mt-1 text-xs text-white/35">{formatDateTime(note.created_at, lang)}</p>
+              </Link>
+              <DeleteNoteButton noteId={note.id} lang={lang} />
+            </div>
+          );
+        })
       )}
 
       {adding ? (

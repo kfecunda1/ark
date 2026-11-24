@@ -7,7 +7,7 @@ import { getDictionary } from "@/lib/i18n";
 import type { Contact, Project } from "@/lib/types";
 
 interface NewNotePageProps {
-  searchParams: Promise<{ contact_id?: string; project_id?: string }>;
+  searchParams: Promise<{ contact_id?: string; project_id?: string; opportunity_id?: string }>;
 }
 
 export default async function NewNotePage({ searchParams }: NewNotePageProps) {
@@ -16,9 +16,10 @@ export default async function NewNotePage({ searchParams }: NewNotePageProps) {
   const t = getDictionary(lang);
   const supabase = await createClient();
 
-  const [{ data: contactsData }, { data: projectsData }] = await Promise.all([
+  const [{ data: contactsData }, { data: projectsData }, { data: opportunitiesData }] = await Promise.all([
     supabase.from("contacts").select("id, full_name, nickname, archived_at"),
     supabase.from("projects").select("id, name, nickname"),
+    supabase.from("opportunities").select("id, title"),
   ]);
   const contacts = (contactsData as Contact[] | null) ?? [];
   // Archived receivers are excluded, except the one this page was
@@ -40,9 +41,17 @@ export default async function NewNotePage({ searchParams }: NewNotePageProps) {
     label: projectDisplayName(project),
     sublabel: hasDisplayNickname(project.nickname) ? project.name : undefined,
   }));
+  const opportunities = (opportunitiesData as { id: string; title: string }[] | null) ?? [];
+  const opportunityOptions = opportunities.map((o) => ({ id: o.id, label: o.title }));
 
-  const defaultLinkType = params.project_id ? "project" : params.contact_id ? "contact" : "none";
-  const defaultLinkId = params.project_id ?? params.contact_id ?? null;
+  const defaultLinkType = params.project_id
+    ? "project"
+    : params.contact_id
+      ? "contact"
+      : params.opportunity_id
+        ? "opportunity"
+        : "none";
+  const defaultLinkId = params.project_id ?? params.contact_id ?? params.opportunity_id ?? null;
 
   return (
     <div className="mx-auto max-w-lg">
@@ -54,6 +63,7 @@ export default async function NewNotePage({ searchParams }: NewNotePageProps) {
         mode="create"
         projects={projectOptions}
         contacts={contactOptions}
+        opportunities={opportunityOptions}
         defaultLinkType={defaultLinkType}
         defaultLinkId={defaultLinkId}
         lang={lang}

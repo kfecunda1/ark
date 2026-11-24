@@ -113,6 +113,11 @@ const es: Dictionary = {
     noteOnReceiver: (name: string) => `Nota sobre el receptor: ${name}`,
     noteOnOpportunity: (name: string) => `Nota sobre la oportunidad: ${name}`,
     noteLabel: "Nota",
+    meetingOnProject: (date: string, name: string) => `Reunión · ${date} · Proyecto: ${name}`,
+    meetingOnReceiver: (date: string, name: string) => `Reunión · ${date} · Receptor: ${name}`,
+    meetingOnOpportunity: (date: string, name: string) => `Reunión · ${date} · Oportunidad: ${name}`,
+    meetingLabel: (date: string) => `Reunión · ${date}`,
+    meetingNoDate: "Reunión",
     unknownReceiver: "Receptor desconocido",
   },
   auth: {
@@ -232,6 +237,8 @@ const es: Dictionary = {
       project_tranche: "Tramo",
       opportunity: "Oportunidad",
       opportunity_document: "Documento de oportunidad",
+      note_participant: "Participante de reunión",
+      note_document: "Documento de nota",
     },
     actions: {
       created: "Creado",
@@ -285,6 +292,7 @@ const es: Dictionary = {
       kind: "tipo",
       body: "texto",
       due_date: "fecha límite",
+      meeting_date: "fecha de la reunión",
       confirmed_on: "confirmado el",
       paid_out_on: "pagado el",
       done: "hecho",
@@ -515,6 +523,7 @@ const es: Dictionary = {
     title: "Notas",
     subtitle: "Notas libres y recordatorios, opcionalmente vinculados a un proyecto o receptor.",
     newNote: "Nueva nota",
+    newMeeting: "Nueva reunión",
     failedToLoad: (message: string) => `No se pudieron cargar las notas: ${message}`,
     noMatchingNotes: "Sin notas coincidentes",
     noNotesYet: "Aún no hay notas",
@@ -522,12 +531,16 @@ const es: Dictionary = {
     emptyHint: "Las notas y recordatorios que crees aparecerán aquí.",
     allTypes: "Todos los tipos",
     remindersOnly: "Solo recordatorios",
+    meetingsOnly: "Solo reuniones",
     editNoteTitle: "Editar nota",
     editNoteSubtitle: "Actualiza esta nota.",
     newNoteTitle: "Nueva nota",
     newNoteSubtitle: "Anota algo, opcionalmente como recordatorio.",
     deleteNoteAriaLabel: "Eliminar nota",
     dueOn: (date: string) => `Vence ${date}`,
+    meetingLabel: "Reunión",
+    meetingsAttended: "Reuniones asistidas",
+    noMeetingsAttended: "No hay reuniones asistidas.",
   },
   noteForm: {
     titleLabel: "Título",
@@ -538,8 +551,10 @@ const es: Dictionary = {
     noLink: "Sin vínculo",
     project: "Proyecto",
     receiver: "Receptor",
+    opportunity: "Oportunidad",
     searchProjects: "Buscar proyectos…",
     searchReceivers: "Buscar receptores…",
+    searchOpportunities: "Buscar oportunidades…",
     clearSelection: "Quitar selección",
     noMatches: "Sin resultados.",
     saveChanges: "Guardar cambios",
@@ -774,6 +789,7 @@ const es: Dictionary = {
     suggestedFileHere: (label: string) => `Sugerencia: ${label} — Archivar aquí`,
     close: "Cerrar",
     fileIntoAction: "Archivar en…",
+    fileAsMeetingSummary: "Archivar como resumen de reunión",
     dismiss: "Descartar",
     saveNameAria: "Guardar nombre",
     cancelRenameAria: "Cancelar cambio de nombre",
@@ -862,10 +878,11 @@ const es: Dictionary = {
     deleteConfirmBody: "Esto elimina este contacto de forma permanente. Esta acción no se puede deshacer.",
     confirmDelete: "Confirmar eliminación",
     deleting: "Eliminando…",
-    linkedToCannotDelete: (projectCount: number, receiverCount: number) => {
+    linkedToCannotDelete: (projectCount: number, receiverCount: number, meetingCount: number = 0) => {
       const parts: string[] = [];
       if (projectCount) parts.push(`${projectCount} proyecto${projectCount === 1 ? "" : "s"}`);
       if (receiverCount) parts.push(`${receiverCount} receptor${receiverCount === 1 ? "" : "es"}`);
+      if (meetingCount) parts.push(`${meetingCount} reunión${meetingCount === 1 ? "" : "es"}`);
       return `Vinculado a ${parts.join(" y ")}. Archívalo en su lugar, o desvincúlalo primero.`;
     },
   },
@@ -1125,6 +1142,8 @@ const es: Dictionary = {
       `PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX — hasta ${max} MB. Los archivos se suben después de crear el proyecto — elige todos los que necesites antes de guardar.`,
     fileTypesHintOpportunity: (max: number) =>
       `PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX — hasta ${max} MB. Los archivos se suben después de crear la oportunidad — elige todos los que necesites antes de guardar.`,
+    fileTypesHintNote: (max: number) =>
+      `PDF, JPG, PNG, HEIC, MP4, MOV, DOC, DOCX — hasta ${max} MB. Los archivos se suben después de guardar la reunión — elige todos los que necesites antes de guardar.`,
   },
   viewToggle: {
     list: "Lista",
@@ -1238,6 +1257,39 @@ const es: Dictionary = {
   opportunityDocuments: {
     noDocumentsYet: "Aún no hay documentos.",
     duplicateInThisOpportunity: (fileName: string) => `Este archivo exacto ya está adjunto aquí como "${fileName}".`,
+  },
+  meetingForm: {
+    newMeetingTitle: "Nueva reunión",
+    newMeetingSubtitle: "Registra el resumen de una reunión, con participantes y tareas pendientes.",
+    editMeetingTitle: "Editar reunión",
+    titleLabel: "Título",
+    meetingDateLabel: "Fecha de la reunión",
+    participantsLabel: "Participantes",
+    addParticipantPlaceholder: "Buscar contactos…",
+    createAndAddParticipant: "Crear y añadir",
+    removeParticipant: (name: string) => `Quitar a ${name}`,
+    summaryLabel: "Resumen",
+    summaryPlaceholder: "De qué se habló…",
+    attachmentsLabel: "Archivos adjuntos",
+    actionItemsLabel: "Tareas pendientes",
+    actionItemsHint: "Opcional. Cada una se convierte en un próximo paso (si esta reunión está vinculada a un proyecto) o en un recordatorio, con su propia fecha límite.",
+    actionItemPlaceholder: "Agregar una tarea pendiente…",
+    actionItemDueDateAria: "Fecha límite",
+    addActionItem: "Agregar",
+    removeActionItem: (text: string) => `Quitar "${text}"`,
+    saveChanges: "Guardar cambios",
+    createMeeting: "Crear reunión",
+    failedToCreate: "No se pudo crear la reunión.",
+    uploadingDocuments: "Subiendo archivos adjuntos…",
+    uploadingProgress: (index: number, total: number, percent: number) => `Subiendo ${index} de ${total} (${percent}%)…`,
+    inboxAttachmentFallbackName: "archivo adjunto de la Bandeja de entrada",
+  },
+  meetingDetail: {
+    backToNotes: "← Volver a Notas",
+    noActionItems: "No hay tareas pendientes.",
+    noAttachments: "No hay archivos adjuntos.",
+    markDone: "Marcar como hecho",
+    markNotDone: "Marcar como no hecho",
   },
 };
 

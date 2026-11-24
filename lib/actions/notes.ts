@@ -24,20 +24,24 @@ function unexpectedErrorMessage(err: unknown): string {
 interface NoteLinks {
   project_id: string | null;
   contact_id: string | null;
+  opportunity_id: string | null;
 }
 
 // supabase/migrations/014_notes_projects_reminders.sql re-added
-// project_id — a note links to a project, a contact, or nothing, never
+// project_id, and 034_opportunities.sql added opportunity_id — a note
+// links to a project, a contact, an opportunity, or nothing, never
 // more than one (notes_at_most_one_link). The form posts a single
 // link_type + link_id pair (components/notes/note-link-picker.tsx)
-// rather than two separate fields, so only one can ever be set here.
+// rather than separate fields per type, so only one can ever be set
+// here.
 function parseLink(formData: FormData): NoteLinks {
   const linkType = formData.get("link_type")?.toString();
   const linkId = formData.get("link_id")?.toString().trim() || null;
 
-  if (linkType === "project" && linkId) return { project_id: linkId, contact_id: null };
-  if (linkType === "contact" && linkId) return { project_id: null, contact_id: linkId };
-  return { project_id: null, contact_id: null };
+  if (linkType === "project" && linkId) return { project_id: linkId, contact_id: null, opportunity_id: null };
+  if (linkType === "contact" && linkId) return { project_id: null, contact_id: linkId, opportunity_id: null };
+  if (linkType === "opportunity" && linkId) return { project_id: null, contact_id: null, opportunity_id: linkId };
+  return { project_id: null, contact_id: null, opportunity_id: null };
 }
 
 function buildNotePayload(formData: FormData) {
@@ -69,6 +73,10 @@ function revalidateForLinks(links: NoteLinks) {
     revalidatePath("/dashboard");
   }
   if (links.contact_id) revalidatePath(`/receivers/${links.contact_id}`);
+  if (links.opportunity_id) {
+    revalidatePath(`/opportunities/${links.opportunity_id}`);
+    revalidatePath("/dashboard");
+  }
 }
 
 export async function createNote(_prevState: NoteFormState, formData: FormData): Promise<NoteFormState> {
@@ -131,7 +139,7 @@ export async function deleteNote(noteId: string): Promise<{ error: string | null
 
     const { data: existing } = await supabase
       .from("notes")
-      .select("project_id, contact_id")
+      .select("project_id, contact_id, opportunity_id")
       .eq("id", noteId)
       .maybeSingle();
 
@@ -141,7 +149,7 @@ export async function deleteNote(noteId: string): Promise<{ error: string | null
       return { error: error.message };
     }
 
-    revalidateForLinks(existing ?? { project_id: null, contact_id: null });
+    revalidateForLinks(existing ?? { project_id: null, contact_id: null, opportunity_id: null });
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
@@ -181,7 +189,7 @@ export async function addProjectNote(
       return { error: error.message };
     }
 
-    revalidateForLinks({ project_id: projectId, contact_id: null });
+    revalidateForLinks({ project_id: projectId, contact_id: null, opportunity_id: null });
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
@@ -210,7 +218,7 @@ export async function updateProjectNote(
       return { error: error.message };
     }
 
-    revalidateForLinks({ project_id: projectId, contact_id: null });
+    revalidateForLinks({ project_id: projectId, contact_id: null, opportunity_id: null });
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
@@ -227,7 +235,7 @@ export async function setNoteReminderDone(noteId: string, done: boolean): Promis
 
     const { data: existing } = await supabase
       .from("notes")
-      .select("project_id, contact_id")
+      .select("project_id, contact_id, opportunity_id")
       .eq("id", noteId)
       .maybeSingle();
 
@@ -237,7 +245,7 @@ export async function setNoteReminderDone(noteId: string, done: boolean): Promis
       return { error: error.message };
     }
 
-    revalidateForLinks(existing ?? { project_id: null, contact_id: null });
+    revalidateForLinks(existing ?? { project_id: null, contact_id: null, opportunity_id: null });
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };
@@ -253,7 +261,7 @@ export async function deleteProjectNote(noteId: string, projectId: string): Prom
       return { error: error.message };
     }
 
-    revalidateForLinks({ project_id: projectId, contact_id: null });
+    revalidateForLinks({ project_id: projectId, contact_id: null, opportunity_id: null });
     return { error: null };
   } catch (err) {
     return { error: unexpectedErrorMessage(err) };

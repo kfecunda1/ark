@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { personLabel } from "@/lib/people";
 import { projectDisplayName, receiverDisplayName } from "@/lib/display-name";
+import { formatDateOnly } from "@/lib/projects";
 import { getDictionary, type Lang } from "@/lib/i18n";
 
 // UI: Receivers for "contact", Contacts for "person" — see AGENTS.md's
@@ -20,6 +21,11 @@ export interface SearchResult {
   // whichever parent it's linked to (or nowhere, if unlinked).
   parentId?: string;
   parentType?: "project" | "contact" | "opportunity";
+  // note results only — a meeting (supabase/migrations/035_meeting_
+  // notes.sql) links to its own detail page (/notes/[id]) regardless
+  // of parentType, instead of the generic "link to the parent, or to
+  // /notes/[id]/edit if unlinked" rule every other note follows.
+  isMeeting?: boolean;
   // project results only — shown as a Recovery badge; the detail page
   // it links to (searchResultHref below) is the same /projects/[id]
   // either way, Projects and Recovery Projects being the same table.
@@ -109,7 +115,7 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
       .limit(RESULT_LIMIT),
     supabase
       .from("notes")
-      .select("id, title, content, project_id, contact_id, opportunity_id")
+      .select("id, title, content, project_id, contact_id, opportunity_id, kind, meeting_date")
       .or(`title.ilike.${orSafePattern},content.ilike.${orSafePattern}`)
       .limit(RESULT_LIMIT),
     supabase
@@ -135,17 +141,17 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
       | null) ?? [];
   const opportunityDocMatches =
     (opportunityDocsRes.data as { id: string; file_name: string; opportunity_id: string; document_type: string }[] | null) ?? [];
-  const noteMatches =
-    (notesRes.data as
-      | {
-          id: string;
-          title: string | null;
-          content: string;
-          project_id: string | null;
-          contact_id: string | null;
-          opportunity_id: string | null;
-        }[]
-      | null) ?? [];
+  type NoteMatch = {
+    id: string;
+    title: string | null;
+    content: string;
+    project_id: string | null;
+    contact_id: string | null;
+    opportunity_id: string | null;
+    kind: "note" | "meeting";
+    meeting_date: string | null;
+  };
+  const textMatchedNotes = (notesRes.data as NoteMatch[] | null) ?? [];
   const personMatches =
     (peopleRes.data as
       | { id: string; first_name: string; last_name: string | null; phone: string | null; email: string | null }[]
@@ -156,14 +162,18 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
   // A person-name match also surfaces every receiver/project they're an
   // intermediary on (supabase/migrations/018_intermediaries.sql) — same
   // "a name match surfaces what it's linked to" idea as contactIds
-  // surfacing matched projects below.
-  const [intermediaryProjectIdsRes, intermediaryReceiverIdsRes] = await Promise.all([
+  // surfacing matched projects below — and every meeting they attended
+  // (supabase/migrations/035_meeting_notes.sql's note_participants).
+  const [intermediaryProjectIdsRes, intermediaryReceiverIdsRes, participantNoteIdsRes] = await Promise.all([
     personIds.length > 0
       ? supabase.from("project_intermediaries").select("project_id").in("person_id", personIds)
       : Promise.resolve({ data: [] as { project_id: string }[] }),
     personIds.length > 0
       ? supabase.from("receiver_intermediaries").select("receiver_id").in("person_id", personIds)
       : Promise.resolve({ data: [] as { receiver_id: string }[] }),
+    personIds.length > 0
+      ? supabase.from("note_participants").select("note_id").in("person_id", personIds)
+      : Promise.resolve({ data: [] as { note_id: string }[] }),
   ]);
   const intermediaryProjectIds = [
     ...new Set(((intermediaryProjectIdsRes.data as { project_id: string }[] | null) ?? []).map((r) => r.project_id)),
@@ -171,6 +181,20 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
   const intermediaryReceiverIds = [
     ...new Set(((intermediaryReceiverIdsRes.data as { receiver_id: string }[] | null) ?? []).map((r) => r.receiver_id)),
   ];
+  const participantNoteIds = [
+    ...new Set(((participantNoteIdsRes.data as { note_id: string }[] | null) ?? []).map((r) => r.note_id)),
+  ].filter((id) => !textMatchedNotes.some((n) => n.id === id));
+
+  const participantMeetings =
+    participantNoteIds.length > 0
+      ? ((
+          await supabase
+            .from("notes")
+            .select("id, title, content, project_id, contact_id, opportunity_id, kind, meeting_date")
+            .in("id", participantNoteIds)
+        ).data as NoteMatch[] | null) ?? []
+      : [];
+  const noteMatches = [...textMatchedNotes, ...participantMeetings];
 
   // "Matched with" is the only contact a project carries now
   // (supabase/migrations/013_projects_restructure.sql dropped
@@ -317,40 +341,54 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
 
   const noteResults: SearchResult[] = noteMatches.map((note) => {
     const title = note.title?.trim() || note.content.slice(0, 60);
+    const isMeeting = note.kind === "meeting";
+    const meetingDate = note.meeting_date ? formatDateOnly(note.meeting_date, lang) : null;
     if (note.project_id) {
       const project = projectById.get(note.project_id);
+      const projectName = project ? projectDisplayName(project) : t.payoutRow.unknownProject;
       return {
         type: "note",
         id: note.id,
         title,
-        subtitle: t.search.noteOnProject(project ? projectDisplayName(project) : t.payoutRow.unknownProject),
+        subtitle: isMeeting && meetingDate ? t.search.meetingOnProject(meetingDate, projectName) : t.search.noteOnProject(projectName),
         parentId: note.project_id,
         parentType: "project",
+        isMeeting,
       };
     }
     if (note.contact_id) {
       const contact = contactById.get(note.contact_id);
+      const receiverName = contact ? receiverDisplayName(contact) : t.search.unknownReceiver;
       return {
         type: "note",
         id: note.id,
         title,
-        subtitle: t.search.noteOnReceiver(contact ? receiverDisplayName(contact) : t.search.unknownReceiver),
+        subtitle: isMeeting && meetingDate ? t.search.meetingOnReceiver(meetingDate, receiverName) : t.search.noteOnReceiver(receiverName),
         parentId: note.contact_id,
         parentType: "contact",
+        isMeeting,
       };
     }
     if (note.opportunity_id) {
       const opportunity = opportunityById.get(note.opportunity_id);
+      const opportunityName = opportunity ? opportunity.title : t.opportunities.opportunityFallback;
       return {
         type: "note",
         id: note.id,
         title,
-        subtitle: t.search.noteOnOpportunity(opportunity ? opportunity.title : t.opportunities.opportunityFallback),
+        subtitle: isMeeting && meetingDate ? t.search.meetingOnOpportunity(meetingDate, opportunityName) : t.search.noteOnOpportunity(opportunityName),
         parentId: note.opportunity_id,
         parentType: "opportunity",
+        isMeeting,
       };
     }
-    return { type: "note", id: note.id, title, subtitle: t.search.noteLabel };
+    return {
+      type: "note",
+      id: note.id,
+      title,
+      subtitle: isMeeting ? (meetingDate ? t.search.meetingLabel(meetingDate) : t.search.meetingNoDate) : t.search.noteLabel,
+      isMeeting,
+    };
   });
 
   return [
@@ -375,6 +413,7 @@ export function searchResultHref(result: SearchResult): string {
     case "document":
       return result.parentType === "opportunity" ? `/opportunities/${result.parentId}` : `/projects/${result.parentId}`;
     case "note":
+      if (result.isMeeting) return `/notes/${result.id}`;
       if (result.parentType === "project") return `/projects/${result.parentId}`;
       if (result.parentType === "contact") return `/receivers/${result.parentId}`;
       if (result.parentType === "opportunity") return `/opportunities/${result.parentId}`;

@@ -13,7 +13,8 @@ interface NoteFormProps {
   note?: Note;
   projects: LinkOption[];
   contacts: LinkOption[];
-  defaultLinkType?: "none" | "project" | "contact";
+  opportunities: LinkOption[];
+  defaultLinkType?: "none" | "project" | "contact" | "opportunity";
   defaultLinkId?: string | null;
   lang?: Lang;
 }
@@ -24,10 +25,21 @@ const fieldClass =
   "w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-colors duration-150 ease-out focus:border-accent/40 focus:bg-white/[0.06]";
 const labelClass = "mb-1.5 block text-xs font-medium text-white/55";
 
-export function NoteForm({ mode, note, projects, contacts, defaultLinkType, defaultLinkId, lang = "en" }: NoteFormProps) {
+export function NoteForm({
+  mode,
+  note,
+  projects,
+  contacts,
+  opportunities,
+  defaultLinkType,
+  defaultLinkId,
+  lang = "en",
+}: NoteFormProps) {
   const t = getDictionary(lang);
-  const resolvedLinkType = defaultLinkType ?? (note?.project_id ? "project" : note?.contact_id ? "contact" : "none");
-  const resolvedLinkId = defaultLinkId ?? note?.project_id ?? note?.contact_id ?? null;
+  const resolvedLinkType =
+    defaultLinkType ??
+    (note?.project_id ? "project" : note?.contact_id ? "contact" : note?.opportunity_id ? "opportunity" : "none");
+  const resolvedLinkId = defaultLinkId ?? note?.project_id ?? note?.contact_id ?? note?.opportunity_id ?? null;
   const action = mode === "edit" && note ? updateNote.bind(null, note.id) : createNote;
   const [state, formAction, isPending] = useActionState(action, initialState);
   const [isReminder, setIsReminder] = useState(note?.is_reminder ?? false);
@@ -88,6 +100,7 @@ export function NoteForm({ mode, note, projects, contacts, defaultLinkType, defa
         <NoteLinkPicker
           projects={projects}
           contacts={contacts}
+          opportunities={opportunities}
           defaultLinkType={resolvedLinkType}
           defaultLinkId={resolvedLinkId}
           lang={lang}
