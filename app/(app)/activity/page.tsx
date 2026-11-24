@@ -60,14 +60,15 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
     people: new Set(),
     opportunities: new Set(),
     notes: new Set(),
+    templates: new Set(),
   };
   for (const row of rows) {
     const target = activityTarget(row);
     if (target) idsByTable[target.table].add(target.id);
   }
 
-  const [projectsRes, contactsRes, peopleRes, opportunitiesRes, notesRes] = await Promise.all(
-    (["projects", "contacts", "people", "opportunities", "notes"] as const).map((table) => {
+  const [projectsRes, contactsRes, peopleRes, opportunitiesRes, notesRes, templatesRes] = await Promise.all(
+    (["projects", "contacts", "people", "opportunities", "notes", "templates"] as const).map((table) => {
       const ids = [...idsByTable[table]];
       return ids.length > 0
         ? supabase.from(table).select("id").in("id", ids)
@@ -82,6 +83,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
     ["people", peopleRes],
     ["opportunities", opportunitiesRes],
     ["notes", notesRes],
+    ["templates", templatesRes],
   ] as const) {
     for (const record of ((res.data as { id: string }[] | null) ?? [])) {
       existing.add(targetKey(table, record.id));

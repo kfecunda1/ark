@@ -46,6 +46,16 @@ const EXTENSION_MIME: Record<string, string> = {
   mov: "video/quicktime",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  // Templates only (see TEMPLATE_FILE_ACCEPT/isAllowedTemplateFile
+  // below) — not added to the other document buckets' own allowed
+  // types, since the shared DOCUMENT_FILE_ACCEPT/isAllowedDocumentFile
+  // pair below stays exactly as narrow as project-documents/
+  // opportunity-documents/note-documents' own bucket-level
+  // allowed_mime_types, which none of these three extend to.
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  odt: "application/vnd.oasis.opendocument.text",
+  txt: "text/plain",
 };
 
 // Broad enough (image/*, video/*) that iOS/Android show the camera roll
@@ -71,12 +81,40 @@ export function getDocumentKind(fileName: string): DocumentKind {
   if (ext === "jpg" || ext === "jpeg" || ext === "png") return "image";
   if (ext === "heic" || ext === "heif") return "heic";
   if (ext === "mp4" || ext === "mov") return "video";
-  if (ext === "doc" || ext === "docx") return "doc";
+  if (ext === "doc" || ext === "docx" || ext === "xls" || ext === "xlsx" || ext === "odt" || ext === "txt") return "doc";
   return "other";
 }
 
 export function isAllowedDocumentFile(file: File): boolean {
-  return fileExtension(file.name) in EXTENSION_MIME;
+  return DOCUMENT_EXTENSIONS.has(fileExtension(file.name));
+}
+
+// project-documents/contact-documents/opportunity-documents/note-
+// documents' own shared allowed set — narrower than EXTENSION_MIME as
+// a whole, which also carries the templates-only extensions below.
+const DOCUMENT_EXTENSIONS = new Set([
+  "pdf",
+  "jpg",
+  "jpeg",
+  "png",
+  "heic",
+  "heif",
+  "mp4",
+  "mov",
+  "doc",
+  "docx",
+]);
+
+// Templates (supabase/migrations/036_templates.sql's own bucket):
+// office documents and plain text, plus images — no video, no HEIC
+// (a template is an authored document, not a phone-camera capture).
+const TEMPLATE_EXTENSIONS = new Set(["pdf", "doc", "docx", "xls", "xlsx", "odt", "txt", "jpg", "jpeg", "png"]);
+
+export const TEMPLATE_FILE_ACCEPT =
+  ".pdf,.doc,.docx,.xls,.xlsx,.odt,.txt,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.oasis.opendocument.text,text/plain,image/jpeg,image/png";
+
+export function isAllowedTemplateFile(file: File): boolean {
+  return TEMPLATE_EXTENSIONS.has(fileExtension(file.name));
 }
 
 // The Content-Type to send on upload — always derived from the file's
@@ -106,6 +144,20 @@ function extractExtension(fileName: string): string {
 // newName doesn't already end with that same one (case-insensitive),
 // it's appended; a currentFileName with no extension (or a blank
 // newName) is left alone.
+// Templates (supabase/migrations/036_templates.sql) only: "Downloads
+// keep the original file name, with the version added: 'PGL Sender
+// (v3).docx'" — inserted right before the extension; a file with no
+// extension just gets the suffix appended. Used both server-side
+// (app/(app)/templates/page.tsx, as the `download` filename on each
+// version's signed URL) and client-side (components/settings/export-
+// backup-button.tsx's zip folder naming) — plain string math, no
+// server-only dependency either way.
+export function versionedFileName(fileName: string, versionNumber: number): string {
+  const idx = fileName.lastIndexOf(".");
+  if (idx <= 0) return `${fileName} (v${versionNumber})`;
+  return `${fileName.slice(0, idx)} (v${versionNumber})${fileName.slice(idx)}`;
+}
+
 export function withPreservedExtension(currentFileName: string, newName: string): string {
   const trimmed = newName.trim();
   if (!trimmed) return currentFileName;

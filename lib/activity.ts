@@ -69,6 +69,8 @@ export const ENTITY_TYPE_LABELS: Record<ActivityEntityType, string> = {
   opportunity_document: "Opportunity document",
   note_participant: "Meeting participant",
   note_document: "Note document",
+  template: "Template",
+  template_version: "Template version",
 };
 
 export const ACTION_LABELS: Record<ActivityAction, string> = {
@@ -100,7 +102,8 @@ export function isDocumentEntity(entityType: ActivityEntityType): boolean {
     entityType === "project_tranche" ||
     entityType === "opportunity_document" ||
     entityType === "note_document" ||
-    entityType === "note_participant"
+    entityType === "note_participant" ||
+    entityType === "template_version"
   );
 }
 
@@ -320,7 +323,7 @@ export function activityDetailChips(row: ActivityLog, lang: Lang = "en"): string
 
 /** The row an activity row points at. */
 export interface ActivityTarget {
-  table: "projects" | "contacts" | "people" | "opportunities" | "notes";
+  table: "projects" | "contacts" | "people" | "opportunities" | "notes" | "templates";
   id: string;
 }
 
@@ -332,6 +335,10 @@ export function activityTarget(row: ActivityLog): ActivityTarget | null {
       return { table: "contacts", id: row.entity_id };
     case "opportunity":
       return { table: "opportunities", id: row.entity_id };
+    case "template":
+      return { table: "templates", id: row.entity_id };
+    case "template_version":
+      return row.details?.parent_id ? { table: "templates", id: row.details.parent_id } : null;
     // Documents and products have no page of their own, so they point
     // at their owner.
     case "project_document":
@@ -373,6 +380,7 @@ const TARGET_HREF_PREFIX: Record<ActivityTarget["table"], string> = {
   people: "/people",
   opportunities: "/opportunities",
   notes: "/notes",
+  templates: "/templates",
 };
 
 /**
@@ -386,6 +394,11 @@ export function activityHref(row: ActivityLog, existing: Set<string>): string | 
 
   const target = activityTarget(row);
   if (!target || !existing.has(`${target.table}:${target.id}`)) return null;
+
+  // Templates (supabase/migrations/036_templates.sql) have no detail
+  // route of their own — just the one list page, which highlights
+  // whichever template id is passed this way.
+  if (target.table === "templates") return `/templates?highlight=${target.id}`;
 
   return `${TARGET_HREF_PREFIX[target.table]}/${target.id}`;
 }

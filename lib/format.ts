@@ -125,3 +125,22 @@ export function formatDateTime(value: string, lang: Lang = "en"): string {
 
   return `${datePart}, ${timePart}`;
 }
+
+// Just the date part of a real instant (a timestamptz column), in the
+// fixed timezone above — "21 Nov 2026", no time. Not the same as
+// lib/projects.ts's formatDateOnly, which is for an actual date-only
+// column and deliberately uses a local-midnight parse instead; using
+// that helper on a timestamptz value here would read the wrong
+// calendar day whenever the server's own local timezone doesn't match
+// TIME_ZONE. Used by Templates' "v3 · updated 21 Nov 2026 by Kiara"
+// line (components/templates/template-card.tsx).
+export function formatDateOnlyFromTimestamp(value: string, lang: Lang = "en"): string {
+  const date = new Date(value);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: TIME_ZONE,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(date);
+  return formatDateParts(numericPart(parts, "day"), numericPart(parts, "month"), numericPart(parts, "year"), lang);
+}

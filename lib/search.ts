@@ -8,7 +8,7 @@ import { getDictionary, type Lang } from "@/lib/i18n";
 // UI-naming-vs-database-naming note. The database's `contacts` table
 // backs "contact" results; the database's `people` table backs
 // "person" results.
-export type SearchResultType = "project" | "contact" | "opportunity" | "document" | "note" | "person";
+export type SearchResultType = "project" | "contact" | "opportunity" | "document" | "note" | "person" | "template";
 
 export interface SearchResult {
   type: SearchResultType;
@@ -95,7 +95,8 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
   const likePattern = `%${escapeLike(query)}%`;
   const orSafePattern = `%${escapeLike(sanitizeForOrFilter(query))}%`;
 
-  const [contactsRes, opportunitiesRes, projectDocsRes, opportunityDocsRes, notesRes, peopleRes] = await Promise.all([
+  const [contactsRes, opportunitiesRes, projectDocsRes, opportunityDocsRes, notesRes, peopleRes, templatesRes] =
+    await Promise.all([
     supabase
       .from("contacts")
       .select("id, full_name, nickname")
@@ -131,6 +132,12 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
         ].join(",")
       )
       .limit(RESULT_LIMIT),
+    supabase
+      .from("templates")
+      .select("id, name, description, document_type, active")
+      .eq("active", true)
+      .or(`name.ilike.${orSafePattern},description.ilike.${orSafePattern}`)
+      .limit(RESULT_LIMIT),
   ]);
 
   const contactMatches = (contactsRes.data as { id: string; full_name: string; nickname: string | null }[] | null) ?? [];
@@ -156,6 +163,9 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
     (peopleRes.data as
       | { id: string; first_name: string; last_name: string | null; phone: string | null; email: string | null }[]
       | null) ?? [];
+  const templateMatches =
+    (templatesRes.data as { id: string; name: string; description: string | null; document_type: string | null }[] | null) ??
+    [];
   const contactIds = contactMatches.map((c) => c.id);
   const personIds = personMatches.map((p) => p.id);
 
@@ -289,6 +299,13 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
     subtitle: t.search.contactLabel,
   }));
 
+  const templateResults: SearchResult[] = templateMatches.map((template) => ({
+    type: "template",
+    id: template.id,
+    title: template.name,
+    subtitle: template.document_type ? t.search.templateOfType(template.document_type) : t.search.templateLabel,
+  }));
+
   const opportunityResults: SearchResult[] = opportunityMatches.map((opportunity) => ({
     type: "opportunity",
     id: opportunity.id,
@@ -399,6 +416,7 @@ export async function runGlobalSearch(rawQuery: string, lang: Lang = "en"): Prom
     ...opportunityDocumentResults,
     ...noteResults,
     ...personResults,
+    ...templateResults,
   ];
 }
 
@@ -408,6 +426,12 @@ export function searchResultHref(result: SearchResult): string {
       return `/projects/${result.id}`;
     case "contact":
       return `/receivers/${result.id}`;
+    case "template":
+      // Templates have no detail route of their own — the Templates
+      // page highlights whichever id is passed this way, same as an
+      // activity-log row linking to one (lib/activity.ts's
+      // activityHref).
+      return `/templates?highlight=${result.id}`;
     case "opportunity":
       return `/opportunities/${result.id}`;
     case "document":

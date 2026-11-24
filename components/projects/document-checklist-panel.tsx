@@ -3,6 +3,7 @@ import { CheckCircle2, XCircle } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { catalogLabel, getDictionary, type Lang } from "@/lib/i18n";
 import type { ChecklistStatus, RequirementStatus } from "@/lib/checklists";
+import { matchingTemplateProduct, type TemplateAvailability } from "@/lib/templates";
 import type { DocumentTypeRecord } from "@/lib/types";
 
 interface DocumentChecklistPanelProps {
@@ -20,6 +21,10 @@ interface DocumentChecklistPanelProps {
   // group.name values themselves are never translated — only the
   // chip's own label text changes.
   documentTypes?: DocumentTypeRecord[];
+  // Which document types have at least one active template (lib/
+  // templates.ts's getActiveTemplatesByDocumentType) — drives the
+  // "Template" link next to a missing requirement's upload link.
+  templatesByType?: Map<string, TemplateAvailability>;
   lang?: Lang;
 }
 
@@ -45,6 +50,7 @@ export function DocumentChecklistPanel({
   status,
   isAdmin,
   documentTypes,
+  templatesByType,
   lang = "en",
 }: DocumentChecklistPanelProps) {
   const t = getDictionary(lang);
@@ -65,6 +71,30 @@ export function DocumentChecklistPanel({
     );
   }
 
+  // "... that has active templates, show a 'Template' link that opens
+  // the Templates page filtered to that type (and to the project's
+  // product if one matches)" — null when this type has no active
+  // template at all, so the chip stays exactly as it was before this
+  // feature existed.
+  function templateLink(type: string) {
+    const availability = templatesByType?.get(type);
+    if (!availability) return null;
+    const product = matchingTemplateProduct(availability, status.applicableProducts);
+    const params = new URLSearchParams({ documentType: type });
+    if (product) params.set("product", product);
+    return (
+      <span key={`template:${type}`}>
+        {" · "}
+        <Link
+          href={`/templates?${params.toString()}`}
+          className="font-medium text-accent-soft underline underline-offset-2 hover:text-white"
+        >
+          {t.documentChecklist.templateLink}
+        </Link>
+      </span>
+    );
+  }
+
   function renderRequirement({ requirement, satisfied, satisfiedByType }: RequirementStatus) {
     const Icon = satisfied ? CheckCircle2 : XCircle;
 
@@ -77,6 +107,7 @@ export function DocumentChecklistPanel({
             <>
               {" "}
               {uploadLink(requirement.documentType)}
+              {templateLink(requirement.documentType)}
             </>
           )}
         </span>
@@ -98,6 +129,7 @@ export function DocumentChecklistPanel({
               <span key={type}>
                 {index > 0 && " / "}
                 {uploadLink(type)}
+                {templateLink(type)}
               </span>
             ))}
           </>

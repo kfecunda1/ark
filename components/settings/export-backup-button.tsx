@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { dateKeyInTimeZone } from "@/lib/format";
 import { toCsv } from "@/lib/csv";
 import { getDictionary, type Lang } from "@/lib/i18n";
+import { versionedFileName } from "@/lib/storage";
 import type {
   Contact,
   ContactDocument,
@@ -16,6 +17,8 @@ import type {
   Project,
   ProjectDocument,
   ProjectTranche,
+  Template,
+  TemplateVersion,
 } from "@/lib/types";
 
 // One CSV per table — every table in the schema except profiles (an
@@ -42,10 +45,13 @@ const TABLES = [
   "opportunity_products",
   "opportunity_documents",
   "note_documents",
+  "templates",
+  "template_products",
+  "template_versions",
 ] as const;
 
 interface FileJob {
-  bucket: "project-documents" | "contact-documents" | "opportunity-documents" | "note-documents";
+  bucket: "project-documents" | "contact-documents" | "opportunity-documents" | "note-documents" | "templates";
   path: string;
   zipPath: string;
 }
@@ -101,12 +107,15 @@ export function ExportBackupButton({ lang = "en" }: { lang?: Lang } = {}) {
       const opportunityDocs = (rowsByTable.opportunity_documents ?? []) as unknown as OpportunityDocument[];
       const notes = (rowsByTable.notes ?? []) as unknown as Note[];
       const noteDocs = (rowsByTable.note_documents ?? []) as unknown as NoteDocument[];
+      const templates = (rowsByTable.templates ?? []) as unknown as Template[];
+      const templateVersions = (rowsByTable.template_versions ?? []) as unknown as TemplateVersion[];
       const projectTranches = (rowsByTable.project_tranches ?? []) as unknown as ProjectTranche[];
 
       const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
       const contactNameById = new Map(contacts.map((c) => [c.id, c.full_name]));
       const opportunityTitleById = new Map(opportunities.map((o) => [o.id, o.title]));
       const noteTitleById = new Map(notes.map((n) => [n.id, n.title?.trim() || n.content.slice(0, 60)]));
+      const templateNameById = new Map(templates.map((tpl) => [tpl.id, tpl.name]));
       const trancheNumberById = new Map(projectTranches.map((t) => [t.id, t.tranche_number]));
 
       function trancheSubfolder(trancheId: string | null): string {
@@ -159,10 +168,26 @@ export function ExportBackupButton({ lang = "en" }: { lang?: Lang } = {}) {
             path: doc.file_path as string,
             zipPath: `note-documents/${folderName(noteTitleById.get(doc.note_id) ?? "Unknown note", doc.note_id)}/${doc.file_name}`,
           })),
+        // Every version of every template, named with its own version
+        // number (versionedFileName) since several versions can share
+        // the same original file name within one template's folder.
+        ...templateVersions.map(
+          (v): FileJob => ({
+            bucket: "templates",
+            path: v.file_path,
+            zipPath: `templates/${folderName(templateNameById.get(v.template_id) ?? "Unknown template", v.template_id)}/${versionedFileName(v.file_name, v.version_number)}`,
+          })
+        ),
       ];
 
       const signedUrlByBucketAndPath = new Map<string, string>();
-      for (const bucket of ["project-documents", "contact-documents", "opportunity-documents", "note-documents"] as const) {
+      for (const bucket of [
+        "project-documents",
+        "contact-documents",
+        "opportunity-documents",
+        "note-documents",
+        "templates",
+      ] as const) {
         const paths = jobs.filter((j) => j.bucket === bucket).map((j) => j.path);
         if (paths.length === 0) continue;
 

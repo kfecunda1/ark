@@ -29,6 +29,7 @@ import { amountInWords, formatMoney } from "@/lib/money";
 import { buildIntermediaryPickerOptions, getProjectIntermediaryChain } from "@/lib/intermediaries";
 import { getReceiverIntermediaryPersonIds } from "@/lib/actions/intermediaries";
 import { computeChecklistStatus, getChecklistCatalog } from "@/lib/checklists";
+import { getActiveTemplatesByDocumentType } from "@/lib/templates";
 import { personLabel } from "@/lib/people";
 import { daysSinceInstant } from "@/lib/projects";
 import { hasDisplayNickname, projectDisplayName, receiverDisplayName } from "@/lib/display-name";
@@ -136,7 +137,10 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const notes = (notesData as Note[] | null) ?? [];
   const projectProducts = (projectProductsData as ProjectProduct[] | null) ?? [];
 
-  const checklistCatalog = await getChecklistCatalog(supabase);
+  const [checklistCatalog, templatesByType] = await Promise.all([
+    getChecklistCatalog(supabase),
+    getActiveTemplatesByDocumentType(supabase),
+  ]);
   const checklistStatus = computeChecklistStatus(
     project.final_product,
     projectProducts.map((p) => p.product),
@@ -381,6 +385,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
           status={checklistStatus}
           isAdmin={isAdmin}
           documentTypes={documentTypes}
+          templatesByType={templatesByType}
           lang={lang}
         />
       </div>

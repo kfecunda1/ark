@@ -576,7 +576,9 @@ export type ActivityEntityType =
   | "opportunity"
   | "opportunity_document"
   | "note_participant"
-  | "note_document";
+  | "note_document"
+  | "template"
+  | "template_version";
 
 export type ActivityAction = "created" | "updated" | "deleted";
 
@@ -595,9 +597,9 @@ export interface ActivityDetails {
   // projects and contacts (supabase/migrations/033_nicknames.sql) — a
   // pair on update, same shape as full_name above.
   nickname?: [string | null, string | null];
-  parent_type?: "project" | "contact" | "opportunity" | "note";
+  parent_type?: "project" | "contact" | "opportunity" | "note" | "template";
   parent_id?: string;
-  document_type?: ProjectDocumentType;
+  document_type?: ProjectDocumentType | null;
   // project_document only — scalar on created/deleted, a pair on a
   // "moved to Tranche N" / "moved to General" update (supabase/
   // migrations/021_tranche_documents.sql).
@@ -648,6 +650,10 @@ export interface ActivityDetails {
   // no before/after pair to show.
   intermediary_person_id?: string | null;
   converted_to_type?: OpportunityConvertedToType;
+  // templates (supabase/migrations/036_templates.sql) — template_
+  // version's own "created" row carries which version it was, next to
+  // the generic parent_type/parent_id above.
+  version_number?: number;
 }
 
 export interface ActivityLog {
@@ -660,4 +666,50 @@ export interface ActivityLog {
   details: ActivityDetails | null;
   actor_id: string | null;
   actor_label: string | null;
+}
+
+// supabase/migrations/036_templates.sql — a shared library of
+// downloadable file templates, grouped by document type and tagged
+// with the products they apply to. Read by every registered user;
+// writes are admin-only (RLS, not just the app's own UI gating).
+export interface Template {
+  id: string;
+  name: string;
+  description: string | null;
+  // null = "Other" in the app — not every template corresponds to a
+  // document checklist type.
+  document_type: string | null;
+  active: boolean;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// template_products — which products a template applies to. Unordered
+// (no sort_order of its own — see the migration's own header comment),
+// shown as a set of chips.
+export interface TemplateProduct {
+  id: string;
+  template_id: string;
+  product: string;
+  created_at: string;
+}
+
+// template_versions — the actual files, immutable once uploaded (a
+// correction is a new version, never an edit to an existing row). The
+// *current* version is whichever row has the highest version_number
+// for a given template_id — never stored as its own flag.
+export interface TemplateVersion {
+  id: string;
+  template_id: string;
+  version_number: number;
+  file_path: string;
+  file_name: string;
+  mime_type: string;
+  file_size: number;
+  file_hash: string | null;
+  notes: string | null;
+  uploaded_by: string | null;
+  uploaded_at: string;
 }
