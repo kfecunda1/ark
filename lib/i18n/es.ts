@@ -154,8 +154,6 @@ const es: Dictionary = {
     inbox: "Bandeja de entrada",
     toFile: " por archivar",
     activeTranches: "Tramos activos",
-    openOpportunities: "Oportunidades abiertas",
-    untouchedDays: (n: number) => `${n} sin actividad 30+ días`,
     stuckProjectsHeading: "Proyectos estancados",
     noStuckProjects: "No hay proyectos estancados.",
     dueTodayOverdue: "Vencen hoy y atrasados",

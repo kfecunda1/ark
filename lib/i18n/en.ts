@@ -160,8 +160,6 @@ const en = {
     inbox: "Inbox",
     toFile: " to file",
     activeTranches: "Active Tranches",
-    openOpportunities: "Open Opportunities",
-    untouchedDays: (n: number) => `${n} untouched 30+ days`,
     stuckProjectsHeading: "Stuck Projects",
     noStuckProjects: "No stuck projects.",
     dueTodayOverdue: "Due today & overdue",

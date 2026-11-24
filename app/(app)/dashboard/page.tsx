@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, Archive, Briefcase, CalendarClock, CheckCircle2, Inbox, Landmark, Layers, RotateCcw, Unlink } from "lucide-react";
+import { AlertTriangle, Archive, CalendarClock, CheckCircle2, Inbox, Landmark, Layers, RotateCcw, Unlink } from "lucide-react";
 import { GlassCard } from "@/components/glass-card";
 import { RecoveryBadge } from "@/components/projects/badges";
 import { DueTodayAndOverdue, type DueItem } from "@/components/dashboard/due-today";
@@ -11,7 +11,6 @@ import { getAllProducts } from "@/lib/products";
 import { getAllStatuses, isClosedStatus } from "@/lib/statuses";
 import { countedProducts, getProjectProductsByProjectIds } from "@/lib/project-products";
 import { getAppSettings } from "@/lib/app-settings";
-import { isOpportunityStale } from "@/lib/opportunities";
 import { getCurrentUserLanguage } from "@/lib/i18n/server";
 import { getDictionary } from "@/lib/i18n";
 import { projectDisplayName, receiverDisplayName } from "@/lib/display-name";
@@ -44,15 +43,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const { data, error } = await supabase.from("projects").select("*").is("archived_at", null);
   const allProjects = (data as Project[] | null) ?? [];
 
-  const [products, statuses, appSettings, { count: inboxNewCount }, { data: activeTranchesData }, { data: openOpportunitiesData }] =
-    await Promise.all([
-      getAllProducts(),
-      getAllStatuses(),
-      getAppSettings(),
-      supabase.from("inbox_items").select("*", { count: "exact", head: true }).eq("status", "new"),
-      supabase.from("project_tranches").select("*").not("confirmed_on", "is", null).is("paid_out_on", null),
-      supabase.from("opportunities").select("last_activity_at").eq("status", "open"),
-    ]);
+  const [products, statuses, appSettings, { count: inboxNewCount }, { data: activeTranchesData }] = await Promise.all([
+    getAllProducts(),
+    getAllStatuses(),
+    getAppSettings(),
+    supabase.from("inbox_items").select("*", { count: "exact", head: true }).eq("status", "new"),
+    supabase.from("project_tranches").select("*").not("confirmed_on", "is", null).is("paid_out_on", null),
+  ]);
 
   // Settings → Defaults' "Show Recovery" toggle (supabase/migrations/
   // 024_show_recovery.sql): off means every count/list on this page
@@ -296,10 +293,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   dueItems = [...dueItems, ...noteDueItems].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
-  const openOpportunityRows = (openOpportunitiesData as { last_activity_at: string }[] | null) ?? [];
-  const openOpportunitiesCount = openOpportunityRows.length;
-  const untouchedOpportunitiesCount = openOpportunityRows.filter((o) => isOpportunityStale(o.last_activity_at)).length;
-
   const backupTone: "ok" | "warning" | "danger" =
     daysSinceBackup === null ? "danger" : daysSinceBackup > 14 ? "danger" : daysSinceBackup > 7 ? "warning" : "ok";
   const backupLabel =
@@ -392,15 +385,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       href: "#active-tranches",
       suffix: null,
       extra: activeTrancheTotalsLabel || null,
-    },
-    {
-      label: t.dashboard.openOpportunities,
-      value: openOpportunitiesCount,
-      icon: Briefcase,
-      tone: "text-violet-300",
-      href: "/opportunities",
-      suffix: null,
-      extra: t.dashboard.untouchedDays(untouchedOpportunitiesCount),
     },
   ];
 
