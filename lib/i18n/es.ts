@@ -808,6 +808,10 @@ const es: Dictionary = {
     fromUser: (name: string) => `de ${name}`,
     restoreToFile: "Restaurar a Por archivar",
     filedTo: (destination: string) => `Archivado en ${destination}`,
+    createdAndFiled: (name: string, count: number) => `Se creó ${name} y se archivó ${count} elemento${count === 1 ? "" : "s"} —`,
+    openProject: "Abrir proyecto",
+    openReceiver: "Abrir receptor",
+    openOpportunity: "Abrir oportunidad",
     bulkDismissFailed: (n: number, details: string) => `${n} elemento(s) no se pudieron descartar:\n${details}`,
     fileUnavailable: "Archivo no disponible.",
     tooLargeUpload: (fileName: string) =>
@@ -1334,6 +1338,17 @@ const es: Dictionary = {
     failedToUploadVersion: "No se pudo subir el archivo.",
     uploadingVersion: "Subiendo…",
     createTemplate: "Crear plantilla",
+  },
+  inboxQuickCreate: {
+    createProject: "Crear proyecto",
+    createReceiver: "Crear receptor",
+    createOpportunity: "Crear oportunidad",
+    failedToCreateProject: "No se pudo crear el proyecto.",
+    failedToCreateReceiver: "No se pudo crear el receptor.",
+    productRequired: "Elige al menos un producto.",
+    similarTo: (name: string) => `Similar: ${name} —`,
+    useThisInstead: "Usar este en su lugar",
+    createAnyway: "Crear de todos modos",
   },
 };
 

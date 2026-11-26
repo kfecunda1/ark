@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isCurrentUserAdmin } from "@/lib/auth";
 import { withPreservedExtension } from "@/lib/storage";
+import { isSimilarToEither, type SimilarMatch } from "@/lib/dedup";
 import { getDictionary, type Lang } from "@/lib/i18n";
 import { receiverDisplayName } from "@/lib/display-name";
 import type { Contact, ContactDocumentType, ProductType } from "@/lib/types";
@@ -348,6 +349,36 @@ export async function quickCreateContact(input: { full_name: string }): Promise<
     return { contact: data as Contact, error: null };
   } catch (err) {
     return { contact: null, error: unexpectedErrorMessage(err) };
+  }
+}
+
+// Name-similarity check — the Inbox's quick-create "Similar: X — use
+// this instead?" (components/inbox/quick-create-panel.tsx). Warning
+// only, never blocks creating. Distinct from findDuplicatePeople-style
+// exact email/name matching (lib/actions/people.ts) — this one is
+// fuzzy, for receiver names/nicknames.
+export async function findSimilarContacts(name: string, nickname: string | null): Promise<SimilarMatch[]> {
+  if (!name.trim()) return [];
+
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("contacts").select("id, full_name, nickname").is("archived_at", null);
+    if (error) {
+      console.error("[findSimilarContacts] query failed:", error.message);
+      return [];
+    }
+
+    const rows = (data as { id: string; full_name: string; nickname: string | null }[] | null) ?? [];
+    return rows
+      .filter(
+        (row) =>
+          isSimilarToEither(row.full_name, name, nickname) ||
+          (row.nickname && isSimilarToEither(row.nickname, name, nickname))
+      )
+      .map((row) => ({ id: row.id, label: receiverDisplayName(row), href: `/receivers/${row.id}` }));
+  } catch (err) {
+    console.error("[findSimilarContacts] unexpected error:", unexpectedErrorMessage(err));
+    return [];
   }
 }
 

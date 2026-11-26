@@ -2,19 +2,27 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { EntityPicker, type EntityOption } from "@/components/entity-picker";
+import { ProjectQuickCreateFields } from "@/components/inbox/project-quick-create-fields";
+import { ReceiverQuickCreateFields } from "@/components/inbox/receiver-quick-create-fields";
+import { OpportunityQuickCreateFields } from "@/components/inbox/opportunity-quick-create-fields";
 import { fileInboxItemAsDocument, fileInboxItemAsNote } from "@/lib/actions/inbox";
+import { suggestNameFromInboxItem } from "@/lib/inbox-naming";
 import { createClient } from "@/lib/supabase/client";
 import { truncate } from "@/lib/format";
 import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
-import type { DocumentTypeRecord, InboxItem, ProjectTranche } from "@/lib/types";
+import type { Currency, DocumentTypeRecord, InboxItem, Product, ProjectTranche } from "@/lib/types";
 
 interface BulkFilePanelProps {
   items: InboxItem[];
   projectOptions: EntityOption[];
   contactOptions: EntityOption[];
   opportunityOptions: EntityOption[];
+  peopleOptions: EntityOption[];
+  products: Product[];
+  defaultCurrency: Currency;
   documentTypes: DocumentTypeRecord[];
   // Lets the "small list" drop an item from this run without closing
   // the whole panel — kept in sync with the parent's checkbox
@@ -45,6 +53,9 @@ export function BulkFilePanel({
   projectOptions,
   contactOptions,
   opportunityOptions,
+  peopleOptions,
+  products,
+  defaultCurrency,
   documentTypes,
   onRemoveItem,
   onDone,
@@ -53,10 +64,16 @@ export function BulkFilePanel({
 }: BulkFilePanelProps) {
   const router = useRouter();
   const t = getDictionary(lang);
+  const suggestedName = suggestNameFromInboxItem(items[0] ?? {});
   const [destinationType, setDestinationType] = useState<"project" | "contact" | "opportunity">("project");
   const [selectedProject, setSelectedProject] = useState<EntityOption | null>(null);
   const [selectedContact, setSelectedContact] = useState<EntityOption | null>(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState<EntityOption | null>(null);
+  // Same "matches target by id at submit time" approach as components/
+  // inbox/file-into-panel.tsx — see that file's own comment.
+  const [createdDestination, setCreatedDestination] = useState<{ type: "project" | "contact" | "opportunity"; id: string } | null>(
+    null
+  );
   const [tranches, setTranches] = useState<ProjectTranche[]>([]);
   const [trancheValue, setTrancheValue] = useState(TRANCHE_GENERAL);
   const [documentType, setDocumentType] = useState(documentTypes[0]?.name ?? "");
@@ -64,6 +81,12 @@ export function BulkFilePanel({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [results, setResults] = useState<ItemResult[] | null>(null);
+  const [filedInto, setFiledInto] = useState<{
+    label: string;
+    type: "project" | "contact" | "opportunity";
+    id: string;
+    wasCreated: boolean;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -82,6 +105,7 @@ export function BulkFilePanel({
     setSelectedProject(null);
     setSelectedContact(null);
     setSelectedOpportunity(null);
+    setCreatedDestination(null);
     setTranches([]);
     setTrancheValue(TRANCHE_GENERAL);
   }
@@ -122,6 +146,16 @@ export function BulkFilePanel({
       );
       return;
     }
+
+    const targetLabel =
+      (target.type === "project" ? selectedProject?.label : target.type === "contact" ? selectedContact?.label : selectedOpportunity?.label) ??
+      "destination";
+    setFiledInto({
+      label: targetLabel,
+      type: target.type,
+      id: target.id,
+      wasCreated: createdDestination?.type === target.type && createdDestination.id === target.id,
+    });
 
     setIsSubmitting(true);
     setResults(null);
@@ -226,10 +260,26 @@ export function BulkFilePanel({
               name="bulk_target_project"
               label={t.inboxFile.projectLabel}
               options={projectOptions}
+              defaultQuickCreateName={suggestedName}
               entityNoun={lang === "es" ? "proyecto" : "project"}
               entityNounPlural={lang === "es" ? "proyectos" : "projects"}
               lang={lang}
               onSelect={selectProject}
+              renderQuickCreate={({ initialName, onCreated, onCancel }) => (
+                <ProjectQuickCreateFields
+                  initialName={initialName}
+                  contacts={contactOptions}
+                  products={products}
+                  defaultCurrency={defaultCurrency}
+                  onCreated={(option) => {
+                    setCreatedDestination({ type: "project", id: option.id });
+                    onCreated(option);
+                  }}
+                  onUseExisting={(match) => onCreated({ id: match.id, label: match.label })}
+                  onCancel={onCancel}
+                  lang={lang}
+                />
+              )}
             />
           ) : destinationType === "opportunity" ? (
             <EntityPicker
@@ -237,10 +287,24 @@ export function BulkFilePanel({
               name="bulk_target_opportunity"
               label={t.opportunities.opportunityLabel}
               options={opportunityOptions}
+              defaultQuickCreateName={suggestedName}
               entityNoun={lang === "es" ? "oportunidad" : "opportunity"}
               entityNounPlural={lang === "es" ? "oportunidades" : "opportunities"}
               lang={lang}
               onSelect={setSelectedOpportunity}
+              renderQuickCreate={({ initialName, onCreated, onCancel }) => (
+                <OpportunityQuickCreateFields
+                  initialName={initialName}
+                  people={peopleOptions}
+                  onCreated={(option) => {
+                    setCreatedDestination({ type: "opportunity", id: option.id });
+                    onCreated(option);
+                  }}
+                  onUseExisting={(match) => onCreated({ id: match.id, label: match.label })}
+                  onCancel={onCancel}
+                  lang={lang}
+                />
+              )}
             />
           ) : (
             <EntityPicker
@@ -248,10 +312,24 @@ export function BulkFilePanel({
               name="bulk_target_contact"
               label={t.inboxFile.receiverLabel}
               options={contactOptions}
+              defaultQuickCreateName={suggestedName}
               entityNoun={lang === "es" ? "receptor" : "receiver"}
               entityNounPlural={lang === "es" ? "receptores" : "receivers"}
               lang={lang}
               onSelect={setSelectedContact}
+              renderQuickCreate={({ initialName, onCreated, onCancel }) => (
+                <ReceiverQuickCreateFields
+                  initialName={initialName}
+                  products={products}
+                  onCreated={(option) => {
+                    setCreatedDestination({ type: "contact", id: option.id });
+                    onCreated(option);
+                  }}
+                  onUseExisting={(match) => onCreated({ id: match.id, label: match.label })}
+                  onCancel={onCancel}
+                  lang={lang}
+                />
+              )}
             />
           )}
 
@@ -370,7 +448,28 @@ export function BulkFilePanel({
 
       {results && (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-white/80">{t.inboxBulk.filedSummary(successCount, failureCount)}</p>
+          <p className="text-sm text-white/80">
+            {filedInto?.wasCreated ? (
+              <>
+                {t.inbox.createdAndFiled(filedInto.label, successCount)}{" "}
+                <Link
+                  href={
+                    filedInto.type === "project"
+                      ? `/projects/${filedInto.id}`
+                      : filedInto.type === "contact"
+                        ? `/receivers/${filedInto.id}`
+                        : `/opportunities/${filedInto.id}`
+                  }
+                  className="underline decoration-white/30 underline-offset-2 hover:text-white"
+                >
+                  {filedInto.type === "project" ? t.inbox.openProject : filedInto.type === "contact" ? t.inbox.openReceiver : t.inbox.openOpportunity}
+                </Link>
+                {failureCount > 0 && ` · ${t.inboxBulk.filedSummary(successCount, failureCount)}`}
+              </>
+            ) : (
+              t.inboxBulk.filedSummary(successCount, failureCount)
+            )}
+          </p>
           <div className="flex flex-col gap-1">
             {results.map((r) => (
               <div key={r.itemId} className="flex items-start gap-2 text-xs">

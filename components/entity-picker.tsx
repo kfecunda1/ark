@@ -21,6 +21,10 @@ interface EntityPickerProps {
   options: EntityOption[];
   defaultId?: string | null;
   placeholder?: string;
+  // Seeds the quick-create name field when "+ New <noun>" is clicked
+  // with nothing typed in the search box yet — the Inbox's panels pass
+  // a name guessed from the item itself (lib/inbox-naming.ts).
+  defaultQuickCreateName?: string;
   // Lowercase singular noun for this picker's rows — "receiver",
   // "contact" (already translated by the caller when lang is "es") —
   // used to build "New <noun>" without hardcoding either entity's
@@ -32,9 +36,16 @@ interface EntityPickerProps {
   // (concatenation doesn't produce correct Spanish).
   entityNounPlural?: string;
   onSelect?: (option: EntityOption | null) => void;
-  // Omit to disable the inline "+ New <noun>" row entirely (not every
-  // picker wants quick-create).
+  // Omit both to disable the inline "+ New <noun>" row entirely (not
+  // every picker wants quick-create). onQuickCreate is the simple,
+  // single-field case (name in, option out) used by most callers;
+  // renderQuickCreate replaces the built-in name-only form entirely
+  // with whatever the caller renders (a multi-field form, say) — used
+  // by the Inbox's quick-create panels (components/inbox/quick-create-
+  // panel.tsx), which need more than one field. Only one of the two is
+  // ever read; renderQuickCreate wins if both are somehow given.
   onQuickCreate?: (name: string) => Promise<{ option: EntityOption | null; error: string | null }>;
+  renderQuickCreate?: (args: { initialName: string; onCreated: (option: EntityOption) => void; onCancel: () => void }) => React.ReactNode;
   lang?: Lang;
 }
 
@@ -57,10 +68,12 @@ export function EntityPicker({
   options,
   defaultId,
   placeholder,
+  defaultQuickCreateName,
   entityNoun,
   entityNounPlural,
   onSelect,
   onQuickCreate,
+  renderQuickCreate,
   lang = "en",
 }: EntityPickerProps) {
   const t = getDictionary(lang);
@@ -101,7 +114,7 @@ export function EntityPicker({
 
   function startCreating() {
     setError(null);
-    setNewName(query.trim());
+    setNewName(query.trim() || defaultQuickCreateName || "");
     setCreating(true);
     setOpen(false);
   }
@@ -169,6 +182,19 @@ export function EntityPicker({
 
           {open && !selected && (
             <ul className="absolute z-10 mt-1.5 max-h-64 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0f1420] py-1 shadow-xl">
+              {(onQuickCreate || renderQuickCreate) && (
+                <li
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    startCreating();
+                  }}
+                  className="flex items-center gap-1.5 border-b border-white/[0.06] px-3 py-2 text-sm font-medium text-accent-soft transition-colors duration-100 ease-out hover:bg-white/[0.06]"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  {t.common.newEntity(entityNoun)}
+                  {query.trim() ? ` "${query.trim()}"` : ""}
+                </li>
+              )}
               {filtered.length === 0 && (
                 <li className="px-3 py-2 text-sm text-white/35">{t.common.noMatchingFor(plural)}</li>
               )}
@@ -187,25 +213,24 @@ export function EntityPicker({
                   )}
                 </li>
               ))}
-              {onQuickCreate && (
-                <li
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    startCreating();
-                  }}
-                  className="flex items-center gap-1.5 border-t border-white/[0.06] px-3 py-2 text-sm font-medium text-accent-soft transition-colors duration-100 ease-out hover:bg-white/[0.06]"
-                >
-                  <UserPlus className="h-3.5 w-3.5" />
-                  {t.common.newEntity(entityNoun)}
-                  {query.trim() ? ` "${query.trim()}"` : ""}
-                </li>
-              )}
             </ul>
           )}
         </div>
       )}
 
-      {creating && (
+      {creating && renderQuickCreate && (
+        renderQuickCreate({
+          initialName: newName,
+          onCreated: (option) => {
+            setAllOptions((prev) => [...prev, option]);
+            selectOption(option);
+            setCreating(false);
+          },
+          onCancel: cancelCreating,
+        })
+      )}
+
+      {creating && !renderQuickCreate && (
         <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
           <input
             autoFocus

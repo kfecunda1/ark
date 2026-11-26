@@ -822,6 +822,10 @@ const en = {
     fromUser: (name: string) => `from ${name}`,
     restoreToFile: "Restore to To file",
     filedTo: (destination: string) => `Filed to ${destination}`,
+    createdAndFiled: (name: string, count: number) => `Created ${name} and filed ${count} item${count === 1 ? "" : "s"} —`,
+    openProject: "Open project",
+    openReceiver: "Open receiver",
+    openOpportunity: "Open opportunity",
     bulkDismissFailed: (n: number, details: string) => `${n} item(s) failed to dismiss:\n${details}`,
     fileUnavailable: "File unavailable.",
     tooLargeUpload: (fileName: string) =>
@@ -1345,6 +1349,17 @@ const en = {
     failedToUploadVersion: "Failed to upload the file.",
     uploadingVersion: "Uploading…",
     createTemplate: "Create template",
+  },
+  inboxQuickCreate: {
+    createProject: "Create project",
+    createReceiver: "Create receiver",
+    createOpportunity: "Create opportunity",
+    failedToCreateProject: "Failed to create project.",
+    failedToCreateReceiver: "Failed to create receiver.",
+    productRequired: "Choose at least one product.",
+    similarTo: (name: string) => `Similar: ${name} —`,
+    useThisInstead: "Use this instead",
+    createAnyway: "Create anyway",
   },
 };
 

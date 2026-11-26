@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { EntityPicker, type EntityOption } from "@/components/entity-picker";
 import { DuplicateWarningBanner } from "@/components/duplicate-warning-banner";
+import { ProjectQuickCreateFields } from "@/components/inbox/project-quick-create-fields";
+import { ReceiverQuickCreateFields } from "@/components/inbox/receiver-quick-create-fields";
+import { OpportunityQuickCreateFields } from "@/components/inbox/opportunity-quick-create-fields";
 import { fileInboxItemAsDocument, fileInboxItemAsNote, type InboxDuplicateMatch } from "@/lib/actions/inbox";
-import { quickCreateOpportunity } from "@/lib/actions/opportunities";
-import { quickCreatePerson } from "@/lib/actions/people";
+import { suggestNameFromInboxItem } from "@/lib/inbox-naming";
 import { createClient } from "@/lib/supabase/client";
 import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
-import type { DocumentTypeRecord, ProjectTranche } from "@/lib/types";
+import type { Currency, DocumentTypeRecord, Product, ProjectTranche } from "@/lib/types";
 
 export interface FileIntoDestination {
   type: "project" | "contact" | "opportunity";
@@ -16,15 +18,30 @@ export interface FileIntoDestination {
   label: string;
 }
 
+export interface FiledResult {
+  destinationLabel: string;
+  destinationType: "project" | "contact" | "opportunity";
+  destinationId: string;
+  // True when the destination was just created by this same panel,
+  // rather than an already-existing record picked from the list — the
+  // caller (components/inbox/inbox-tabs.tsx) phrases its confirmation
+  // as "Created X and filed …" instead of "Filed to X" accordingly.
+  wasCreated: boolean;
+}
+
 interface FileIntoPanelProps {
   itemId: string;
   hasFile: boolean;
+  textOrCaption: string | null;
+  fileName: string | null;
   projectOptions: EntityOption[];
   contactOptions: EntityOption[];
   opportunityOptions: EntityOption[];
   // The intermediary picker inside "+ New opportunity" below — the
   // same People list every other intermediary picker in the app uses.
   peopleOptions: EntityOption[];
+  products: Product[];
+  defaultCurrency: Currency;
   documentTypes: DocumentTypeRecord[];
   // Pre-fills the destination/document type (a clicked "Suggested: X —
   // File here" chip, components/inbox/inbox-tabs.tsx) — read only once,
@@ -32,11 +49,7 @@ interface FileIntoPanelProps {
   // includes the destination) if a different suggestion is picked.
   initialDestination?: FileIntoDestination | null;
   initialDocumentType?: string | null;
-  // The destination's own label (e.g. the project/receiver name), for
-  // the "Filed to <destination>" confirmation (components/inbox/
-  // inbox-tabs.tsx) — read off whichever EntityPicker is selected at
-  // the moment filing actually succeeds.
-  onFiled: (destinationLabel: string) => void;
+  onFiled: (result: FiledResult) => void;
   onCancel: () => void;
   lang?: Lang;
 }
@@ -46,10 +59,14 @@ const TRANCHE_GENERAL = "general";
 export function FileIntoPanel({
   itemId,
   hasFile,
+  textOrCaption,
+  fileName,
   projectOptions,
   contactOptions,
   opportunityOptions,
   peopleOptions,
+  products,
+  defaultCurrency,
   documentTypes,
   initialDestination,
   initialDocumentType,
@@ -58,6 +75,7 @@ export function FileIntoPanel({
   lang = "en",
 }: FileIntoPanelProps) {
   const t = getDictionary(lang);
+  const suggestedName = suggestNameFromInboxItem({ text_or_caption: textOrCaption, file_name: fileName });
   const [destinationType, setDestinationType] = useState<"project" | "contact" | "opportunity">(
     initialDestination?.type ?? "project"
   );
@@ -67,47 +85,22 @@ export function FileIntoPanel({
   const [selectedContact, setSelectedContact] = useState<EntityOption | null>(
     initialDestination?.type === "contact" ? { id: initialDestination.id, label: initialDestination.label } : null
   );
-  const [opportunityList, setOpportunityList] = useState(opportunityOptions);
   const [selectedOpportunity, setSelectedOpportunity] = useState<EntityOption | null>(
     initialDestination?.type === "opportunity" ? { id: initialDestination.id, label: initialDestination.label } : null
   );
-  const [creatingOpportunity, setCreatingOpportunity] = useState(false);
-  const [newOpportunityTitle, setNewOpportunityTitle] = useState("");
-  const [newOpportunityIntermediary, setNewOpportunityIntermediary] = useState<EntityOption | null>(null);
-  const [isCreatingOpportunity, setIsCreatingOpportunity] = useState(false);
+  // Which of the three selections above (if any) was just created —
+  // compared against the actual filing target by id, at file time, so
+  // a later manual pick of something else is never mistaken for a
+  // freshly-created record (see handleFile below).
+  const [createdDestination, setCreatedDestination] = useState<{ type: "project" | "contact" | "opportunity"; id: string } | null>(
+    null
+  );
   const [tranches, setTranches] = useState<ProjectTranche[]>([]);
   const [trancheValue, setTrancheValue] = useState(TRANCHE_GENERAL);
   const [documentType, setDocumentType] = useState(initialDocumentType || documentTypes[0]?.name || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingMatches, setPendingMatches] = useState<InboxDuplicateMatch[] | null>(null);
-
-  async function handleCreateOpportunity() {
-    const title = newOpportunityTitle.trim();
-    if (!title) {
-      setError(t.opportunities.titleRequiredToCreate);
-      return;
-    }
-    setError(null);
-    setIsCreatingOpportunity(true);
-    try {
-      const result = await quickCreateOpportunity({ title, intermediaryPersonId: newOpportunityIntermediary?.id ?? null });
-      if (result.error || !result.opportunity) {
-        setError(resolveError(result.error, lang) ?? t.opportunityForm.failedToCreate);
-        return;
-      }
-      const created = { id: result.opportunity.id, label: result.opportunity.title };
-      setOpportunityList((prev) => [...prev, created]);
-      setSelectedOpportunity(created);
-      setCreatingOpportunity(false);
-      setNewOpportunityTitle("");
-      setNewOpportunityIntermediary(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
-    } finally {
-      setIsCreatingOpportunity(false);
-    }
-  }
 
   useEffect(() => {
     if (destinationType !== "project" || !selectedProject) return;
@@ -131,7 +124,7 @@ export function FileIntoPanel({
     setSelectedProject(null);
     setSelectedContact(null);
     setSelectedOpportunity(null);
-    setCreatingOpportunity(false);
+    setCreatedDestination(null);
     setTranches([]);
     setTrancheValue(TRANCHE_GENERAL);
   }
@@ -199,7 +192,12 @@ export function FileIntoPanel({
           : target.type === "contact"
             ? selectedContact?.label
             : selectedOpportunity?.label) ?? "destination";
-      onFiled(destinationLabel);
+      onFiled({
+        destinationLabel,
+        destinationType: target.type,
+        destinationId: target.id,
+        wasCreated: createdDestination?.type === target.type && createdDestination.id === target.id,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : t.common.somethingWentWrong);
     } finally {
@@ -253,10 +251,26 @@ export function FileIntoPanel({
           label={t.inboxFile.projectLabel}
           options={projectOptions}
           defaultId={initialDestination?.type === "project" ? initialDestination.id : undefined}
+          defaultQuickCreateName={suggestedName}
           entityNoun={lang === "es" ? "proyecto" : "project"}
           entityNounPlural={lang === "es" ? "proyectos" : "projects"}
           lang={lang}
           onSelect={selectProject}
+          renderQuickCreate={({ initialName, onCreated, onCancel }) => (
+            <ProjectQuickCreateFields
+              initialName={initialName}
+              contacts={contactOptions}
+              products={products}
+              defaultCurrency={defaultCurrency}
+              onCreated={(option) => {
+                setCreatedDestination({ type: "project", id: option.id });
+                onCreated(option);
+              }}
+              onUseExisting={(match) => onCreated({ id: match.id, label: match.label })}
+              onCancel={onCancel}
+              lang={lang}
+            />
+          )}
         />
       ) : destinationType === "contact" ? (
         <EntityPicker
@@ -265,82 +279,51 @@ export function FileIntoPanel({
           label={t.inboxFile.receiverLabel}
           options={contactOptions}
           defaultId={initialDestination?.type === "contact" ? initialDestination.id : undefined}
+          defaultQuickCreateName={suggestedName}
           entityNoun={lang === "es" ? "receptor" : "receiver"}
           entityNounPlural={lang === "es" ? "receptores" : "receivers"}
           lang={lang}
           onSelect={setSelectedContact}
-        />
-      ) : (
-        <div className="flex flex-col gap-2">
-          {!creatingOpportunity && (
-            <EntityPicker
-              key="opportunity"
-              name="inbox_target_opportunity"
-              label={t.opportunities.opportunityLabel}
-              options={opportunityList}
-              defaultId={initialDestination?.type === "opportunity" ? initialDestination.id : undefined}
-              entityNoun={lang === "es" ? "oportunidad" : "opportunity"}
-              entityNounPlural={lang === "es" ? "oportunidades" : "opportunities"}
+          renderQuickCreate={({ initialName, onCreated, onCancel }) => (
+            <ReceiverQuickCreateFields
+              initialName={initialName}
+              products={products}
+              onCreated={(option) => {
+                setCreatedDestination({ type: "contact", id: option.id });
+                onCreated(option);
+              }}
+              onUseExisting={(match) => onCreated({ id: match.id, label: match.label })}
+              onCancel={onCancel}
               lang={lang}
-              onSelect={setSelectedOpportunity}
             />
           )}
-          {!creatingOpportunity ? (
-            <button
-              type="button"
-              onClick={() => setCreatingOpportunity(true)}
-              className="w-fit text-xs font-medium text-accent-soft hover:underline"
-            >
-              {t.opportunities.newOpportunityAction}
-            </button>
-          ) : (
-            <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
-              <label className="mb-1.5 block text-xs font-medium text-white/55">{t.opportunityForm.titleLabel}</label>
-              <input
-                autoFocus
-                value={newOpportunityTitle}
-                onChange={(e) => setNewOpportunityTitle(e.target.value)}
-                className="mb-2 w-full rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-sm text-white outline-none transition-colors duration-150 ease-out focus:border-accent/40"
-              />
-              <EntityPicker
-                name="new_opportunity_intermediary"
-                label={t.opportunityForm.intermediaryLabel}
-                options={peopleOptions}
-                entityNoun={lang === "es" ? "contacto" : "contact"}
-                entityNounPlural={lang === "es" ? "contactos" : "contacts"}
-                lang={lang}
-                onSelect={setNewOpportunityIntermediary}
-                onQuickCreate={async (name) => {
-                  const result = await quickCreatePerson({ name });
-                  return {
-                    option: result.person
-                      ? { id: result.person.id, label: [result.person.first_name, result.person.last_name].filter(Boolean).join(" ") }
-                      : null,
-                    error: resolveError(result.error, lang),
-                  };
-                }}
-              />
-              <div className="mt-2 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleCreateOpportunity}
-                  disabled={isCreatingOpportunity}
-                  className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isCreatingOpportunity ? t.common.creating : t.opportunities.createAndSelect}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreatingOpportunity(false)}
-                  disabled={isCreatingOpportunity}
-                  className="text-xs font-medium text-white/50 transition-colors duration-150 ease-out hover:text-white/80"
-                >
-                  {t.common.cancel}
-                </button>
-              </div>
-            </div>
+        />
+      ) : (
+        <EntityPicker
+          key="opportunity"
+          name="inbox_target_opportunity"
+          label={t.opportunities.opportunityLabel}
+          options={opportunityOptions}
+          defaultId={initialDestination?.type === "opportunity" ? initialDestination.id : undefined}
+          defaultQuickCreateName={suggestedName}
+          entityNoun={lang === "es" ? "oportunidad" : "opportunity"}
+          entityNounPlural={lang === "es" ? "oportunidades" : "opportunities"}
+          lang={lang}
+          onSelect={setSelectedOpportunity}
+          renderQuickCreate={({ initialName, onCreated, onCancel }) => (
+            <OpportunityQuickCreateFields
+              initialName={initialName}
+              people={peopleOptions}
+              onCreated={(option) => {
+                setCreatedDestination({ type: "opportunity", id: option.id });
+                onCreated(option);
+              }}
+              onUseExisting={(match) => onCreated({ id: match.id, label: match.label })}
+              onCancel={onCancel}
+              lang={lang}
+            />
           )}
-        </div>
+        />
       )}
 
       {hasFile && (

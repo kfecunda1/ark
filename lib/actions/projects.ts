@@ -10,6 +10,7 @@ import { parseMoneyFormValue } from "@/lib/money";
 import { syncProjectIntermediaries } from "@/lib/intermediaries";
 import { withPreservedExtension } from "@/lib/storage";
 import { maybeAutoAdvanceStage } from "@/lib/checklists";
+import { isSimilarToEither, type SimilarMatch } from "@/lib/dedup";
 import { getDictionary, type Lang } from "@/lib/i18n";
 import { projectDisplayName } from "@/lib/display-name";
 import type { Currency, ProjectDocumentType, ProjectPriority, ProjectStage, ProjectStatus } from "@/lib/types";
@@ -837,6 +838,38 @@ export async function findProjectDocumentsByHash(hash: string): Promise<ProjectD
     }));
   } catch (err) {
     console.error("[findProjectDocumentsByHash] unexpected error:", unexpectedErrorMessage(err));
+    return [];
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Name-similarity check — the Inbox's quick-create "Similar: X — use
+// this instead?" (components/inbox/quick-create-panel.tsx), distinct
+// from findDuplicateProjects below (which is about a matched-receiver-
+// plus-product overlap, not the name itself). Warning only, same as
+// every other duplicate check in this app — never blocks creating.
+// ----------------------------------------------------------------------------
+
+export async function findSimilarProjects(name: string, nickname: string | null): Promise<SimilarMatch[]> {
+  if (!name.trim()) return [];
+
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("projects").select("id, name, nickname").is("archived_at", null);
+    if (error) {
+      console.error("[findSimilarProjects] query failed:", error.message);
+      return [];
+    }
+
+    const rows = (data as { id: string; name: string; nickname: string | null }[] | null) ?? [];
+    return rows
+      .filter(
+        (row) =>
+          isSimilarToEither(row.name, name, nickname) || (row.nickname && isSimilarToEither(row.nickname, name, nickname))
+      )
+      .map((row) => ({ id: row.id, label: projectDisplayName(row), href: `/projects/${row.id}` }));
+  } catch (err) {
+    console.error("[findSimilarProjects] unexpected error:", unexpectedErrorMessage(err));
     return [];
   }
 }

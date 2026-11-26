@@ -2,6 +2,8 @@ import { GlassCard } from "@/components/glass-card";
 import { InboxTabs } from "@/components/inbox/inbox-tabs";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveDocumentTypes } from "@/lib/document-types";
+import { getAllProducts } from "@/lib/products";
+import { getAppSettings } from "@/lib/app-settings";
 import { isCurrentUserAdmin } from "@/lib/auth";
 import { buildInboxSuggestions, suggestDocumentType } from "@/lib/inbox-suggestions";
 import { hasDisplayNickname, projectDisplayName, receiverDisplayName } from "@/lib/display-name";
@@ -26,6 +28,8 @@ export default async function InboxPage() {
     { data: openOpportunitiesData },
     documentTypes,
     isAdmin,
+    products,
+    appSettings,
   ] = await Promise.all([
     supabase.from("inbox_items").select("*").order("received_at", { ascending: false }),
     supabase.from("profiles").select("id, full_name, email"),
@@ -37,6 +41,8 @@ export default async function InboxPage() {
     supabase.from("opportunities").select("id, title, intermediary_person_id").eq("status", "open").order("title"),
     getActiveDocumentTypes(),
     isCurrentUserAdmin(),
+    getAllProducts(),
+    getAppSettings(),
   ]);
 
   const items = (itemsData as InboxItem[] | null) ?? [];
@@ -258,6 +264,8 @@ export default async function InboxPage() {
           }))}
           opportunityOptions={openOpportunities.map((o) => ({ id: o.id, label: o.title }))}
           peopleOptions={people.map((p) => ({ id: p.id, label: personLabel(p) }))}
+          products={products}
+          defaultCurrency={appSettings.default_currency}
           projectNameById={projectNameById}
           contactNameById={contactNameById}
           opportunityNameById={opportunityNameById}

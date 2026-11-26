@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isCurrentUserAdmin } from "@/lib/auth";
 import { buildDocumentPath, withPreservedExtension } from "@/lib/storage";
+import { namesAreSimilar, type SimilarMatch } from "@/lib/dedup";
 import type { Opportunity, OpportunityDocumentType } from "@/lib/types";
 
 export interface OpportunityFormState {
@@ -245,6 +246,31 @@ export async function quickCreateOpportunity(input: {
     return { opportunity: data as Opportunity, error: null };
   } catch (err) {
     return { opportunity: null, error: unexpectedErrorMessage(err) };
+  }
+}
+
+// Name-similarity check — the Inbox's quick-create "Similar: X — use
+// this instead?" (components/inbox/quick-create-panel.tsx). Warning
+// only, never blocks creating. Opportunities have no nickname, so this
+// only ever compares against the typed title.
+export async function findSimilarOpportunities(title: string): Promise<SimilarMatch[]> {
+  if (!title.trim()) return [];
+
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("opportunities").select("id, title").eq("status", "open");
+    if (error) {
+      console.error("[findSimilarOpportunities] query failed:", error.message);
+      return [];
+    }
+
+    const rows = (data as { id: string; title: string }[] | null) ?? [];
+    return rows
+      .filter((row) => namesAreSimilar(row.title, title))
+      .map((row) => ({ id: row.id, label: row.title, href: `/opportunities/${row.id}` }));
+  } catch (err) {
+    console.error("[findSimilarOpportunities] unexpected error:", unexpectedErrorMessage(err));
+    return [];
   }
 }
 

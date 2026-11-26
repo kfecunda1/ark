@@ -17,14 +17,14 @@ import {
   X,
 } from "lucide-react";
 import type { EntityOption } from "@/components/entity-picker";
-import { FileIntoPanel, type FileIntoDestination } from "@/components/inbox/file-into-panel";
+import { FileIntoPanel, type FileIntoDestination, type FiledResult } from "@/components/inbox/file-into-panel";
 import { BulkFilePanel } from "@/components/inbox/bulk-file-panel";
 import { dismissInboxItem, deleteInboxItem, renameInboxItem } from "@/lib/actions/inbox";
 import { getDocumentKind } from "@/lib/storage";
 import { isTooLargeForTelegram } from "@/lib/inbox";
 import { formatDateTime, relativeTime, truncate } from "@/lib/format";
 import { getDictionary, resolveError, type Lang } from "@/lib/i18n";
-import type { DocumentTypeRecord, InboxItem } from "@/lib/types";
+import type { Currency, DocumentTypeRecord, InboxItem, Product } from "@/lib/types";
 
 interface InboxTabsProps {
   items: InboxItem[];
@@ -33,6 +33,8 @@ interface InboxTabsProps {
   contactOptions: EntityOption[];
   opportunityOptions: EntityOption[];
   peopleOptions: EntityOption[];
+  products: Product[];
+  defaultCurrency: Currency;
   projectNameById: Record<string, string>;
   contactNameById: Record<string, string>;
   opportunityNameById: Record<string, string>;
@@ -151,6 +153,8 @@ export function InboxTabs({
   contactOptions,
   opportunityOptions,
   peopleOptions,
+  products,
+  defaultCurrency,
   projectNameById,
   contactNameById,
   opportunityNameById,
@@ -182,7 +186,9 @@ export function InboxTabs({
   const [prefillByItemId, setPrefillByItemId] = useState<Record<string, FileIntoDestination>>({});
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filedConfirmation, setFiledConfirmation] = useState<string | null>(null);
+  const [filedConfirmation, setFiledConfirmation] = useState<{ text: string; href: string; openLabel: string } | null>(
+    null
+  );
   const [search, setSearch] = useState("");
 
   // Bulk selection — "to_file" tab only (see toggleSelectAll/toggleSelected
@@ -299,9 +305,25 @@ export function InboxTabs({
     });
   }
 
-  function handleFiled(destination: string) {
+  function handleFiled(result: FiledResult) {
     setFilingId(null);
-    setFiledConfirmation(t.inbox.filedTo(destination));
+    const href =
+      result.destinationType === "project"
+        ? `/projects/${result.destinationId}`
+        : result.destinationType === "contact"
+          ? `/receivers/${result.destinationId}`
+          : `/opportunities/${result.destinationId}`;
+    const openLabel =
+      result.destinationType === "project"
+        ? t.inbox.openProject
+        : result.destinationType === "contact"
+          ? t.inbox.openReceiver
+          : t.inbox.openOpportunity;
+    setFiledConfirmation({
+      text: result.wasCreated ? t.inbox.createdAndFiled(result.destinationLabel, 1) : t.inbox.filedTo(result.destinationLabel),
+      href,
+      openLabel,
+    });
     router.refresh();
   }
 
@@ -453,7 +475,10 @@ export function InboxTabs({
         <div className="flex flex-col gap-3">
           {filedConfirmation && (
             <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-              {filedConfirmation}
+              {filedConfirmation.text}{" "}
+              <Link href={filedConfirmation.href} className="underline decoration-emerald-300/30 underline-offset-2 hover:text-white">
+                {filedConfirmation.openLabel}
+              </Link>
             </p>
           )}
 
@@ -478,6 +503,9 @@ export function InboxTabs({
                 projectOptions={projectOptions}
                 contactOptions={contactOptions}
                 opportunityOptions={opportunityOptions}
+                peopleOptions={peopleOptions}
+                products={products}
+                defaultCurrency={defaultCurrency}
                 documentTypes={documentTypes}
                 onRemoveItem={removeFromBulkSelection}
                 onDone={() => {
@@ -624,10 +652,14 @@ export function InboxTabs({
                         key={`${item.id}-${prefill?.type ?? "none"}-${prefill?.id ?? "none"}`}
                         itemId={item.id}
                         hasFile={Boolean(item.storage_path)}
+                        textOrCaption={item.text_or_caption}
+                        fileName={item.file_name}
                         projectOptions={projectOptions}
                         contactOptions={contactOptions}
                         opportunityOptions={opportunityOptions}
                         peopleOptions={peopleOptions}
+                        products={products}
+                        defaultCurrency={defaultCurrency}
                         documentTypes={documentTypes}
                         initialDestination={prefill}
                         initialDocumentType={suggestedDocTypeByItemId[item.id] ?? null}
